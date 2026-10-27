@@ -46,42 +46,50 @@ Exit status: 0 ok, 1 validation or lint failure, 2 usage or I/O error.
 `
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, usage)
-		os.Exit(2)
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// errUnknown marks an unknown subcommand.
+var errUnknown = errors.New("unknown subcommand")
+
+// run dispatches one subcommand and returns the exit status.
+func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) < 1 {
+		fmt.Fprint(stderr, usage)
+		return 2
 	}
 	var err error
 	code := 0
-	switch os.Args[1] {
+	switch args[0] {
 	case "detect":
-		err = cmdDetect(os.Args[2:], os.Stdout)
+		err = cmdDetect(args[1:], stdout)
 	case "inventory":
-		err = cmdInventory(os.Args[2:], os.Stdout)
+		err = cmdInventory(args[1:], stdout)
 	case "assemble":
-		code, err = cmdAssemble(os.Args[2:], os.Stdout)
+		code, err = cmdAssemble(args[1:], stdout)
 	case "bundle":
-		err = cmdBundle(os.Args[2:], os.Stdout)
+		err = cmdBundle(args[1:], stdout)
 	case "validate":
-		code, err = cmdValidate(os.Args[2:], os.Stdout)
+		code, err = cmdValidate(args[1:], stdout)
 	case "lint-kb":
-		code, err = cmdLint(os.Args[2:], os.Stdout)
+		code, err = cmdLint(args[1:], stdout)
 	case "advisories":
-		err = cmdAdvisories(os.Args[2:], os.Stdout)
+		err = cmdAdvisories(args[1:], stdout)
 	case "rules":
-		err = writeJSON(os.Stdout, inventory.Rules)
+		err = writeJSON(stdout, inventory.Rules)
 	case "version", "--version", "-v":
-		fmt.Println(Version)
+		fmt.Fprintln(stdout, Version)
 	case "help", "-h", "--help":
-		fmt.Print(usage)
+		fmt.Fprint(stdout, usage)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown subcommand %q\n\n%s", os.Args[1], usage)
-		os.Exit(2)
+		fmt.Fprintf(stderr, "%v %q\n\n%s", errUnknown, args[0], usage)
+		return 2
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "gnark-inventory:", err)
-		os.Exit(2)
+		fmt.Fprintln(stderr, "gnark-inventory:", err)
+		return 2
 	}
-	os.Exit(code)
+	return code
 }
 
 func writeJSON(w io.Writer, v any) error {

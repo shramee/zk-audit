@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/tools/gnark-inventory/internal/advisory"
+	"github.com/shramee/zk-audit/plugins/zk-audit/tools/gnark-inventory/internal/bundle"
 	"github.com/shramee/zk-audit/plugins/zk-audit/tools/gnark-inventory/internal/detect"
 	"github.com/shramee/zk-audit/plugins/zk-audit/tools/gnark-inventory/internal/inventory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/tools/gnark-inventory/internal/kblint"
@@ -31,8 +32,9 @@ const usage = `gnark-inventory ` + Version + ` — deterministic recon for zk-au
 Usage:
   gnark-inventory detect    --repo DIR [--out stack.json]
   gnark-inventory inventory --repo DIR --out DIR [--files a.go,dir/] [--syntax-only] [--allow-network]
+  gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile quick|standard|deep]
   gnark-inventory validate  findings|ledger|stack FILE
-  gnark-inventory lint-kb   SKILL_DIR
+  gnark-inventory lint-kb   [--gnark-src DIR] SKILL_DIR
   gnark-inventory advisories [--version vX.Y.Z]
   gnark-inventory rules
   gnark-inventory version
@@ -52,6 +54,8 @@ func main() {
 		err = cmdDetect(os.Args[2:], os.Stdout)
 	case "inventory":
 		err = cmdInventory(os.Args[2:], os.Stdout)
+	case "bundle":
+		err = cmdBundle(os.Args[2:], os.Stdout)
 	case "validate":
 		code, err = cmdValidate(os.Args[2:], os.Stdout)
 	case "lint-kb":
@@ -249,6 +253,43 @@ func inside(p, root string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+func cmdBundle(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("bundle", flag.ContinueOnError)
+	out := fs.String("out", "", "audit output directory holding inventory.json (required)")
+	skill := fs.String("skill", "", "zk-audit skill directory, the one holding SKILL.md (required)")
+	profile := fs.String("profile", "standard", "quick, standard or deep")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *out == "" || *skill == "" {
+		return fmt.Errorf("bundle: --out and --skill are required")
+	}
+	switch *profile {
+	case "quick", "standard", "deep":
+	default:
+		return fmt.Errorf("bundle: unknown profile %q", *profile)
+	}
+	res, err := bundle.Build(bundle.Options{Out: *out, Skill: *skill, Profile: *profile})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(stdout, "| Agent | Shard | Bundle | Lines | Source files | Status |")
+	fmt.Fprintln(stdout, "|---|---|---|---|---|---|")
+	written := 0
+	for _, r := range res {
+		if r.Status == "written" {
+			written++
+			fmt.Fprintf(stdout, "| %s | %s | %s | %d | %d | written |\n", r.Agent, r.Shard, r.Path, r.Lines, r.Files)
+		} else {
+			fmt.Fprintf(stdout, "| %s | %s | – | – | – | skipped: %s |\n", r.Agent, r.Shard, r.Reason)
+		}
+	}
+	if written == 0 {
+		return fmt.Errorf("bundle: no bundle written (empty shards for profile %s)", *profile)
+	}
+	return writeJSONFile(filepath.Join(*out, "bundles", "index.json"), res)
+}
+
 func cmdValidate(args []string, stdout io.Writer) (int, error) {
 	if len(args) != 2 {
 		return 2, fmt.Errorf("validate: want KIND FILE")
@@ -276,10 +317,15 @@ func cmdValidate(args []string, stdout io.Writer) (int, error) {
 }
 
 func cmdLint(args []string, stdout io.Writer) (int, error) {
-	if len(args) != 1 {
-		return 2, fmt.Errorf("lint-kb: want SKILL_DIR")
+	fs := flag.NewFlagSet("lint-kb", flag.ContinueOnError)
+	gnarkSrc := fs.String("gnark-src", "", "gnark checkout; verify every cited gnark/<path> exists")
+	if err := fs.Parse(args); err != nil {
+		return 2, err
 	}
-	rep, err := kblint.Lint(args[0], inventory.RuleIDs())
+	if fs.NArg() != 1 {
+		return 2, fmt.Errorf("lint-kb: want [--gnark-src DIR] SKILL_DIR")
+	}
+	rep, err := kblint.Lint(fs.Arg(0), inventory.RuleIDs(), kblint.Options{GnarkSrc: *gnarkSrc})
 	if err != nil {
 		return 2, err
 	}

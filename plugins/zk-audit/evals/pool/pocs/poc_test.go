@@ -125,6 +125,18 @@ func TestPoC_MerkleLeafUnbound(t *testing.T) {
 	if err := groth16.Verify(proof, vk, pub); err != nil {
 		t.Fatalf("attack: forged withdrawal proof should verify: %v", err)
 	}
+
+	// Decoy D4: Recipient reaches constraints (through the dropped IsZero), so
+	// the proof binds it and a front-runner cannot swap it.
+	swapped := assignment(tr, 31337, 9, value, 1, 2)
+	swapped.Recipient = 0xdead
+	ws, err := frontend.NewWitness(swapped, field, frontend.PublicOnly())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := groth16.Verify(proof, vk, ws); err == nil {
+		t.Fatal("decoy D4: a proof must not verify with a different recipient")
+	}
 }
 
 // TestPoC_OwnerCheckGated: with Index != 0 the owner equality is switched off

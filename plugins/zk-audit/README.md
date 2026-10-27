@@ -23,15 +23,22 @@ through `scripts/gnark-inventory`, which builds it once into
 | Subcommand | Output |
 |---|---|
 | `detect --repo DIR [--out stack.json]` | gnark / gnark-crypto versions, matching advisories, backends, curves, Solidity / Foundry / Hardhat / Circom / Noir presence. |
-| `inventory --repo DIR --out DIR [--files a,b] [--syntax-only]` | `inventory.json`, `inventory.md`, `binding-table.md`, `coverage-ledger.json` (seeded). |
+| `inventory --repo DIR --out DIR [--files a,b] [--syntax-only] [--allow-network]` | `inventory.json`, `inventory.md`, `binding-table.md`, `coverage-ledger.json` (seeded), `stack.json`. |
+| `bundle --out DIR --skill SKILL_DIR [--profile P]` | One `bundles/<agent>.md` per selected agent: source shard (paths and line counts), binding table, inventory items, SOP, lens, shared rules. |
 | `validate findings FILE` | Checks `findings.json` against `schemas/findings.schema.json` plus semantic rules. |
 | `validate ledger FILE` | Checks `coverage-ledger.json` against `schemas/ledger.schema.json` plus semantic rules. |
 | `validate stack FILE` | Checks `stack.json` against `schemas/stack.schema.json`. |
-| `lint-kb DIR` | Lints the knowledge base: every vector has a real `Source:`, ids are unique, the advisory table matches the tool. |
+| `lint-kb [--gnark-src DIR] SKILL_DIR` | Lints the knowledge base: every vector has D/FP/Source/Seed/PoC, sources are real URLs on allowed hosts or `gnark/<path>` references (checked against a gnark checkout with `--gnark-src`), seeds name real detector rules, PoCs name real templates, ids are unique, slice counts match the index, and the advisory table matches the tool. |
+| `rules` | Prints the footgun detector rules as JSON. |
 | `advisories [--version vX.Y.Z]` | Prints the embedded advisory table, or only the advisories that affect a version. |
 | `version` | Prints the tool version. |
 
 Every validator fails when it inspects zero items.
+
+**Network.** By default the tool sets `GOPROXY=off` when it calls the go
+command, so an audit never downloads modules. `--allow-network` lifts that for
+type loading (for example when the target's dependencies are not in the module
+cache yet).
 
 **Loading.** `inventory` loads packages with `golang.org/x/tools/go/packages`
 and full type information, which gives exact public-witness order including

@@ -146,11 +146,18 @@ offers to draft `zk-audit.md`; it writes it only if the user agrees.
 
 ### Phase 2 — Hunt (parallel agents)
 
-Follow `references/orchestration.md`: build one bundle per agent (source shard
-path + line count, binding table, `senior-auditor-sop.md`, the lens file,
-`shared-rules.md`), run at most **6 agents at a time**, and keep the
-`Agent Progress` table current. Agents return FINDING / LEAD blocks only.
-`--local` runs the same lenses sequentially in this context.
+Build one bundle per selected agent, then follow `references/orchestration.md`:
+
+```bash
+{plugin}/scripts/gnark-inventory bundle --out <out> --skill {skill} --profile <profile>
+```
+
+A bundle lists its source shard as paths with line counts (source is never
+inlined) and inlines the binding table, the inventory items for those files,
+`senior-auditor-sop.md`, the lens file and `shared-rules.md`. Run at most **6
+agents at a time** and keep the `Agent Progress` table current. Agents return
+FINDING / LEAD blocks only. `--local` runs the same lenses one after another in
+this context.
 
 ### Phase 3 — Judge
 

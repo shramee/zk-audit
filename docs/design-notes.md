@@ -41,6 +41,67 @@ left open, it is recorded here with the reason.
   v0.16.4 needs Go 1.26, so type loading of a current gnark project needs a
   newer toolchain than the tool itself (`GOTOOLCHAIN=auto` handles this when
   the network allows it).
+- **Offline by default.** The loader sets `GOPROXY=off` and strips `-mod=`
+  from an inherited `GOFLAGS` before calling the go command, so loading a target
+  never downloads modules and the target decides between its `vendor/` and the
+  module cache. `--allow-network` is the explicit opt-in (PLAN §3 "never
+  surprises the user").
+- **Syntax-mode std shapes.** Without type information, a small table of gnark
+  std struct shapes (`twistededwards.Point`, `eddsa.PublicKey/Signature`,
+  `emulated.Element`, `sw_emulated.AffinePoint`, `ecdsa` types,
+  `merkle.MerkleProof`, `uints.U8/U32/U64`) lets the walker lay out common
+  witnesses. Other external types become `opaque` groups and make later
+  offsets symbolic.
+- **Witness-walk fidelity.** The walker reproduces `frontend/schema/walk.go`,
+  including two behaviours that surprise users: tags on embedded fields are
+  ignored, and nil pointers contribute no leaves. Expected layouts in the tests
+  were produced by running gnark v0.14.0's own `schema.Walk` on the fixtures.
+- **Hint reachability is a heuristic.** It is a per-function taint pass from
+  `NewHint` results through assignments, range loops and API arithmetic to a
+  list of constraining calls. "reached" means "flows into at least one
+  constraint", never "bound". Outputs that leave the function (return, struct
+  field, call to a non-API helper, composite literal) are `escapes`.
+- **Fixtures.** `testdata/pool` and `testdata/edge` are separate modules that
+  compile against gnark v0.14.0 (the newest release whose `go` directive works
+  with Go 1.24). CI's offline step skips the typed-mode tests when the fixture
+  dependencies are not cached; `make test-types` downloads them and requires
+  typed mode.
+- **`bundle` subcommand (M3 skeleton).** Context sharding is implemented in the
+  Go tool rather than a separate `scripts/build-context`: circuit, integration,
+  prover and all shards, with one circuit shard per package when there are more
+  than two circuit packages. Bundles list source files with line counts and
+  never inline source (PLAN §2 "Leave: full source duplicated in all bundles").
+- **Not yet implemented (M3 remainder).** The deterministic `assemble` step
+  (`findings.json` + ledger → `REPORT.md`) is specified in
+  `references/report-format.md` but not coded; the orchestrator renders the
+  report by hand until then. The deep profile's "regenerate `Verifier.sol` and
+  diff" is described in the I2 lens but not automated.
+
+## Knowledge base
+
+- **Source policy.** Every vector cites at least one of: a GHSA advisory, an
+  audit report or the gnark PR that fixed an audit finding (taken from the
+  "Client Response" links in `gnark/audits/2024-05 - zksecurity - gnark std.pdf`),
+  a Least Authority report shipped in `gnark/audits/`, a `gnark/<path>`
+  source reference at v0.16.4 that states the behaviour, a `gnark/CHANGELOG.md`
+  entry, or the zkSecurity zk-skills entry a generic vector was ported from.
+  `lint-kb` restricts URL hosts to an allow-list and, with `--gnark-src`,
+  checks that every cited gnark path exists (it does, for v0.16.4).
+- **Integration vectors without a ZK-specific source were left out.** Admin
+  swap of a verifier or VK, nullifier check-then-store atomicity and reentrancy
+  around verification are covered as checklist items in the I2 and I3 lens
+  files instead of as catalog vectors, because no source in the allowed set
+  documents them for gnark.
+- **Vector count.** 79 vectors in 12 slices (PLAN target "about 80"). Slice and
+  id scheme: V-H (hints), V-R (range), V-F (field), V-S (selector), V-M (hash /
+  Merkle), V-E (curves / signatures), V-CM (commitments / recursion), V-PI
+  (public inputs), V-VC (verifier contracts), V-PS (protocol state), V-PV
+  (prover service), V-G (generic, ported from zkSecurity).
+- **PoC templates were executed.** T-HINT-OVERRIDE, T-PROVE-VERIFY,
+  T-ASSERT-OVERRIDE and T-ALIAS were run against gnark v0.14.0 on small
+  circuits (a remainder hint without `r < b`, and `OmitModulusCheck`), and
+  each demonstrated the bug with its honest control. `test.WithReplacementHint`
+  exists only from v0.15 and is documented as such.
 
 ## Knowledge base facts that differ from `docs/research.md`
 

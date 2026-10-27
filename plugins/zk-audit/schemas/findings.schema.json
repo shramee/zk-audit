@@ -14,6 +14,30 @@
     "profile": { "enum": ["quick", "standard", "deep", "local", "diff", "recon"] },
     "no_findings": { "type": "boolean" },
     "no_findings_reason": { "type": "string", "minLength": 1 },
+    "posture": { "type": "string", "minLength": 1, "description": "REPORT.md section 2: three to six sentences written by the orchestrator after judging" },
+    "out_of_scope": { "type": "array", "items": { "$ref": "#/$defs/nonEmpty" }, "description": "What was left out of scope, and why" },
+    "companions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "present": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } },
+        "missing": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } }
+      }
+    },
+    "hardening": {
+      "type": "array",
+      "description": "REPORT.md section 7: hygiene that is not a vulnerability",
+      "items": {
+        "type": "object",
+        "required": ["title"],
+        "additionalProperties": false,
+        "properties": {
+          "title": { "$ref": "#/$defs/nonEmpty" },
+          "detail": { "type": "string" },
+          "location": { "$ref": "#/$defs/location" }
+        }
+      }
+    },
     "records": { "type": "array", "items": { "$ref": "#/$defs/record" } }
   },
   "$defs": {

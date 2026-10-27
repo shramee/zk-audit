@@ -58,9 +58,20 @@ var AllowedHosts = []string{
 	"zellic.io", "veridise.com", "github.com/0xPARC", "arxiv.org", "docs.gnark.consensys.io",
 }
 
+// Options for Lint.
+type Options struct {
+	// GnarkSrc, when set, is a gnark checkout; every `gnark/<path>` cited in a
+	// Source: field must exist in it.
+	GnarkSrc string
+}
+
 // Lint checks the skill directory (the one holding SKILL.md).
-func Lint(skillDir string, ruleIDs map[string]bool) (*Report, error) {
+func Lint(skillDir string, ruleIDs map[string]bool, opts ...Options) (*Report, error) {
 	r := &Report{}
+	var opt Options
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
 	refs := filepath.Join(skillDir, "references")
 	templates, err := templateIDs(filepath.Join(refs, "poc-templates.md"))
 	if err != nil {
@@ -81,7 +92,7 @@ func Lint(skillDir string, ruleIDs map[string]bool) (*Report, error) {
 			continue
 		}
 		r.Slices++
-		n, err := lintSlice(r, s, ids, templates, ruleIDs)
+		n, err := lintSlice(r, s, ids, templates, ruleIDs, opt)
 		if err != nil {
 			return nil, err
 		}
@@ -120,7 +131,7 @@ type vector struct {
 	fields    map[string]string
 }
 
-func lintSlice(r *Report, path string, ids map[string]string, templates, rules map[string]bool) (int, error) {
+func lintSlice(r *Report, path string, ids map[string]string, templates, rules map[string]bool, opt Options) (int, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err
@@ -171,19 +182,27 @@ func lintSlice(r *Report, path string, ids map[string]string, templates, rules m
 				r.errf("%s: placeholder text in %s:", at, f)
 			}
 		}
-		lintSource(r, at, v.fields["Source"])
+		lintSource(r, at, v.fields["Source"], opt)
 		lintSeed(r, at, v.fields["Seed"], rules)
 		lintPoC(r, at, v.fields["PoC"], templates)
 	}
 	return len(vs), nil
 }
 
-func lintSource(r *Report, at, src string) {
+func lintSource(r *Report, at, src string, opt Options) {
 	if src == "" {
 		return
 	}
 	urls := reURL.FindAllString(src, -1)
 	paths := reGnarkSrc.FindAllString(src, -1)
+	if opt.GnarkSrc != "" {
+		for _, p := range paths {
+			rel := strings.TrimPrefix(strings.Trim(p, "`"), "gnark/")
+			if _, err := os.Stat(filepath.Join(opt.GnarkSrc, rel)); err != nil {
+				r.errf("%s: Source: %s does not exist in %s", at, p, opt.GnarkSrc)
+			}
+		}
+	}
 	if len(urls) == 0 && len(paths) == 0 {
 		r.errf("%s: Source: needs at least one https URL or a `gnark/<path>` source reference", at)
 	}
@@ -343,8 +362,13 @@ func lintSkill(r *Report, skillDir string) {
 	if !bytes.HasPrefix(b, []byte("---\n")) {
 		r.errf("SKILL.md: missing frontmatter")
 	}
+	seenRef := map[string]bool{}
 	for _, m := range reRefPath.FindAllStringSubmatch(string(b), -1) {
 		ref := m[1]
+		if seenRef[ref] {
+			continue
+		}
+		seenRef[ref] = true
 		if strings.Contains(ref, "*") {
 			matches, _ := filepath.Glob(filepath.Join(skillDir, ref))
 			if len(matches) == 0 {

@@ -34,7 +34,7 @@ var Rules = []Rule{
 	{"FG-EMULATED-WITNESS", "emulated.Element in the witness", "Witness limbs are width-checked on first use but the value may be >= the emulated modulus; use AssertIsInRange / ReduceStrict where canonicity matters."},
 	{"FG-EMULATED-LIMBS", "Direct access to emulated Element.Limbs", "Using Limbs in native arithmetic bypasses the emulated width checks (zkSecurity gnark-std 0b)."},
 	{"FG-EMULATED-VALUEOF-IN-CIRCUIT", "emulated.ValueOf inside circuit code", "ValueOf is for witness assignment; in-circuit constants should use Field.NewElement."},
-	{"FG-VK-AS-WITNESS", "Recursion verifying key as witness", "ValueOfVerifyingKey makes the inner VK a witness: bind it to a constant (ValueOfVerifyingKeyFixed) or a public hash."},
+	{"FG-VK-AS-WITNESS", "Recursion verifying key as witness", "A witness VK must be bound (constant field tagged gnark:\"-\", or a public hash). ValueOfVerifyingKeyFixed on a witness VK leaves its precomputed G2 lines unconstrained (std/recursion/groth16/verifier.go)."},
 	{"FG-DEV-SETUP", "Single-party or unsafe setup outside tests", "groth16.Setup / unsafekzg.NewSRS produce toxic waste known to the caller; production keys need an MPC ceremony or a public SRS."},
 	{"FG-COMMIT", "In-circuit commitment (Committer / multicommit)", "Groth16 commitments: >1 commitment unsound before v0.11.0, commitments to secrets are not hiding (CVE-2024-45039/45040); Solidity needs WithProverTargetSolidityVerifier."},
 	{"FG-MIMC", "MiMC hasher", "MiMC (Miyaguchi-Preneel) has length extension and no domain separation; fix the input length or add a domain tag."},
@@ -144,7 +144,7 @@ func (c *footgunCtx) scanBody(body *ast.BlockStmt) {
 			}
 		case *ast.IfStmt:
 			if inCircuit && !c.isConstantCheck(x.Init, x.Cond) && c.mentionsWitness(x.Cond) {
-				c.hit("FG-GO-BRANCH-ON-WITNESS", x.Cond, "Go if on a witness value.")
+				c.hit("FG-GO-BRANCH-ON-WITNESS", x.Cond, "Go if on a frontend.Variable (a witness, or a constant stored in a Variable).")
 			}
 		case *ast.SwitchStmt:
 			if inCircuit && x.Tag != nil && c.mentionsWitness(x.Tag) {
@@ -216,6 +216,9 @@ func (c *footgunCtx) isConstantCheck(init ast.Stmt, cond ast.Expr) bool {
 // field.
 func (c *footgunCtx) isWitnessValue(e ast.Expr) bool {
 	if c.f.Pkg.Typed {
+		if tv, ok := c.f.Pkg.Info.Types[e]; ok && tv.Value != nil {
+			return false // a constant converted to frontend.Variable
+		}
 		return isVariableExpr(c.f, e)
 	}
 	sel, ok := e.(*ast.SelectorExpr)
@@ -289,8 +292,8 @@ func (c *footgunCtx) call(call *ast.CallExpr, inCircuit bool) {
 		}
 	case cl.Pkg == pkgMulti && cl.Name == "WithCommitment":
 		c.hit("FG-COMMIT", call, "multicommit.WithCommitment.")
-	case (cl.Pkg == pkgRecG16 || cl.Pkg == pkgRecPlonk || cl.Pkg == pkgPedersen) && cl.Name == "ValueOfVerifyingKey":
-		c.hit("FG-VK-AS-WITNESS", call, "")
+	case (cl.Pkg == pkgRecG16 || cl.Pkg == pkgRecPlonk || cl.Pkg == pkgPedersen) && (cl.Name == "ValueOfVerifyingKey" || cl.Name == "ValueOfVerifyingKeyFixed"):
+		c.hit("FG-VK-AS-WITNESS", call, cl.Name+".")
 	case cl.Pkg == pkgMiMC && cl.Name == "NewMiMC":
 		c.hit("FG-MIMC", call, "")
 	case cl.Pkg == pkgEdDSA && cl.Name == "Verify":

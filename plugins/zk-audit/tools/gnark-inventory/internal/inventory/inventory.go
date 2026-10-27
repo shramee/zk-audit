@@ -137,14 +137,17 @@ func Build(prog *load.Program, opt Options) (*Inventory, error) {
 		}
 	}
 	// link to circuits
+	// circuits are identified by package directory and type name: several
+	// packages may each define a type called Circuit
 	for _, c := range inv.Circuits {
+		dir := path.Dir(c.Define.File)
 		for _, s := range inv.Hints {
-			if s.Circuit == c.Name {
+			if s.Circuit == c.Name && path.Dir(s.Pos.File) == dir {
 				c.HintIDs = append(c.HintIDs, s.ID)
 			}
 		}
 		for _, fg := range inv.Footguns {
-			if fg.Circuit == c.Name {
+			if fg.Circuit == c.Name && path.Dir(fg.Pos.File) == dir {
 				c.FootgunIDs = append(c.FootgunIDs, fg.Key)
 			}
 		}

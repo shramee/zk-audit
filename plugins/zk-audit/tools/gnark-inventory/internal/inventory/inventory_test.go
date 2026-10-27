@@ -271,3 +271,42 @@ func TestRulesUnique(t *testing.T) {
 		t.Fatal("no rules")
 	}
 }
+
+// Two packages each define a type named Circuit; hits must stay with their
+// own package.
+func TestSameNameCircuits(t *testing.T) {
+	dir := t.TempDir()
+	src := func(pkg, extra string) string {
+		return "package " + pkg + "\n\nimport \"github.com/consensys/gnark/frontend\"\n\n" +
+			"type Circuit struct{ X frontend.Variable `gnark:\",public\"` }\n\n" +
+			"func (c *Circuit) Define(api frontend.API) error {\n" + extra + "\treturn nil\n}\n"
+	}
+	for pkg, extra := range map[string]string{"a": "\t_ = api.DivUnchecked(c.X, c.X)\n", "b": ""} {
+		if err := os.MkdirAll(filepath.Join(dir, pkg), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, pkg, "c.go"), []byte(src(pkg, extra)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prog, err := load.Load(dir, load.Options{SyntaxOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv, err := Build(prog, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inv.Circuits) != 2 {
+		t.Fatalf("circuits: %d", len(inv.Circuits))
+	}
+	for _, c := range inv.Circuits {
+		want := 0
+		if strings.HasPrefix(c.Define.File, "a/") {
+			want = 1
+		}
+		if len(c.FootgunIDs) != want {
+			t.Errorf("%s: footguns %v, want %d", c.Define.File, c.FootgunIDs, want)
+		}
+	}
+}

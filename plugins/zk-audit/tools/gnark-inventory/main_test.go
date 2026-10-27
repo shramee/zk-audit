@@ -122,3 +122,50 @@ func TestInventoryCommand(t *testing.T) {
 		t.Errorf("summary line: %s", buf.String())
 	}
 }
+
+// TestAssembleCommand runs inventory → findings → assemble, and checks that
+// invalid input writes no report.
+func TestAssembleCommand(t *testing.T) {
+	out := t.TempDir()
+	var buf bytes.Buffer
+	if err := cmdInventory([]string{"--repo", filepath.Join("testdata", "pool"), "--out", out, "--syntax-only"}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	// The seeded ledger has only planned units; findings say nothing was found.
+	findings := `{"schema_version":"1","repo":"pool","run_id":"20261027-101500","profile":"quick","no_findings":true,"no_findings_reason":"recon only","records":[]}`
+	if err := os.WriteFile(filepath.Join(out, "findings.json"), []byte(findings), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	code, err := cmdAssemble([]string{"--out", out}, &buf)
+	if err != nil || code != 0 {
+		t.Fatalf("assemble: code %d err %v out %s", code, err, buf.String())
+	}
+	rep, err := os.ReadFile(filepath.Join(out, "REPORT.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Examined (covered or candidate): 0 of", "| Files reviewed | none recorded in the ledger |", "Inventory load mode: `syntax`", "gnark v0.14.0 (advisories: 3)"} {
+		if !strings.Contains(string(rep), want) {
+			t.Errorf("REPORT.md lacks %q", want)
+		}
+	}
+	if !strings.Contains(buf.String(), "is still planned") {
+		t.Errorf("expected warnings for planned units: %s", buf.String())
+	}
+
+	bad := t.TempDir()
+	os.WriteFile(filepath.Join(bad, "findings.json"), []byte(`{"schema_version":"1","repo":"pool","run_id":"x","profile":"quick","records":[]}`), 0o644)
+	os.WriteFile(filepath.Join(bad, "coverage-ledger.json"), []byte(`{"schema_version":"1","repo":"r","generated_by":"t","units":[]}`), 0o644)
+	buf.Reset()
+	code, err = cmdAssemble([]string{"--out", bad}, &buf)
+	if err != nil || code != 1 || !strings.Contains(buf.String(), "REPORT.md not written") {
+		t.Fatalf("invalid input: code %d err %v out %s", code, err, buf.String())
+	}
+	if _, err := os.Stat(filepath.Join(bad, "REPORT.md")); err == nil {
+		t.Fatal("REPORT.md written for invalid input")
+	}
+	if code, err := cmdAssemble(nil, &buf); err == nil || code != 2 {
+		t.Fatalf("missing --out should be a usage error, got %d %v", code, err)
+	}
+}

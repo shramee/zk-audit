@@ -1,0 +1,118 @@
+{
+  "schema_version": "1",
+  "repo": "/home/auditor/src/pool",
+  "commit": "3f9c2a1b7d5e4f60718293a4b5c6d7e8f9012345",
+  "run_id": "20261027-101500",
+  "profile": "quick",
+  "posture": "Proofs gate withdrawals from a shared pool. The Merkle membership check does not bind the spent note to the leaf, so any prover can withdraw. The owner can swap the verifier at any time. The single most important action is to hash the note into the leaf and bind Index into the path.",
+  "out_of_scope": ["Verifier.sol internals: a stub, not a generated verifier"],
+  "companions": { "present": ["fp-check"], "missing": ["circom-auditor", "solidity-auditor"] },
+  "hardening": [
+    { "title": "Unused helper returns unconstrained hint outputs", "detail": "decompose is never called; delete it or constrain its outputs.", "location": { "file": "circuit/transfer.go", "line": 106, "scope": "decompose" } },
+    { "title": "No test checks the public-input order against Pool.withdraw" }
+  ],
+  "records": [
+    {
+      "fingerprint": "TransferCircuit|res[1]|hint-output-unconstrained",
+      "verdict": "confirmed",
+      "title": "Remainder hint output is never constrained",
+      "layer": "circuit",
+      "bug_class": "hint-output-unconstrained",
+      "location": { "file": "circuit/transfer.go", "line": 61, "end_line": 67, "scope": "TransferCircuit.Define" },
+      "detected_by": ["V-hints", "C1"],
+      "vector_ids": ["V-H1"],
+      "description": "The prover sets the divHint remainder to any value.",
+      "severity": "low",
+      "confidence": 70,
+      "evidence": "ANALYSIS",
+      "proof": "Override divHint to return (q, r) = (1, 12345); Solve still succeeds because res[1] is unused.",
+      "impact": "No direct impact today; any later use of res[1] is forgeable.",
+      "gates": { "executes": "no constraint reads res[1]", "reachable": "any prover", "unprivileged": "yes", "impact": "latent" }
+    },
+    {
+      "fingerprint": "TransferCircuit|Path[0]|merkle-leaf-unbound",
+      "verdict": "confirmed",
+      "title": "Merkle leaf is not bound to the spent note",
+      "layer": "circuit",
+      "bug_class": "merkle-leaf-unbound",
+      "location": { "file": "circuit/transfer.go", "line": 52, "end_line": 58, "scope": "TransferCircuit.Define" },
+      "related_locations": [{ "file": "contracts/Pool.sol", "line": 52, "scope": "Pool.withdraw" }],
+      "detected_by": ["C1", "G2", "V-hash"],
+      "vector_ids": ["V-M1"],
+      "description": "Any prover proves membership of any existing leaf with a fresh Secret and withdraws any value.",
+      "severity": "critical",
+      "confidence": 95,
+      "evidence": "POC",
+      "proof": "Take any known leaf and its siblings; set Secret=1, Index=7, In.Value=Out.Value=10^18; the witness satisfies every constraint.",
+      "impact": "Any prover drains the pool.",
+      "gates": { "executes": "Path[0] is not tied to In or Secret", "reachable": "any prover", "unprivileged": "yes", "impact": "theft" },
+      "fix": {
+        "summary": "Hash the note and Index into the leaf and select siblings by the Index bits.",
+        "options": [
+          { "label": "bind the note", "diff": "-\tcur := c.Path[0]\n+\th.Reset()\n+\th.Write(c.In.Value, c.In.Owner, c.Secret)\n+\tcur := h.Sum()\n+\tapi.AssertIsEqual(cur, c.Path[0])" },
+          { "label": "use std/accumulator/merkle", "diff": "+\tproof := merkle.MerkleProof{RootHash: c.Root, Path: c.Path[:]}\n+\tproof.VerifyProof(api, &h, c.Index)" }
+        ]
+      },
+      "poc": { "path": "pocs/1_poc_test.go", "command": "go test -run PoC_1 -count=1 ./circuit/", "result": "demonstrated", "output_excerpt": "=== RUN   TestPoC_1\n--- PASS: TestPoC_1 (0.41s)\nPASS" },
+      "refuter": { "verdict": "exploitable", "reasoning": "circuit/transfer.go:52 starts from Path[0]; nothing ties it to In or Secret.", "by": "refuter" },
+      "run_tag": "NEW"
+    },
+    {
+      "fingerprint": "TransferCircuit|In.Owner|flag-gated-check",
+      "verdict": "confirmed",
+      "title": "Owner check is skipped when Index is non-zero",
+      "layer": "circuit",
+      "bug_class": "flag-gated-check",
+      "location": { "file": "circuit/transfer.go", "line": 90, "end_line": 91, "scope": "TransferCircuit.Define" },
+      "detected_by": ["C1"],
+      "description": "Any prover sets Index to 1 so flag is 0 and the owner equality holds trivially.",
+      "severity": "high",
+      "confidence": 85,
+      "evidence": "ANALYSIS",
+      "proof": "Index=1 → flag=0 → 0·(In.Owner − Out.Owner) = 0 for any owners.",
+      "impact": "Any prover moves a note to a new owner.",
+      "gates": { "executes": "flag=0 zeroes the product", "reachable": "Index is free", "unprivileged": "yes", "impact": "theft" },
+      "fix": { "summary": "Assert In.Owner == Out.Owner unconditionally, or derive the gate from a constrained bit." },
+      "chain": ["TransferCircuit|Path[0]|merkle-leaf-unbound"],
+      "refuter": { "verdict": "not_exploitable", "reasoning": "Out.Owner is not used by Pool.withdraw, so ownership has no on-chain effect." }
+    },
+    {
+      "fingerprint": "Pool|withdraw|recipient-not-constrained",
+      "verdict": "lead",
+      "title": "Recipient is only fed to a discarded IsZero",
+      "layer": "integration",
+      "bug_class": "recipient-not-constrained",
+      "location": { "file": "contracts/Pool.sol", "line": 45, "scope": "Pool.withdraw" },
+      "detected_by": ["I1", "G2"],
+      "description": "The circuit never relates Recipient to the note owner",
+      "code_smells": ["api.IsZero(c.Recipient) result dropped", "Recipient | appears in no AssertIsEqual"],
+      "unverified": "whether the Groth16 IC term alone binds the recipient against front-running"
+    },
+    {
+      "fingerprint": "cmd/setup|main|single-party-setup",
+      "verdict": "needs_validation",
+      "title": "Keys come from a single-party Groth16 setup",
+      "layer": "setup",
+      "bug_class": "single-party-setup",
+      "location": { "file": "cmd/setup/main.go", "line": 20, "scope": "main" },
+      "detected_by": ["V-prover"],
+      "description": "Whoever ran cmd/setup knows the toxic waste and can forge proofs.",
+      "severity": "high",
+      "confidence": 60,
+      "blockers": ["which proving key backs the deployed verifier?", "was a ceremony run?"],
+      "validation_plan": "Compare the deployed verifier's VK with the ceremony transcript."
+    },
+    {
+      "fingerprint": "Verifier|verifyProof|input-not-reduced",
+      "verdict": "rejected",
+      "title": "Public inputs at or above r",
+      "layer": "integration",
+      "bug_class": "input-not-reduced",
+      "location": { "file": "contracts/Verifier.sol", "line": 10, "scope": "Verifier.verifyProof" },
+      "detected_by": ["V-pubin"],
+      "description": "Inputs >= r could alias nullifiers.",
+      "reason": "The verifier reverts with PublicInputNotInField.",
+      "refuting_location": { "file": "contracts/Verifier.sol", "line": 13, "scope": "Verifier.verifyProof" }
+    }
+  ]
+}

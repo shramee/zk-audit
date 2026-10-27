@@ -6,6 +6,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/tools/gnark-inventory/internal/advisory"
+	"github.com/shramee/zk-audit/plugins/zk-audit/tools/gnark-inventory/internal/assemble"
 	"github.com/shramee/zk-audit/plugins/zk-audit/tools/gnark-inventory/internal/bundle"
 	"github.com/shramee/zk-audit/plugins/zk-audit/tools/gnark-inventory/internal/detect"
 	"github.com/shramee/zk-audit/plugins/zk-audit/tools/gnark-inventory/internal/inventory"
@@ -34,6 +36,7 @@ Usage:
   gnark-inventory inventory --repo DIR --out DIR [--files a.go,dir/] [--syntax-only] [--allow-network]
   gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile quick|standard|deep]
   gnark-inventory validate  findings|ledger|stack FILE
+  gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F]
   gnark-inventory lint-kb   [--gnark-src DIR] SKILL_DIR
   gnark-inventory advisories [--version vX.Y.Z]
   gnark-inventory rules
@@ -54,6 +57,8 @@ func main() {
 		err = cmdDetect(os.Args[2:], os.Stdout)
 	case "inventory":
 		err = cmdInventory(os.Args[2:], os.Stdout)
+	case "assemble":
+		code, err = cmdAssemble(os.Args[2:], os.Stdout)
 	case "bundle":
 		err = cmdBundle(os.Args[2:], os.Stdout)
 	case "validate":
@@ -135,38 +140,8 @@ func cmdDetect(args []string, stdout io.Writer) error {
 	if err := writeJSONFile(*out, st); err != nil {
 		return err
 	}
-	fmt.Fprintln(stdout, stackLine(st))
+	fmt.Fprintln(stdout, st.Line())
 	return nil
-}
-
-// stackLine is the one-line banner the skill prints after Phase 0.
-func stackLine(st *detect.Stack) string {
-	var parts []string
-	if st.Gnark.Present {
-		parts = append(parts, fmt.Sprintf("gnark %s (advisories: %d)", strings.Join(st.Gnark.Versions, ","), len(st.Gnark.Advisories)))
-	} else {
-		parts = append(parts, "gnark: no")
-	}
-	if len(st.Gnark.Backends) > 0 {
-		parts = append(parts, strings.Join(st.Gnark.Backends, "/"))
-	}
-	if len(st.Gnark.Curves) > 0 {
-		parts = append(parts, strings.Join(st.Gnark.Curves, ","))
-	}
-	yes := func(b bool) string {
-		if b {
-			return "yes"
-		}
-		return "no"
-	}
-	parts = append(parts, "solidity: "+yes(st.Solidity.Present), "foundry: "+yes(st.Foundry.Present))
-	if st.Circom.Present {
-		parts = append(parts, "circom: yes")
-	}
-	if st.Noir.Present {
-		parts = append(parts, "noir: yes")
-	}
-	return strings.Join(parts, " · ")
 }
 
 func cmdInventory(args []string, stdout io.Writer) error {
@@ -313,6 +288,65 @@ func cmdValidate(args []string, stdout io.Writer) (int, error) {
 		return 1, nil
 	}
 	fmt.Fprintf(stdout, "OK %s %s: %d items inspected\n", rep.Kind, args[1], rep.Items)
+	return 0, nil
+}
+
+// cmdAssemble renders REPORT.md. Exit 1 means the inputs failed validation
+// and no report was written.
+func cmdAssemble(args []string, stdout io.Writer) (int, error) {
+	fs := flag.NewFlagSet("assemble", flag.ContinueOnError)
+	out := fs.String("out", "", "audit output directory (required); the other paths default to files in it")
+	findings := fs.String("findings", "", "findings.json (default <out>/findings.json)")
+	ledgerPath := fs.String("ledger", "", "coverage-ledger.json (default <out>/coverage-ledger.json)")
+	stack := fs.String("stack", "", "stack.json (default <out>/stack.json when present)")
+	inv := fs.String("inventory", "", "inventory.json (default <out>/inventory.json when present)")
+	repo := fs.String("repo", "", "audited source tree for verbatim constraint quotes (default: stack.json repo)")
+	reportPath := fs.String("report", "", "where to write the report (default <out>/REPORT.md)")
+	if err := fs.Parse(args); err != nil {
+		return 2, err
+	}
+	if *out == "" {
+		return 2, fmt.Errorf("assemble: --out is required")
+	}
+	def := func(v *string, name string, optional bool) {
+		if *v != "" {
+			return
+		}
+		p := filepath.Join(*out, name)
+		if optional {
+			if _, err := os.Stat(p); err != nil {
+				return
+			}
+		}
+		*v = p
+	}
+	def(findings, "findings.json", false)
+	def(ledgerPath, "coverage-ledger.json", false)
+	def(stack, "stack.json", true)
+	def(inv, "inventory.json", true)
+	def(reportPath, "REPORT.md", false)
+	res, err := assemble.Assemble(assemble.Options{Findings: *findings, Ledger: *ledgerPath, Stack: *stack, Inventory: *inv, Repo: *repo})
+	if err != nil {
+		var ie *assemble.InvalidError
+		if errors.As(err, &ie) {
+			for _, p := range ie.Problems {
+				fmt.Fprintln(stdout, "error:", p)
+			}
+			fmt.Fprintf(stdout, "FAIL assemble: %d problems; REPORT.md not written. Fix the inputs and rerun.\n", len(ie.Problems))
+			return 1, nil
+		}
+		return 2, err
+	}
+	for _, w := range res.Warnings {
+		fmt.Fprintln(stdout, "warning:", w)
+	}
+	if *repo != "" && inside(*reportPath, *repo) {
+		fmt.Fprintln(os.Stderr, "gnark-inventory: warning: --report is inside the audited repository")
+	}
+	if err := os.WriteFile(*reportPath, []byte(res.Report), 0o644); err != nil {
+		return 2, err
+	}
+	fmt.Fprintf(stdout, "wrote %s: %s\n", *reportPath, res.Summary)
 	return 0, nil
 }
 

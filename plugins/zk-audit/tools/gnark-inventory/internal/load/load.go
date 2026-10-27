@@ -225,7 +225,7 @@ func (prog *Program) loadTyped(dir string, opt Options, seen map[string]bool) {
 			} else {
 				abs = prog.Fset.Position(af.Package).Filename
 			}
-			if !strings.HasSuffix(abs, ".go") || seen[abs] || !strings.HasPrefix(abs, prog.Root) {
+			if !strings.HasSuffix(abs, ".go") || seen[abs] || !strings.HasPrefix(abs, prog.Root+string(filepath.Separator)) {
 				continue
 			}
 			if p.Dir == "" {

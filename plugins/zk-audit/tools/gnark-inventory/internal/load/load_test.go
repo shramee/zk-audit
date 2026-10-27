@@ -52,3 +52,20 @@ func TestDefaultImportName(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildDirNotSkipped(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "build", "b.go"), []byte("package build\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prog, err := Load(dir, Options{SyntaxOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prog.Files) != 1 {
+		t.Fatalf("a Go package named build must be loaded, got %d files", len(prog.Files))
+	}
+}

@@ -10,12 +10,14 @@ import (
 	"strings"
 )
 
-// SkipDirs are directory names never descended into below the root.
+// SkipDirs are directory names never descended into below the root:
+// version control, editor state, Go vendor and testdata directories, and
+// JavaScript dependency trees. Build-output names (out, build, cache) are not
+// skipped because Go packages may use them; they hold no .go or .sol sources
+// in Foundry or Hardhat layouts anyway.
 var SkipDirs = map[string]bool{
-	".git": true, "node_modules": true, "vendor": true, "testdata": true,
-	".zk-audit": true, "cache": true, "out": true, "artifacts": true,
-	"build": true, "dist": true, "target": true, "typechain-types": true,
-	".hg": true, ".svn": true, ".idea": true, ".vscode": true,
+	".git": true, ".hg": true, ".svn": true, ".idea": true, ".vscode": true,
+	"node_modules": true, "vendor": true, "testdata": true, ".zk-audit": true,
 }
 
 // File is one file found by Walk.

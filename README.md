@@ -201,5 +201,6 @@ make check     # go vet, go test, JSON parse, knowledge-base lint
 
 ## License
 
-Not licensed yet. Parts are adapted from MIT-licensed work by zkSecurity,
+Unlicensed for now; the license decision is deferred and there is no
+`LICENSE` file. Parts are adapted from MIT-licensed work by zkSecurity,
 pashov / AI Skills Contributors and Cloudflare; see `NOTICE`.

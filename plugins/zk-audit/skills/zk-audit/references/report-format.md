@@ -2,11 +2,31 @@
 
 <!-- Structure adapted from zkSecurity zk-skills circom-auditor report-formatting.md (MIT, (c) 2026 zkSecurity) and pashov skills solidity-auditor report-formatting.md and report-language.md (MIT, (c) 2024 AI Skills Contributors). -->
 
-`REPORT.md` is rendered from `findings.json`, `coverage-ledger.json`,
-`stack.json` and `binding-table.md` after both JSON files validate. Rendering
-copies; it does not re-judge, re-rank or re-word findings. (A later milestone
-adds a deterministic `assemble` subcommand that writes this file. Until then
-the orchestrator renders it by following this file exactly.)
+`REPORT.md` is written by the deterministic assembler, never by hand:
+
+```bash
+{plugin}/scripts/gnark-inventory assemble --out <out> --repo <repo>
+```
+
+It reads `findings.json`, `coverage-ledger.json`, `stack.json` and
+`inventory.json` from `<out>`, validates them, and refuses invalid input (exit
+1, no report). Rendering copies; it does not re-judge, re-rank or re-word
+findings. Same inputs, same bytes.
+
+Where each part comes from:
+
+| Report part | Source |
+|---|---|
+| Scope: profile, run, commit, companions, out of scope | `findings.json` top-level fields |
+| Scope: files reviewed, agents | ledger `reviewed_paths` and `agent_ids` of covered or candidate units, plus `detected_by` |
+| Scope: stack, versions, advisories | `stack.json` |
+| Posture | `findings.json` `posture` (written by the orchestrator), then computed totals |
+| Findings, details, leads, needs validation | `records`, by verdict |
+| Constraint / code quote | the lines `location.line`–`end_line` of `<repo>/<file>`, verbatim, at most 30 |
+| Hardening notes | `findings.json` `hardening` |
+| Coverage | ledger statuses only; load mode from `inventory.json` |
+
+The assembler rejects the claims listed under Language in any free-text field.
 
 Path: `~/.zk-audit/<repo>/<run-id>/REPORT.md`. With `--file-output`, the same
 file is also written to `<repo>/zk-audit-report-<run-id>.md`.
@@ -33,16 +53,23 @@ file is also written to `<repo>/zk-audit-report-<run-id>.md`.
 | Run | 20261027-101500 |
 | Commit | <sha> |
 | Files reviewed | `circuit/transfer.go` · `circuit/sig.go` · `contracts/Pool.sol` |
-| Stack | gnark v0.14.0 (advisories: 3) · groth16 · bn254 · solidity · foundry |
+| Stack | gnark v0.14.0 (advisories: 3) · groth16 · bn254 · solidity: yes · foundry: yes |
+| Versions | `go.mod`: gnark v0.14.0, gnark-crypto v0.19.0, go 1.24.0 |
+| Advisories | GHSA-7fx8-hmgc-82jp (high, fixed v0.16.4) · … |
 | Companions | ✔ fp-check · ✖ circom-auditor |
-| Agents | C1–C6, I1–I4, V-hints, V-range, …, G2, F1 |
+| Agents | C1, I1, V-hints, V-range, …, G2 |
 | Out of scope | <what and why> |
 
 ## 2. Posture
 
-Three to six sentences: the main trust assumptions (setup, VK provenance, who
-submits proofs), the strongest and weakest areas, and the single most important
-action. No marketing.
+<findings.json posture: three to six sentences on the main trust assumptions
+(setup, VK provenance, who submits proofs), the strongest and weakest areas,
+and the single most important action. No marketing.>
+
+Totals: 1 confirmed (1 high) · 0 needs validation · 2 leads · 1 rejected. Ledger: 14 of 20 applicable units examined.
+
+(With no confirmed finding, the assembler adds that this does not mean the code
+is free of bugs and points to section 8.)
 
 ## 3. Findings
 
@@ -58,7 +85,11 @@ action. No marketing.
 
 **Description.** <one sentence from the record>
 
-**Constraint.**
+Also at: `Pool.withdraw` `contracts/Pool.sol:52`     (related_locations, if any)
+
+**Description.** <one sentence from the record>
+
+**Constraint.** `circuit/transfer.go:61-69`     ("Code." for non-circuit layers)
 
 ```go
 <the offending lines, verbatim>
@@ -70,24 +101,28 @@ action. No marketing.
 
 **PoC.** `pocs/<file>` — `go test -run PoC_1 ./circuit` → demonstrated.
 
-**Fix** (Option A — <label>)
+**Fix.** <fix summary>
+
+Option A — <label>
 
 ```diff
 <verbatim diff>
 ```
 
-**Refuter.** exploitable — <one paragraph>
+**Chain.** `<fingerprint>` → …     (if chain)
+
+**Refuter.** exploitable — <one paragraph> (by fp-check)
 
 ## 5. Leads
 
 Trails worth manual work. No severity, no fix.
 
-- **<title>** — `scope` · `file:line` · detected by … — <description>. Unverified: <unverified>.
+- **<title>** — `scope` · `file:line` · detected by … — <description>. Smells: <code_smells>. Unverified: <unverified>.
 
 ## 6. Needs validation
 
-| Item | Blockers | How to validate |
-|---|---|---|
+| Item | Severity | Confidence | Blockers | How to validate |
+|---|---|---|---|---|
 
 ## 7. Hardening notes
 
@@ -96,12 +131,15 @@ repo, no public-input-order test, `api.Println` in a circuit).
 
 ## 8. Coverage
 
-| Units | planned | covered | candidate | deferred | blocked | not applicable | out of scope |
-|---|---|---|---|---|---|---|---|
+| Kind | Units | planned | in progress | covered | candidate | deferred | blocked | not applicable | out of scope |
+|---|---|---|---|---|---|---|---|---|---|
 
-- Ledger units not covered, with reasons (copied from the ledger).
+Examined (covered or candidate): X of Y applicable units (Z%).
+
+- Units not examined, with status and reason (copied from the ledger).
+- Units not applicable or out of scope, with reasons.
 - Rejected candidates: N (kept in `findings.json`).
-- Companions not available and what that leaves uncovered.
+- Companions not available.
 - Load mode of the inventory (`types` / `syntax` / `mixed`) and its errors.
 
 > This review is a time-boxed, best-effort search for bugs by an automated
@@ -111,10 +149,13 @@ repo, no public-input-order test, `api.Println` in a circuit).
 
 ## Rules
 
-- Findings sorted by severity, then confidence, then title.
+- Findings (section 3) are the `confirmed` records, sorted by severity, then
+  confidence (highest first), then title. Needs-validation rows use the same
+  order. Leads are sorted by file and line.
 - A confirmed finding below confidence 80 prints description, constraint,
   witness and impact, but no fix block unless one exists.
 - Keep a finding the refuter marked `not_exploitable` only if a gate still
-  passed. Show both views.
-- KNOWN / NEW tags (with `--loop`) go after the title: `[KNOWN 2/3]`.
+  passed. The assembler then prints the gates next to the refuter's view.
+- KNOWN / NEW tags (`run_tag`, with `--loop`) go after the title: `[KNOWN]`.
+  The orchestrator prints `seen in k/N passes` itself.
 - The coverage section is mandatory, even with zero findings.

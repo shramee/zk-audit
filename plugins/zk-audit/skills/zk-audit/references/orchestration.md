@@ -167,12 +167,17 @@ after the last wave. Every unit still open gets `deferred` with a reason.
 
 ## Turn 8 — Report
 
-1. Validate:
+1. Fill the report-only fields of `findings.json` (`posture`,
+   `out_of_scope`, `companions`, `hardening`) and close every open ledger unit
+   (`deferred` or `blocked`, with a reason).
+2. Validate:
    `gnark-inventory validate findings <out>/findings.json` and
    `gnark-inventory validate ledger <out>/coverage-ledger.json`. Fix errors and
    rerun until both pass.
-2. Render `REPORT.md` per `report-format.md`.
-3. Print the findings table, the coverage line and the output path.
+3. Render: `{plugin}/scripts/gnark-inventory assemble --out <out> --repo <repo>`.
+   It writes `<out>/REPORT.md` per `report-format.md`, or exits 1 and writes
+   nothing when an input is invalid. Never edit the report by hand.
+4. Print the findings table, the coverage line and the output path.
 
 ## Loop mode (`--loop N`, deep)
 

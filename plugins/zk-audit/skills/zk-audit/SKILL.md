@@ -187,17 +187,33 @@ deep also runs a final-clean critic. Units left open stay `planned` or
 
 ### Phase 6 — Report
 
-Write `findings.json` (schema in `{plugin}/schemas/findings.schema.json`) and
-validate it:
+1. Write `findings.json` (schema in `{plugin}/schemas/findings.schema.json`).
+   Besides `records`, fill the report-only fields the assembler cannot
+   derive: `posture` (three to six sentences), `out_of_scope`, `companions`
+   (`present` / `missing`) and `hardening`. With zero records, set
+   `no_findings: true` and a `no_findings_reason` that says what was examined.
+2. Close the ledger: every unit still `planned` or `in_progress` becomes
+   `deferred` or `blocked` with a `reason`.
+3. Validate both files and fix every error:
 
-```bash
-{plugin}/scripts/gnark-inventory validate findings <out>/findings.json
-{plugin}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json
-```
+   ```bash
+   {plugin}/scripts/gnark-inventory validate findings <out>/findings.json
+   {plugin}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json
+   ```
 
-Fix every validation error before you continue. Then render `REPORT.md` with
-the structure in `references/report-format.md` and print the report path and
-the findings table. Do not re-judge or re-word findings while rendering.
+4. Render the report with the deterministic assembler. It validates again,
+   refuses invalid input (exit 1, no report), quotes the constraint lines
+   verbatim from `<repo>` and computes coverage only from the ledger:
+
+   ```bash
+   {plugin}/scripts/gnark-inventory assemble --out <out> --repo <repo>
+   ```
+
+   Read its warnings (a ledger fingerprint missing from `findings.json`, a unit
+   still planned). Fix the inputs and rerun; never edit `REPORT.md` by hand.
+5. With `--file-output`, copy the result:
+   `cp <out>/REPORT.md <repo>/zk-audit-report-<run-id>.md`.
+6. Print the report path, the findings table and the coverage line.
 
 ## 5. Companions
 

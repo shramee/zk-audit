@@ -29,7 +29,7 @@ the user did not ask for.
 ```text
 /zk-audit                                  standard profile, whole repo
 /zk-audit quick | standard | deep          choose a profile
-/zk-audit circuits/transfer.go contracts/Pool.sol   restrict scope to these files
+/zk-audit circuits/vote.go contracts/Ballot.sol   restrict scope to these files
 /zk-audit diff origin/main                 review a commit range (also /zk-audit:diff)
 /zk-audit recon                            recon only, no hunting (also /zk-audit:recon)
 /zk-audit:setup                            show companion skills and tools; install only after consent

@@ -225,13 +225,14 @@ only when the bug lives in the caller and the verifier is irrelevant to it.
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 import {Test} from "forge-std/Test.sol";
-import {Pool} from "../src/Pool.sol";
+import {Target} from "../src/Target.sol"; // the contract under test
 
-contract AcceptAll { function verifyProof(bytes calldata, uint256[7] calldata) external pure {} }
+// match the verifier interface the target calls (selector and input length)
+contract AcceptAll { function verifyProof(bytes calldata, uint256[N] calldata) external pure {} }
 
 contract PoC_<FindingID> is Test {
     function test_attack() public {
-        Pool pool = new Pool(address(new AcceptAll()));
+        Target target = new Target(address(new AcceptAll()));
         // 1. honest user action
         // 2. attacker replays / front-runs / swaps inputs
         // 3. assert the state the protocol must forbid

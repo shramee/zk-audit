@@ -52,7 +52,7 @@ file is also written to `<repo>/zk-audit-report-<run-id>.md`.
 | Profile | standard |
 | Run | 20261027-101500 |
 | Commit | <sha> |
-| Files reviewed | `circuit/transfer.go` · `circuit/sig.go` · `contracts/Pool.sol` |
+| Files reviewed | `tally/circuit.go` · `tally/hints.go` · `contracts/Ballot.sol` |
 | Stack | gnark v0.14.0 (advisories: 3) · groth16 · bn254 · solidity: yes · foundry: yes |
 | Versions | `go.mod`: gnark v0.14.0, gnark-crypto v0.19.0, go 1.24.0 |
 | Advisories | GHSA-7fx8-hmgc-82jp (high, fixed v0.16.4) · … |
@@ -75,21 +75,21 @@ is free of bugs and points to section 8.)
 
 | # | Title | Severity | Confidence | Evidence | Detected by |
 |---|---|---|---|---|---|
-| 1 | Remainder hint output is never range-bound | high | 90 | POC | C1, V-hints |
+| 1 | Mean hint output is never bound | high | 90 | POC | C1, V-hints |
 
 ## 4. Finding details
 
 ### 1. <Title>
 
-`TransferCircuit.Define` · `circuit/transfer.go:61-69` · severity **high** · confidence 90 · evidence **POC** · detected by C1, V-hints · vectors V-H3
+`TallyCircuit.Define` · `tally/circuit.go:40-44` · severity **high** · confidence 90 · evidence **POC** · detected by C1, V-hints · vectors V-H3
 
 **Description.** <one sentence from the record>
 
-Also at: `Pool.withdraw` `contracts/Pool.sol:52`     (related_locations, if any)
+Also at: `Ballot.cast` `contracts/Ballot.sol:31`     (related_locations, if any)
 
 **Description.** <one sentence from the record>
 
-**Constraint.** `circuit/transfer.go:61-69`     ("Code." for non-circuit layers)
+**Constraint.** `tally/circuit.go:40-44`     ("Code." for non-circuit layers)
 
 ```go
 <the offending lines, verbatim>

@@ -97,23 +97,28 @@ template id. No proof means LEAD. There are no exceptions.
 both. Two fixes needed: two items.
 
 ```text
-FINDING | layer: circuit | scope: TransferCircuit.Define | local: res[1] | bug_class: hint-output-unconstrained | group_key: TransferCircuit | res[1] | hint-output-unconstrained
+FINDING | layer: circuit | scope: TallyCircuit.Define | local: avg[0] | bug_class: hint-output-unconstrained | group_key: TallyCircuit | avg[0] | hint-output-unconstrained
 detected_by: <agent-id>
 vector_id: V-H3            (if a catalog vector applies; omit otherwise)
-location: circuit/transfer.go:61-69
-path: prover sets divHint output r → AssertIsEqual(q·b + r, a) still holds for q-1, r+b → public Q is wrong
-proof: A=7, B=2, Q=2; override divHint → (q=2, r=3); ccs.Solve succeeds; honest hint fails (T-HINT-OVERRIDE)
+location: tally/circuit.go:40-44
+code: avg, _ := api.Compiler().NewHint(meanHint, 1, c.Sum, c.Count)
+path: prover sets meanHint output → only avg·Count ≤ Sum is checked → public Mean is wrong
+proof: Sum=10, Count=2, Mean=1; override meanHint → 1; ccs.Solve succeeds; honest hint (5) fails (T-HINT-OVERRIDE)
 impact: one sentence — who loses what
 description: one sentence, 25 words or fewer, active voice
 fix: one sentence; a diff if you have one
 
-LEAD | layer: integration | scope: Pool.withdraw | local: input[2] | bug_class: recipient-not-bound | group_key: Pool | withdraw | recipient-not-bound
+LEAD | layer: integration | scope: Ballot.cast | local: pub[3] | bug_class: voter-not-bound | group_key: Ballot | cast | voter-not-bound
 detected_by: <agent-id>
-location: contracts/Pool.sol:45
-code_smells: Recipient reaches only a discarded IsZero in the circuit
-unverified: whether any other constraint uses Recipient
+location: contracts/Ballot.sol:27
+code: pub[3] = uint256(uint160(voter));
+code_smells: Voter reaches no constraint except a range check
+unverified: whether the Groth16 input commitment alone binds Voter
 description: one or two sentences
 ```
+
+The examples use invented names on purpose. Never copy names or locations
+from them; every name, `location` and `code` line comes from your shard.
 
 Field rules:
 
@@ -124,7 +129,11 @@ Field rules:
   circuit items, `<contract> | <function> | <bug-class>` for contract items.
   `bug-class` is lower-kebab-case and names the defect, not the consequence:
   `hint-output-unconstrained`, not `funds-stolen`.
-- `detected_by`: your agent id from the prompt (for example `C1`, `V-hints`,
+- `location` and `code`: open the file and copy the first line of the cited
+  range verbatim into `code:`. A `location` whose line does not hold that code
+  is wrong; fix it before you return. Line numbers in the bundle's inventory
+  excerpts are authoritative.
+- `detected_by`: exactly your agent id from the prompt, with no suffix (for example `C1`, `V-hints`,
   `G2`).
 - `location`: repo-relative `file:line` or `file:start-end`.
 - Add the lens-specific fields your lens file asks for.

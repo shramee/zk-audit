@@ -141,7 +141,7 @@ confidence, lead promotion. Write draft records to `<out>/findings.json`.
 1. Create the scratch worktree: `git -C <repo> worktree add --detach <out>/worktree HEAD`.
 2. For each confirmed circuit finding (quick: Critical and High only), spawn
    `zk-audit:poc-builder` with the record, the vector's template from
-   `poc-templates.md`, and the worktree path. It writes `pocs/<id>_test.go`
+   `poc-templates.md`, and the worktree path. It writes `pocs/<finding-number>_poc_test.go`
    (or `.t.sol`) under `<out>/pocs/`, copies it into the worktree, runs it with
    a time limit and no network, and returns the result.
 3. Spawn a fresh `zk-audit:refuter` (or `fp-check`) per confirmed item, with

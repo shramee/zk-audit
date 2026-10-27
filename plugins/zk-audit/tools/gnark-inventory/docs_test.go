@@ -122,6 +122,21 @@ func TestDocumentedCommandsExist(t *testing.T) {
 	}
 }
 
+// evalNames are identifiers of the eval fixtures. Hunting agents read the
+// skill docs, so an example that uses them primes the agents toward the
+// planted bugs and inflates eval recall.
+var evalNames = []string{"TransferCircuit", "SigCircuit", "EdgeCircuit", "divHint", "splitHint", "transfer.go", "Pool.sol", "Pool.withdraw"}
+
+func TestDocsDoNotNameEvalFixtures(t *testing.T) {
+	for name, doc := range pluginDocs(t) {
+		for _, id := range evalNames {
+			if strings.Contains(doc, id) {
+				t.Errorf("%s mentions %q from an eval fixture; use invented names in examples", name, id)
+			}
+		}
+	}
+}
+
 // TestDocsLintCatchesMistakes makes sure the patterns above fire.
 func TestDocsLintCatchesMistakes(t *testing.T) {
 	doc := "Run `{plugin}/scripts/gnark-inventory render --out x` and `gnark-inventory assemble --bogus y`."

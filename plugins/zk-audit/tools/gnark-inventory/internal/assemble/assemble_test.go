@@ -184,6 +184,24 @@ func TestRefusesInvalidInput(t *testing.T) {
 	}
 }
 
+func TestLocationPastEOFAndOptionPrefix(t *testing.T) {
+	f := read(t, filepath.Join("testdata", "full", "findings.json"))
+	f = strings.Replace(f, `"line": 90, "end_line": 91`, `"line": 190, "end_line": 191`, 1)
+	f = strings.Replace(f, `"label": "bind the note"`, `"label": "Option A — bind the note"`, 1)
+	o := writeCase(t, f, read(t, filepath.Join("testdata", "full", "coverage-ledger.json")))
+	o.Repo = poolRepo
+	res, err := Assemble(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(res.Warnings, "\n"), "circuit/transfer.go:190-191 is past the end of circuit/transfer.go") {
+		t.Errorf("no past-EOF warning: %v", res.Warnings)
+	}
+	if strings.Contains(res.Report, "Option A — Option A") || !strings.Contains(res.Report, "Option A — bind the note") {
+		t.Error("option label prefix not normalised")
+	}
+}
+
 func TestQuoteStaysInRepo(t *testing.T) {
 	in := &input{repo: poolRepo}
 	if _, _, ok := in.quote(Location{File: "../../main.go", Line: 1}); ok {

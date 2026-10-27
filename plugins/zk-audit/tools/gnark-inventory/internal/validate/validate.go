@@ -32,6 +32,7 @@ type Report struct {
 	Items    int      `json:"items_inspected"`
 	Errors   []string `json:"errors"`
 	Warnings []string `json:"warnings"`
+	Info     []string `json:"info"`
 }
 
 // OK reports whether validation passed.
@@ -51,7 +52,7 @@ func Document(kind string, doc []byte) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	rep := &Report{Kind: kind, Errors: []string{}, Warnings: []string{}}
+	rep := &Report{Kind: kind, Errors: []string{}, Warnings: []string{}, Info: []string{}}
 	errs, _, err := sch.ValidateBytes(doc)
 	if err != nil {
 		rep.Errors = append(rep.Errors, err.Error())
@@ -218,5 +219,5 @@ func semanticLedger(doc []byte, rep *Report) {
 		parts = append(parts, fmt.Sprintf("%s=%d", k, v))
 	}
 	sort.Strings(parts)
-	rep.Warnings = append(rep.Warnings, "status counts: "+strings.Join(parts, " "))
+	rep.Info = append(rep.Info, "status counts: "+strings.Join(parts, " "))
 }

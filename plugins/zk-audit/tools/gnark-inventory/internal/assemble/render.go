@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -408,7 +409,7 @@ func (in *input) writeDetail(b *strings.Builder, n int, r *Record) {
 		for i, o := range r.Fix.Options {
 			d := strings.TrimRight(o.Diff, "\n")
 			f := fence(d)
-			w("Option %s — %s\n\n%sdiff\n%s\n%s\n\n", optionName(i), inline(o.Label), f, d, f)
+			w("Option %s — %s\n\n%sdiff\n%s\n%s\n\n", optionName(i), inline(reOptionPrefix.ReplaceAllString(o.Label, "")), f, d, f)
 		}
 	}
 	if len(r.Chain) > 0 {
@@ -436,6 +437,10 @@ func plural(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
+// reOptionPrefix matches a label that already starts with "Option A —", which
+// the renderer adds itself.
+var reOptionPrefix = regexp.MustCompile(`^\s*(?i:option)\s+[A-Z0-9]+\s*[—:.-]+\s*`)
+
 func optionName(i int) string {
 	if i < 26 {
 		return string(rune('A' + i))
@@ -443,13 +448,39 @@ func optionName(i int) string {
 	return fmt.Sprint(i + 1)
 }
 
+// open opens a repo-relative file of the audited tree; it refuses paths that
+// leave the tree.
+func (in *input) open(file string) (*os.File, bool) {
+	if in.repo == "" || file == "" || filepath.IsAbs(file) || strings.HasPrefix(filepath.Clean(file), "..") {
+		return nil, false
+	}
+	f, err := os.Open(filepath.Join(in.repo, filepath.FromSlash(file)))
+	if err != nil {
+		return nil, false
+	}
+	return f, true
+}
+
+// lineCount returns the number of lines of a repo-relative file.
+func (in *input) lineCount(file string) (int, bool) {
+	f, ok := in.open(file)
+	if !ok {
+		return 0, false
+	}
+	defer f.Close()
+	n := 0
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		n++
+	}
+	return n, true
+}
+
 // quote returns the lines of l from the audited repository, verbatim.
 func (in *input) quote(l Location) (string, string, bool) {
-	if in.repo == "" || l.File == "" || filepath.IsAbs(l.File) || strings.HasPrefix(filepath.Clean(l.File), "..") {
-		return "", "", false
-	}
-	f, err := os.Open(filepath.Join(in.repo, filepath.FromSlash(l.File)))
-	if err != nil {
+	f, ok := in.open(l.File)
+	if !ok {
 		return "", "", false
 	}
 	defer f.Close()

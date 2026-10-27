@@ -27,8 +27,15 @@ type Options struct {
 func Build(prog *load.Program, opt Options) (*Inventory, error) {
 	inv := &Inventory{
 		SchemaVersion: SchemaVersion, ToolVersion: opt.ToolVersion, Repo: prog.Root,
-		LoadMode: prog.Mode, LoadErrors: append([]string{}, prog.Errors...), Scope: opt.Files,
+		LoadMode: prog.Mode, LoadErrors: []string{}, Scope: opt.Files,
 		Circuits: []*Circuit{}, Hints: []*HintSite{}, HintFuncs: []*HintFunc{}, Footguns: []*Footgun{},
+	}
+	seenErr := map[string]bool{}
+	for _, e := range prog.Errors {
+		if !seenErr[e] {
+			seenErr[e] = true
+			inv.LoadErrors = append(inv.LoadErrors, e)
+		}
 	}
 	if len(inv.LoadErrors) > 50 {
 		n := len(inv.LoadErrors)

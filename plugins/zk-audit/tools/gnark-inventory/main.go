@@ -215,8 +215,24 @@ func cmdInventory(args []string, stdout io.Writer) error {
 	fmt.Fprintf(stdout, "wrote %s/{inventory.json,inventory.md,binding-table.md,coverage-ledger.json,stack.json}\n", *out)
 	if len(inv.LoadErrors) > 0 {
 		fmt.Fprintf(stdout, "note: %d load errors (first: %s)\n", len(inv.LoadErrors), inv.LoadErrors[0])
+		if missingModules(inv.LoadErrors) {
+			fmt.Fprintf(stdout, "note: the target's Go modules (gnark %s) are not in the module cache, so loading fell back to syntax mode and gnark std source is unavailable to agents; with the user's consent, run `go mod download` in the target or rerun with --allow-network\n", strings.Join(st.Gnark.Versions, ","))
+		}
 	}
 	return nil
+}
+
+// missingModules reports whether load errors look like an empty module cache
+// (go/packages reports `invalid package name: ""` for unresolvable imports
+// under GOPROXY=off).
+func missingModules(errs []string) bool {
+	for _, e := range errs {
+		if strings.Contains(e, `invalid package name: ""`) || strings.Contains(e, "cannot find module providing package") ||
+			strings.Contains(e, "module lookup disabled by GOPROXY=off") {
+			return true
+		}
+	}
+	return false
 }
 
 func countHits(m map[string]int) int {
@@ -284,6 +300,9 @@ func cmdValidate(args []string, stdout io.Writer) (int, error) {
 	rep, err := validate.Document(args[0], doc)
 	if err != nil {
 		return 2, err
+	}
+	for _, i := range rep.Info {
+		fmt.Fprintln(stdout, "info:", i)
 	}
 	for _, w := range rep.Warnings {
 		fmt.Fprintln(stdout, "warning:", w)

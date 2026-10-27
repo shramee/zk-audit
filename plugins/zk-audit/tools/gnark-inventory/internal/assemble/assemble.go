@@ -79,9 +79,7 @@ func Assemble(opt Options) (*Result, error) {
 			problems = append(problems, fmt.Sprintf("%s %s: %s", kind, p, e))
 		}
 		for _, w := range rep.Warnings {
-			if !strings.HasPrefix(w, "status counts:") {
-				warnings = append(warnings, fmt.Sprintf("%s: %s", kind, w))
-			}
+			warnings = append(warnings, fmt.Sprintf("%s: %s", kind, w))
 		}
 		if !rep.OK() {
 			return nil
@@ -175,6 +173,32 @@ func crossCheck(in *input) []string {
 	fps := map[string]bool{}
 	for _, r := range in.f.Records {
 		fps[r.Fingerprint] = true
+	}
+	// Locations past the end of their file: agents misnumber lines.
+	lines := map[string]int{}
+	checkLoc := func(at string, l Location) {
+		n, ok := lines[l.File]
+		if !ok {
+			if c, found := in.lineCount(l.File); found {
+				n = c
+			} else {
+				n = -1
+			}
+			lines[l.File] = n
+		}
+		if n >= 0 && (l.Line > n || l.EndLine > n) {
+			w = append(w, fmt.Sprintf("%s: location %s is past the end of %s (%d lines)", at, locStr(l), l.File, n))
+		}
+	}
+	for _, r := range in.f.Records {
+		at := "record " + r.Fingerprint
+		checkLoc(at, r.Location)
+		for _, l := range r.RelatedLocations {
+			checkLoc(at+" related", l)
+		}
+		if r.RefutingLocation != nil {
+			checkLoc(at+" refuting", *r.RefutingLocation)
+		}
 	}
 	for _, u := range in.l.Units {
 		for _, fp := range u.ResultFingerprints {

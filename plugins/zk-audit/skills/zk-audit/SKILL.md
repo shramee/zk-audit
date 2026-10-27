@@ -66,9 +66,11 @@ before recon finishes.
 3. **PoCs run in a scratch git worktree** under the output directory, never in
    the user's checkout: `git -C <repo> worktree add --detach <out>/worktree HEAD`.
    Run them with a time limit and without network
-   (`GOFLAGS=-mod=readonly GOPROXY=off timeout 600 go test -run PoC ./...`).
-   If the module cache lacks the target's dependencies, ask before running
-   `go mod download`. `--no-poc` disables PoCs. Remove the worktree at the end
+   (`GOFLAGS=-mod=mod GOPROXY=off timeout 600 go test -run PoC_ ./<pkg>/`).
+   `-mod=mod` lets the go command add `go.sum` lines for test-only imports
+   such as `gnark/test` from the module cache; it only rewrites the
+   worktree's `go.mod`, never the user's. If the module cache lacks the
+   target's dependencies, ask before running `go mod download`. `--no-poc` disables PoCs. Remove the worktree at the end
    (`git -C <repo> worktree remove --force <out>/worktree`).
 4. **No silent installs.** Never install a skill, a Go module, `forge` or
    anything else without the user's explicit yes. `/zk-audit:setup` prints the

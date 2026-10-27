@@ -37,7 +37,7 @@ the user did not ask for.
 
 Flags: `--local` (single agent, no subagents) · `--loop N` (N passes with a
 memory ledger; deep default 3) · `--no-poc` (skip PoC generation and
-execution) · `--file-output` (also write `REPORT.md` into the target repo) ·
+execution; the refuter still runs) · `--file-output` (also write `REPORT.md` into the target repo) ·
 `--out DIR` (override the output directory).
 
 **Profiles**
@@ -135,6 +135,9 @@ seeded `coverage-ledger.json`. Then the orchestrator itself (no subagent):
 2. Completes `binding-table.md`: one row per public input in public-witness
    order, with its contract source expression, range check, and binding to
    sender / chain / contract / nonce. Unknown cells stay `?`, never guessed.
+   Write facts and source expressions only, no verdicts ("free", "unbound",
+   "bug"): the table is inlined into every bundle and must not steer the
+   hunters.
 3. Writes `system-map.md`: actors, trust boundaries, prover → relayer →
    contract flow, trusted parties (setup ceremony, admin, sequencer).
 4. Reads `zk-audit.md` at the repo root if present (scope, trusted parties,

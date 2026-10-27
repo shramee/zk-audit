@@ -1,0 +1,12 @@
+{
+  "name": "zk-audit",
+  "version": "0.1.0",
+  "description": "Audits gnark (Go) ZK circuits end to end: hints, range checks, field arithmetic, gadgets, recursion, plus the verifier contract, protocol state and prover service that consume the proofs. Ships a gnark inventory tool, a sourced attack-vector catalog and schema-checked findings.",
+  "author": {
+    "name": "Shramee Srivastav",
+    "url": "https://github.com/shramee"
+  },
+  "homepage": "https://github.com/shramee/zk-audit",
+  "repository": "https://github.com/shramee/zk-audit",
+  "keywords": ["zk", "zero-knowledge", "gnark", "security", "audit", "circuits", "solidity", "groth16", "plonk"]
+}

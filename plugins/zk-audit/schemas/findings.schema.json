@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shramee/zk-audit/schemas/findings.schema.json",
+  "$comment": "Adapted from Cloudflare security-audit-skill report-schema.json (MIT): verdict-discriminated records. zk-audit adds ZK layers, severity x confidence, evidence POC/ANALYSIS, judging gates and leads. `gnark-inventory validate findings` checks this schema plus the semantic rules in internal/validate.",
+  "title": "zk-audit findings.json",
+  "type": "object",
+  "required": ["schema_version", "repo", "run_id", "profile", "records"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1" },
+    "repo": { "type": "string", "minLength": 1 },
+    "commit": { "type": "string" },
+    "run_id": { "type": "string", "pattern": "^[0-9]{8}-[0-9]{6}$" },
+    "profile": { "enum": ["quick", "standard", "deep", "local", "diff", "recon"] },
+    "no_findings": { "type": "boolean" },
+    "no_findings_reason": { "type": "string", "minLength": 1 },
+    "records": { "type": "array", "items": { "$ref": "#/$defs/record" } }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "fingerprint": {
+      "type": "string",
+      "minLength": 3,
+      "pattern": "^[^|]+\\|[^|]+\\|[a-z0-9][a-z0-9-]*$",
+      "description": "group_key: circuit|signal-or-gadget|bug-class or contract|function|bug-class"
+    },
+    "location": {
+      "type": "object",
+      "required": ["file", "line", "scope"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "$ref": "#/$defs/nonEmpty" },
+        "line": { "type": "integer", "minimum": 1 },
+        "end_line": { "type": "integer", "minimum": 1 },
+        "scope": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "common": {
+      "type": "object",
+      "required": ["fingerprint", "verdict", "title", "layer", "bug_class", "location", "detected_by", "description"],
+      "properties": {
+        "fingerprint": { "$ref": "#/$defs/fingerprint" },
+        "verdict": { "enum": ["confirmed", "needs_validation", "rejected", "lead"] },
+        "title": { "$ref": "#/$defs/nonEmpty" },
+        "layer": { "enum": ["circuit", "integration", "prover", "dependency", "setup"] },
+        "bug_class": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "location": { "$ref": "#/$defs/location" },
+        "related_locations": { "type": "array", "items": { "$ref": "#/$defs/location" } },
+        "detected_by": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } },
+        "vector_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^V-[A-Z]+[0-9]+$" } },
+        "description": { "$ref": "#/$defs/nonEmpty" },
+        "run_tag": { "enum": ["NEW", "KNOWN"] }
+      }
+    },
+    "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+    "fix": {
+      "type": "object",
+      "required": ["summary"],
+      "additionalProperties": false,
+      "properties": {
+        "summary": { "$ref": "#/$defs/nonEmpty" },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "diff"],
+            "additionalProperties": false,
+            "properties": {
+              "label": { "$ref": "#/$defs/nonEmpty" },
+              "diff": { "$ref": "#/$defs/nonEmpty" }
+            }
+          }
+        }
+      }
+    },
+    "poc": {
+      "type": "object",
+      "required": ["path", "command", "result"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "command": { "$ref": "#/$defs/nonEmpty" },
+        "result": { "enum": ["demonstrated", "not_demonstrated", "does_not_compile", "not_run"] },
+        "output_excerpt": { "type": "string" }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "required": ["executes", "reachable", "unprivileged", "impact"],
+      "additionalProperties": false,
+      "properties": {
+        "executes": { "$ref": "#/$defs/nonEmpty" },
+        "reachable": { "$ref": "#/$defs/nonEmpty" },
+        "unprivileged": { "$ref": "#/$defs/nonEmpty" },
+        "impact": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "refuter": {
+      "type": "object",
+      "required": ["verdict", "reasoning"],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": { "enum": ["exploitable", "not_exploitable", "uncertain"] },
+        "reasoning": { "$ref": "#/$defs/nonEmpty" },
+        "by": { "type": "string" }
+      }
+    },
+    "confirmed": {
+      "allOf": [{ "$ref": "#/$defs/common" }],
+      "type": "object",
+      "required": ["severity", "confidence", "evidence", "proof", "impact", "gates"],
+      "additionalProperties": false,
+      "properties": {
+        "fingerprint": true, "verdict": { "const": "confirmed" }, "title": true, "layer": true, "bug_class": true,
+        "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
+        "description": true, "run_tag": true,
+        "severity": { "$ref": "#/$defs/severity" },
+        "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "evidence": { "enum": ["POC", "ANALYSIS"] },
+        "proof": { "$ref": "#/$defs/nonEmpty" },
+        "impact": { "$ref": "#/$defs/nonEmpty" },
+        "gates": { "$ref": "#/$defs/gates" },
+        "fix": { "$ref": "#/$defs/fix" },
+        "poc": { "$ref": "#/$defs/poc" },
+        "refuter": { "$ref": "#/$defs/refuter" },
+        "chain": { "type": "array", "items": { "$ref": "#/$defs/fingerprint" } }
+      }
+    },
+    "needs_validation": {
+      "allOf": [{ "$ref": "#/$defs/common" }],
+      "type": "object",
+      "required": ["severity", "confidence", "blockers", "validation_plan"],
+      "additionalProperties": false,
+      "properties": {
+        "fingerprint": true, "verdict": { "const": "needs_validation" }, "title": true, "layer": true, "bug_class": true,
+        "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
+        "description": true, "run_tag": true,
+        "severity": { "$ref": "#/$defs/severity" },
+        "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "proof": { "type": "string" },
+        "impact": { "type": "string" },
+        "blockers": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmpty" } },
+        "validation_plan": { "$ref": "#/$defs/nonEmpty" },
+        "fix": { "$ref": "#/$defs/fix" }
+      }
+    },
+    "rejected": {
+      "allOf": [{ "$ref": "#/$defs/common" }],
+      "type": "object",
+      "required": ["reason", "refuting_location"],
+      "additionalProperties": false,
+      "properties": {
+        "fingerprint": true, "verdict": { "const": "rejected" }, "title": true, "layer": true, "bug_class": true,
+        "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
+        "description": true, "run_tag": true,
+        "reason": { "$ref": "#/$defs/nonEmpty" },
+        "refuting_location": { "$ref": "#/$defs/location" }
+      }
+    },
+    "lead": {
+      "allOf": [{ "$ref": "#/$defs/common" }],
+      "type": "object",
+      "required": ["code_smells", "unverified"],
+      "additionalProperties": false,
+      "properties": {
+        "fingerprint": true, "verdict": { "const": "lead" }, "title": true, "layer": true, "bug_class": true,
+        "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
+        "description": true, "run_tag": true,
+        "code_smells": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmpty" } },
+        "unverified": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "record": {
+      "oneOf": [
+        { "$ref": "#/$defs/confirmed" },
+        { "$ref": "#/$defs/needs_validation" },
+        { "$ref": "#/$defs/rejected" },
+        { "$ref": "#/$defs/lead" }
+      ]
+    }
+  }
+}

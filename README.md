@@ -11,7 +11,127 @@ replay, VK drift, proof malleability). It proves what it can with a witness or a
 Go / Foundry test, and it records what it actually examined.
 
 > Status: early. The inventory tool, schemas, validators and knowledge base
-> work today; the agent orchestration is a skeleton (see `PLAN.md` §9).
+> work today; the agent orchestration is written but not yet proven end to end.
+> See [Current status](#current-status).
+
+## Review scope
+
+### What gets reviewed
+
+| Artifact | What the audit reads |
+|---|---|
+| gnark circuits | Every `Define` method, the custom gadgets and helpers it calls, hint functions and their `RegisterHint` / `NewHint` sites. |
+| Witness layout | The witness struct and its `gnark:",public"` fields in public-witness order, including how slices and arrays flatten. |
+| Use of gnark std | How std gadgets are called, and whether the caller meets each gadget's preconditions ([`gnark-api-footguns.md`](plugins/zk-audit/skills/zk-audit/references/gnark-api-footguns.md)). |
+| Off-circuit Go | Witness assignment, the prover service, proving and verifying key loading, deserialisation of keys, proofs and witnesses, setup code, prover and verifier options, logging. |
+| Solidity | The verifier contract (gnark-generated or custom) and the contracts that consume proofs: how public inputs are built, nullifier and root state, and who can change the verifier or VK (setters, proxies, upgrades). |
+| Dependencies | gnark and gnark-crypto versions in every `go.mod`, matched against the embedded advisory table ([`gnark-versions.md`](plugins/zk-audit/skills/zk-audit/references/gnark-versions.md)). |
+
+gnark std internals, gnark-crypto, the gnark backends and vendored libraries
+are **peripheral**. Agent bundles list them but do not inline them, and they
+are checked only against known advisories and each gadget's documented
+contract at the pinned version.
+
+Other frontends: `.circom` files go to zkSecurity's `circom-auditor` if it is
+installed, otherwise they get a reduced pass with the generic vectors in
+[`generic-zk.md`](plugins/zk-audit/skills/zk-audit/references/attack-vectors/generic-zk.md).
+Noir is detected and reported as out of scope. If the repository has neither
+gnark nor a verifier contract, the skill says it does not fit and stops. See
+[`companions.md`](plugins/zk-audit/skills/zk-audit/references/companions.md).
+
+### What must be covered
+
+Properties the audit checks:
+
+| Property | Question | Lenses | Vectors |
+|---|---|---|---|
+| Soundness | Can a prover make a false statement verify (an under-constrained value)? | C1–C5, G1, G3 | V-H, V-R, V-F, V-S, V-M, V-E, V-CM, V-G |
+| Completeness | Can every honest user always get a proof (no over-constraint, zero divisor, prover DoS)? | C6, C3, I4 | V-F2, V-M7, V-PV2, V-PV3 |
+| Zero knowledge / privacy | Do the proof, its public inputs or the service leak a secret? | C5, I4, F1 | V-CM2, V-G6, V-PV5 |
+| Statement binding and replay | Is the proof bound to what the contract does with it: input order and encoding, sender, recipient, chain, nonce, nullifier? | I1, I3, G2 | V-PI, V-PS, V-CM5 |
+| Setup and key trust | Do the keys come from a trusted setup, and is the deployed verifier and VK the one for this circuit? | I2, I4 | V-PV1, V-VC, V-CM4 |
+| Known advisories | Is the pinned gnark version affected? | Phase 0, I4 | `gnark-versions.md` |
+
+Privacy has no dedicated lens or ledger class yet; it relies on the vectors
+above and the first-principles lens.
+
+Coverage checklist (lens files are in
+[`references/agents/`](plugins/zk-audit/skills/zk-audit/references/agents/),
+slices in [`references/attack-vectors/`](plugins/zk-audit/skills/zk-audit/references/attack-vectors/index.md)):
+
+| Area | Lens | Vector slice | Profiles |
+|---|---|---|---|
+| Hint outputs and prover-chosen values | C1 hint soundness | `hints.md` (V-H) | all |
+| Bit decomposition, range checks, comparisons | C2 range and decomposition | `range-bits.md` (V-R) | standard, deep |
+| Native and emulated field arithmetic | C3 field arithmetic | `field-arith.md` (V-F) | standard, deep |
+| Go control flow, selectors, gated checks | C4 control and selectors | `selector-control.md` (V-S) | standard, deep |
+| Hashes, Merkle proofs, signatures, curves | C5 crypto gadgets | `hash-merkle.md` (V-M), `curves-signatures.md` (V-E) | standard, deep |
+| Commitments, recursion, Fiat-Shamir | C5 crypto gadgets | `commitments-recursion.md` (V-CM) | standard, deep |
+| Circuit vs spec, invariants, over-constraint | C6 spec and invariants | `generic-zk.md` (V-G) | standard, deep |
+| Public-input order, encoding, binding | I1 public-input binding | `public-inputs.md` (V-PI) | all |
+| Verifier contract, VK provenance, admin swap | I2 verifier contracts | `verifier-contracts.md` (V-VC) | standard, deep |
+| Nullifiers, roots, replay, identities | I3 protocol state | `protocol-state.md` (V-PS) | standard, deep |
+| Setup, keys, deserialisation, logs, versions | I4 prover service | `prover-service.md` (V-PV) | standard, deep |
+| Circuit × contract × state seams | G2 binding gaps | — | all |
+| Range × field × invariant seams | G1 numerical gaps | — | deep |
+| Gadget preconditions broken by the caller's wiring | G3 composition gaps | — | deep |
+| Hint ↔ constraint, native Go ↔ circuit, off-chain ↔ in-circuit hash, Groth16 ↔ PLONK, encode ↔ decode | A1 asymmetry | — | deep |
+| Every other assumption (liveness, griefing, upgrades, cross-circuit reuse) | F1 first principles | — | standard, deep |
+
+Every slice also gets its own vector-scan shard (V-hints, V-range, …,
+V-prover) in every profile. The coverage ledger records one unit per circuit ×
+lens class, public input, hint, verifier, contract function × integration
+class, prover file and gnark dependency; the report states which units were
+covered, deferred or not applicable, and never says "verified clean".
+
+### Out of scope
+
+- gnark backends, gnark-crypto and gnark std internals, beyond known
+  advisories.
+- Solidity bugs unrelated to proof consumption (token accounting, general
+  access control, gas). The integration lenses cover the ZK surface only; the
+  `solidity-auditor` companion extends this when installed, and the report
+  says which applied.
+- Economic and game-theoretic design. F1 may raise leads, but there is no
+  systematic review.
+- Infrastructure: servers, key storage, CI, deployment pipelines, front ends.
+- Formal verification, Noir, Halo2 and other frontends.
+
+Some facts cannot be decided from source. Findings that depend on them are
+marked `needs_validation` with the blocker named: which verifier and VK are
+deployed and at which address, whether the setup ceremony was honest and where
+the keys came from, which gnark version runs in production, and how trusted
+parties (admin, relayer, sequencer) behave.
+
+### What the auditee should provide
+
+- **`zk-audit.md`** at the repository root (optional; `/zk-audit recon` can
+  draft it): scope, trusted parties (setup ceremony, admin, relayer, sequencer,
+  designated prover), the properties that must hold ("each note is spent
+  once"), accepted risks, and prior findings or audits. It explains intent; it
+  never excuses a missing constraint.
+- The spec or paper the circuit implements. C6 checks the circuit against it;
+  without one, the statement is derived from the contract.
+- Deployed addresses and chains, which verifier contract and VK are live, and
+  the gnark version and options that generated them.
+- How the proving and verifying keys were produced (ceremony transcript or
+  setup procedure).
+- The gnark version in production, if it differs from `go.mod`.
+- Dependencies in the module cache or `vendor/`, so the inventory can load
+  types offline.
+
+### Current status
+
+| Part | State |
+|---|---|
+| `gnark-inventory`: `detect`, `inventory`, `bundle`, `validate`, `lint-kb`, `advisories`, `rules` | Implemented, unit tested, run in CI. |
+| Findings, ledger and stack schemas with validators | Implemented. |
+| Knowledge base: 79 sourced vectors in 12 slices, advisory table, API footguns, judging, PoC templates | Written and linted. Four PoC templates were run against gnark v0.14.0. |
+| Skill, orchestration, lens files, commands, `poc-builder` and `refuter` agents | Written as prompts. No end-to-end audit run or eval result is recorded yet. |
+| Deterministic report assembler (`assemble`) | Not built. The orchestrator renders `REPORT.md` by following `report-format.md`. |
+| `diff` mode, `--loop` memory, coverage critics | Described in prompts; no tool support. |
+| Regenerate-and-diff of `Verifier.sol` (deep profile) | Not automated. |
+| Eval corpus and harness, Semgrep rules, zkao bridge | Not started. |
 
 ## Install
 

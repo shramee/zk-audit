@@ -189,6 +189,41 @@ func TestPoC_DivRemainderFree(t *testing.T) {
 	}
 }
 
+// TestPoC_DivFieldQuotient: q·Out = In is checked over the field only, so a
+// non-divisible pair passes with q = In/Out mod r while the honest integer
+// hint fails it (T-HINT-OVERRIDE).
+func TestPoC_DivFieldQuotient(t *testing.T) {
+	tr := publicTree()
+	ccs, err := frontend.Compile(field, r1cs.NewBuilder, shape())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := assignment(tr, 5, 3, 7, 1, 1)
+	a.Out.Value = 2 // 7 is not a multiple of 2; change = 5 <= 7 holds
+	w, err := frontend.NewWitness(a, field)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fieldQuotient := func(mod *big.Int, in, out []*big.Int) error {
+		inv := new(big.Int).ModInverse(in[1], mod)
+		out[0].Mul(in[0], inv).Mod(out[0], mod)
+		out[1].SetUint64(0)
+		return nil
+	}
+	if _, err := ccs.Solve(w, solver.OverrideHint(solver.GetHintID(divHint), fieldQuotient)); err != nil {
+		t.Fatalf("attack: the field quotient should satisfy the constraints: %v", err)
+	}
+	if _, err := ccs.Solve(w); err == nil {
+		t.Fatal("control: the honest integer hint (3, 1) must fail 3·2 = 7")
+	}
+	// Sanity: a divisible pair solves with the honest hint.
+	ok := assignment(tr, 5, 3, 8, 1, 1)
+	ok.Out.Value = 2
+	if err := test.IsSolved(shape(), ok, field); err != nil {
+		t.Fatalf("sanity: 8 / 2: %v", err)
+	}
+}
+
 // TestDecoy_ChangeWrapRejected documents that the "change wraps" pattern is
 // not exploitable here: In.Value is bounded to 64 bits by the split limbs, so
 // a wrapped change exceeds it and AssertIsLessOrEqual rejects. A report that

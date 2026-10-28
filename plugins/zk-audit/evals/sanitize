@@ -3,7 +3,7 @@
 # an audit run cannot read the answers from the source.
 #
 # Usage: evals/sanitize <fixture-name> <dest-dir>
-#   fixture-name: a directory under tools/gnark-inventory/testdata with a
+#   fixture-name: a directory under skills/zk-audit/tools/gnark-inventory/testdata with a
 #                 matching evals/<fixture-name>/sanitize.sed
 #   dest-dir:     must not exist yet and must be outside this repository
 #
@@ -15,7 +15,7 @@ plugin="$(cd "$here/.." && pwd)"
 repo_root="$(cd "$plugin/../.." && pwd)"
 name="${1:?fixture name}"
 dest="${2:?destination directory}"
-src="$plugin/tools/gnark-inventory/testdata/$name"
+src="$plugin/skills/zk-audit/tools/gnark-inventory/testdata/$name"
 rules="$here/$name/sanitize.sed"
 [ -d "$src" ] || { echo "sanitize: no fixture $src" >&2; exit 2; }
 [ -f "$rules" ] || { echo "sanitize: no rules $rules" >&2; exit 2; }

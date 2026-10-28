@@ -169,9 +169,9 @@ scratch git worktree.
 ### The inventory tool on its own
 
 ```bash
-plugins/zk-audit/scripts/gnark-inventory detect --repo /path/to/repo
-plugins/zk-audit/scripts/gnark-inventory inventory --repo /path/to/repo --out /tmp/inv
-plugins/zk-audit/scripts/gnark-inventory validate findings /tmp/inv/findings.json
+plugins/zk-audit/skills/zk-audit/scripts/gnark-inventory detect --repo /path/to/repo
+plugins/zk-audit/skills/zk-audit/scripts/gnark-inventory inventory --repo /path/to/repo --out /tmp/inv
+plugins/zk-audit/skills/zk-audit/scripts/gnark-inventory validate findings /tmp/inv/findings.json
 ```
 
 See `plugins/zk-audit/README.md` for every subcommand.

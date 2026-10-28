@@ -24,14 +24,14 @@ left open, it is recorded here with the reason.
 
 ## gnark-inventory
 
-- **Module location.** As PLAN §7: `plugins/zk-audit/tools/gnark-inventory` is
+- **Module location.** `plugins/zk-audit/skills/zk-audit/tools/gnark-inventory` is
   its own Go module (`go 1.24`). It depends only on `golang.org/x/tools`
   (`go/packages`), which is **vendored** so the tool builds offline. Hard rule
   8 of the skill (no network during an audit) would otherwise be broken by the
   first build.
-- **Schemas are duplicated** inside the tool (`internal/schemas/*.json`) because
+- **Schemas are duplicated** inside the tool (`internal/validate/schemas/*.json`) because
   `go:embed` cannot reach `../../schemas`. A unit test fails if the copies
-  differ from `plugins/zk-audit/schemas/*.json`.
+  differ from `plugins/zk-audit/skills/zk-audit/schemas/*.json`.
 - **Advisory table.** The canonical machine-readable table is
   `internal/advisory/advisories.json` in the tool. `references/gnark-versions.md`
   carries the same JSON in a fenced block; a unit test fails if they differ.

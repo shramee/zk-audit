@@ -10,9 +10,11 @@ recursion) and for bugs at the seams (public-input binding, nullifiers and
 replay, VK drift, proof malleability). It proves what it can with a witness or a
 Go / Foundry test, and it records what it actually examined.
 
-> Status: early. The inventory tool, schemas, validators and knowledge base
-> work today; the agent orchestration is written but not yet proven end to end.
-> See [Current status](#current-status).
+> Status: early. The inventory tool, schemas, validators, report assembler and
+> knowledge base work today; the agent orchestration has one recorded blind
+> end-to-end run (quick profile on the pool fixture). See
+> [Current status](#current-status) and the project x-ray in
+> [`docs/x-ray/`](docs/x-ray/x-ray.md).
 
 ## Review scope
 
@@ -124,14 +126,16 @@ parties (admin, relayer, sequencer) behave.
 
 | Part | State |
 |---|---|
-| `gnark-inventory`: `detect`, `inventory`, `bundle`, `validate`, `lint-kb`, `advisories`, `rules` | Implemented, unit tested, run in CI. |
+| `gnark-inventory`: `detect`, `inventory`, `bundle`, `validate`, `assemble`, `lint-kb`, `advisories`, `rules` | Implemented, unit tested, run in CI. |
 | Findings, ledger and stack schemas with validators | Implemented. |
+| Deterministic report assembler (`assemble`) | Implemented: validates its inputs, refuses forbidden clean claims, quotes code from the audited tree, counts coverage only from the ledger; golden tests. |
 | Knowledge base: 79 sourced vectors in 12 slices, advisory table, API footguns, judging, PoC templates | Written and linted. Four PoC templates were run against gnark v0.14.0. |
-| Skill, orchestration, lens files, commands, `poc-builder` and `refuter` agents | Written as prompts. No end-to-end audit run or eval result is recorded yet. |
-| Deterministic report assembler (`assemble`) | Not built. The orchestrator renders `REPORT.md` by following `report-format.md`. |
+| Skill, orchestration, lens files, commands, `poc-builder` and `refuter` agents | Written as prompts. One blind end-to-end run is recorded: quick profile on the pool fixture, recall 12 of 14 planted items, no false positives ([`evals/baseline/pool-quick.md`](plugins/zk-audit/evals/baseline/pool-quick.md)). |
+| Install routes | Claude Code plugin, or the skill folder copied alone into `~/.claude/skills/zk-audit`; both checked in [`docs/pashov-parity.md`](docs/pashov-parity.md), the second on every CI run. |
+| Eval harness | One fixture (`pool`) with an answer key, a sanitizer that strips hint comments, and executed eval PoCs in CI. No scored LLM runs in CI, no all-safe panel, no `case.yaml` suite yet. |
 | `diff` mode, `--loop` memory, coverage critics | Described in prompts; no tool support. |
 | Regenerate-and-diff of `Verifier.sol` (deep profile) | Not automated. |
-| Eval corpus and harness, Semgrep rules, zkao bridge | Not started. |
+| Semgrep rules, zkao bridge | Not started. |
 
 ## Install
 

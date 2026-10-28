@@ -43,6 +43,7 @@ through `skills/zk-audit/scripts/gnark-inventory`, which builds it once into
 | `validate findings FILE` | Checks `findings.json` against `skills/zk-audit/schemas/findings.schema.json` plus semantic rules. |
 | `validate ledger FILE` | Checks `coverage-ledger.json` against `skills/zk-audit/schemas/ledger.schema.json` plus semantic rules. |
 | `validate stack FILE` | Checks `stack.json` against `skills/zk-audit/schemas/stack.schema.json`. |
+| `assemble --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F]` | Validates `findings.json` and `coverage-ledger.json` (and `stack.json`), refuses invalid input and forbidden clean claims (exit 1, no report), and renders `REPORT.md` with code quoted from `--repo` and coverage counted only from the ledger. |
 | `lint-kb [--gnark-src DIR] SKILL_DIR` | Lints the knowledge base: every vector has D/FP/Source/Seed/PoC, sources are real URLs on allowed hosts or `gnark/<path>` references (checked against a gnark checkout with `--gnark-src`), seeds name real detector rules, PoCs name real templates, ids are unique, slice counts match the index, and the advisory table matches the tool. |
 | `rules` | Prints the footgun detector rules as JSON. |
 | `advisories [--version vX.Y.Z]` | Prints the embedded advisory table, or only the advisories that affect a version. |

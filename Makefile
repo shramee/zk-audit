@@ -1,10 +1,10 @@
 SKILL := plugins/zk-audit/skills/zk-audit
 TOOL := $(SKILL)/tools/gnark-inventory
 
-.PHONY: check vet test test-types fixtures lint-kb sync-schemas sync-agents vendor eval-pocs
+.PHONY: check vet test test-types fixtures lint-kb standalone sync-schemas sync-agents vendor eval-pocs
 
 ## check: everything CI runs (offline)
-check: vet test lint-kb
+check: vet test lint-kb standalone
 
 vet:
 	cd $(TOOL) && go vet ./...
@@ -25,6 +25,11 @@ test-types: fixtures
 
 lint-kb:
 	cd $(TOOL) && go run . lint-kb ../..
+
+## standalone: copy only the skill folder into a throwaway ~/.claude/skills and
+## run the deterministic pipeline from the copy (the pashov-style install)
+standalone:
+	test/standalone-skill.sh
 
 ## eval-pocs: run the pool fixture's eval PoCs in a sanitized scratch copy
 ## (network for the fixture modules, like test-types)

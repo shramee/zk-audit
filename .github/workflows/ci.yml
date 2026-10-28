@@ -16,7 +16,7 @@ jobs:
         with:
           go-version: "1.24"
           cache: false
-      - name: Offline checks (vet, unit tests, knowledge-base lint)
+      - name: Offline checks (vet, unit tests, knowledge-base lint, standalone skill install)
         env:
           GOFLAGS: -mod=vendor
           GOPROXY: "off"

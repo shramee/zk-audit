@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="800" viewBox="0 0 1240 800" role="img" aria-labelledby="title">
+<title id="title">zk-audit: components, trust boundaries and data flow</title>
+<style>
+.bg{fill:#ffffff}
+.t{font:600 13px -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#1f2328}
+.s{font:italic 11px -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#57606a}
+.l{font:11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;fill:#1f2328}
+.h{font:700 16px -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#1f2328}
+.f{font:11px -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#57606a}
+.e{fill:none;stroke:#0969da;stroke-width:1.4}
+.el{font:10.5px -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#0550ae}
+.ah{fill:#0969da}
+.b{fill:none;stroke:#cf222e;stroke-width:1.2;stroke-dasharray:6 4}
+.bl{font:600 10.5px -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#cf222e}
+.k-actor{fill:#f6f8fa;stroke:#57606a}
+.k-external{fill:#f6f8fa;stroke:#8c959f;stroke-dasharray:3 2}
+.k-kb{fill:#fbefff;stroke:#8250df}
+.k-core{fill:#ddf4ff;stroke:#0969da}
+.k-tool{fill:#dafbe1;stroke:#1a7f37}
+.k-out{fill:#fff8c5;stroke:#9a6700}
+.k-repo{fill:#ffebe9;stroke:#cf222e}
+.k-agent{fill:#f6f8fa;stroke:#57606a}
+.k-exec{fill:#ffebe9;stroke:#cf222e}
+@media (prefers-color-scheme: dark){
+.bg{fill:#0d1117}
+.t,.l,.h{fill:#e6edf3}
+.s,.f{fill:#9198a1}
+.e{stroke:#4493f8}
+.el{fill:#79c0ff}
+.ah{fill:#4493f8}
+.b{stroke:#f85149}
+.bl{fill:#ff7b72}
+.k-actor,.k-agent{fill:#161b22;stroke:#8b949e}
+.k-external{fill:#161b22;stroke:#6e7681}
+.k-kb{fill:#271a3d;stroke:#a371f7}
+.k-core{fill:#0c2d4a;stroke:#4493f8}
+.k-tool{fill:#0f2a1a;stroke:#3fb950}
+.k-out{fill:#2e2510;stroke:#d29922}
+.k-repo,.k-exec{fill:#2d1214;stroke:#f85149}
+}
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker></defs>
+<rect class="bg" x="0" y="0" width="1240" height="800"/>
+<text x="20" y="30" class="h">zk-audit: components, trust boundaries and data flow</text>
+<text x="20" y="50" class="f">Arrows: calls and data. Dashed boxes: trust boundaries. {skill} = plugins/zk-audit/skills/zk-audit (self-contained).</text>
+<rect class="b" x="10" y="386" width="240" height="214" rx="8"/>
+<text x="18" y="594" class="bl">untrusted input</text>
+<rect class="b" x="280" y="474" width="430" height="222" rx="8"/>
+<text x="288" y="690" class="bl">read-only by prompt (refuter: tool allow-list)</text>
+<rect class="b" x="720" y="474" width="510" height="242" rx="8"/>
+<text x="728" y="710" class="bl">runs target code: timeout + GOPROXY=off, no OS sandbox</text>
+<rect class="k-actor" x="20" y="70" width="220" height="60" rx="6" stroke-width="1.2"/>
+<text x="30" y="90" class="t">You / Claude Code session</text>
+<text x="30" y="106" class="s">question, prompt or slash command</text>
+<rect class="k-external" x="290" y="70" width="360" height="60" rx="6" stroke-width="1.2"/>
+<text x="300" y="90" class="t">Companion skills (optional)</text>
+<text x="300" y="106" class="s">fp-check · circom-auditor · differential-review · …</text>
+<rect class="k-kb" x="700" y="70" width="260" height="60" rx="6" stroke-width="1.2"/>
+<text x="710" y="90" class="t">Knowledge base {skill}/references/</text>
+<text x="710" y="106" class="s">SOP · 16 lenses · 79 vectors · judging · PoC</text>
+<rect class="k-external" x="1000" y="70" width="220" height="60" rx="6" stroke-width="1.2"/>
+<text x="1010" y="90" class="t">Published VERSION (GitHub)</text>
+<text x="1010" y="106" class="s">update check: 1 GET, 3 s, opt-out</text>
+<rect class="k-actor" x="20" y="170" width="220" height="190" rx="6" stroke-width="1.2"/>
+<text x="30" y="190" class="t">Entry points</text>
+<text x="30" y="206" class="s">skill + plugin commands</text>
+<text x="30" y="226" class="l">/zk-audit [quick|standard|deep]</text>
+<text x="30" y="242" class="l">/zk-audit setup | recon | diff</text>
+<text x="30" y="258" class="l">/zk-audit:setup|recon|diff (plugin)</text>
+<text x="30" y="274" class="l">--local --loop N --no-poc</text>
+<text x="30" y="290" class="l">--file-output --out DIR</text>
+<text x="30" y="306" class="l">questions → guidance mode</text>
+<rect class="k-core" x="290" y="170" width="360" height="220" rx="6" stroke-width="1.2"/>
+<text x="300" y="190" class="t">Orchestrator (main session)</text>
+<text x="300" y="206" class="s">SKILL.md + references/orchestration.md</text>
+<text x="300" y="226" class="l">P0 Detect → P1 Recon → P2 Hunt → P3 Judge</text>
+<text x="300" y="242" class="l">→ P4 Prove → P5 Critique → P6 Report</text>
+<text x="300" y="258" class="l">asks one question (profile, model)</text>
+<text x="300" y="274" class="l">completes binding-table.md, writes system-map.md</text>
+<text x="300" y="290" class="l">saves agents/&lt;ID&gt;.md, updates the ledger</text>
+<text x="300" y="306" class="l">writes findings.json; never edits REPORT.md</text>
+<rect class="k-tool" x="700" y="170" width="260" height="220" rx="6" stroke-width="1.2"/>
+<text x="710" y="190" class="t">gnark-inventory (Go, offline)</text>
+<text x="710" y="206" class="s">{skill}/scripts → ~/.zk-audit/bin</text>
+<text x="710" y="226" class="l">detect → stack.json</text>
+<text x="710" y="242" class="l">inventory → inventory.json/.md,</text>
+<text x="710" y="258" class="l">  binding-table.md, ledger (seeded)</text>
+<text x="710" y="274" class="l">bundle → bundles/&lt;ID&gt;.md</text>
+<text x="710" y="290" class="l">validate findings|ledger|stack</text>
+<text x="710" y="306" class="l">assemble → REPORT.md</text>
+<text x="710" y="322" class="l">lint-kb · advisories · rules</text>
+<rect class="k-out" x="1000" y="170" width="220" height="230" rx="6" stroke-width="1.2"/>
+<text x="1010" y="190" class="t">Output (outside the repo)</text>
+<text x="1010" y="206" class="s">~/.zk-audit/&lt;repo&gt;/&lt;run-id&gt;/</text>
+<text x="1010" y="226" class="l">stack.json</text>
+<text x="1010" y="242" class="l">inventory.json · inventory.md</text>
+<text x="1010" y="258" class="l">binding-table.md</text>
+<text x="1010" y="274" class="l">system-map.md</text>
+<text x="1010" y="290" class="l">coverage-ledger.json</text>
+<text x="1010" y="306" class="l">bundles/&lt;ID&gt;.md</text>
+<text x="1010" y="322" class="l">agents/&lt;ID&gt;.md</text>
+<text x="1010" y="338" class="l">findings.json</text>
+<text x="1010" y="354" class="l">REPORT.md</text>
+<text x="1010" y="370" class="l">pocs/ · worktree/ (scratch)</text>
+<rect class="k-repo" x="20" y="404" width="220" height="168" rx="6" stroke-width="1.2"/>
+<text x="30" y="424" class="t">Audited repository</text>
+<text x="30" y="440" class="s">never written (except --file-output)</text>
+<text x="30" y="460" class="l">go.mod · circuits · hints</text>
+<text x="30" y="476" class="l">*.sol verifier + callers</text>
+<text x="30" y="492" class="l">prover service Go</text>
+<text x="30" y="508" class="l">zk-audit.md (optional)</text>
+<rect class="k-agent" x="290" y="490" width="230" height="104" rx="6" stroke-width="1.2"/>
+<text x="300" y="510" class="t">Hunting agents (≤ 6 at once)</text>
+<text x="300" y="526" class="s">general-purpose, one per bundle</text>
+<text x="300" y="546" class="l">C1–6 · I1–4 · V-* · G1–3 · A1 · F1</text>
+<text x="300" y="562" class="l">read bundle + source shard</text>
+<text x="300" y="578" class="l">return FINDING / LEAD blocks</text>
+<rect class="k-agent" x="290" y="610" width="230" height="60" rx="6" stroke-width="1.2"/>
+<text x="300" y="630" class="t">Coverage critic</text>
+<text x="300" y="646" class="s">missing_units: ledger + agents/</text>
+<rect class="k-agent" x="540" y="490" width="160" height="104" rx="6" stroke-width="1.2"/>
+<text x="550" y="510" class="t">refuter</text>
+<text x="550" y="526" class="s">Read · Grep · Glob</text>
+<text x="550" y="546" class="l">fresh context</text>
+<text x="550" y="562" class="l">starts refuted: true</text>
+<text x="550" y="578" class="l">or fp-check</text>
+<rect class="k-agent" x="730" y="490" width="200" height="104" rx="6" stroke-width="1.2"/>
+<text x="740" y="510" class="t">poc-builder</text>
+<text x="740" y="526" class="s">Read · Write · Edit · Bash</text>
+<text x="740" y="546" class="l">writes pocs/&lt;n&gt;_poc_test.go</text>
+<text x="740" y="562" class="l">copies it into the worktree</text>
+<text x="740" y="578" class="l">attack + 2 controls</text>
+<rect class="k-exec" x="730" y="622" width="490" height="70" rx="6" stroke-width="1.2"/>
+<text x="740" y="642" class="t">Scratch git worktree &lt;out&gt;/worktree</text>
+<text x="740" y="658" class="s">go test -run PoC_ (timeout 600, GOPROXY=off) · forge test</text>
+<text x="740" y="678" class="l">the target's packages compile and run here</text>
+<polyline class="e" points="130,130 130,170" marker-end="url(#arrow)"/>
+<text x="136" y="154" class="el">asks</text>
+<polyline class="e" points="240,262 290,262" marker-end="url(#arrow)"/>
+<polyline class="e" points="470,130 470,170" marker-end="url(#arrow)"/>
+<text x="476" y="154" class="el">delegate if installed</text>
+<polyline class="e" points="830,130 830,170" marker-end="url(#arrow)"/>
+<text x="836" y="154" class="el">bundle inlines</text>
+<polyline class="e" points="930,170 930,150 1110,150 1110,130" marker-end="url(#arrow)"/>
+<text x="975" y="146" class="el">check-version</text>
+<polyline class="e" points="650,262 700,262" marker-end="url(#arrow)"/>
+<text x="660" y="256" class="el">runs</text>
+<polyline class="e" points="960,285 1000,285" marker-end="url(#arrow)"/>
+<text x="962" y="279" class="el">writes</text>
+<polyline class="e" points="240,414 830,414 830,390" marker-end="url(#arrow)"/>
+<text x="300" y="409" class="el">reads: go/parser + go list (GOPROXY=off)</text>
+<polyline class="e" points="600,390 600,436 1110,436 1110,400" marker-end="url(#arrow)"/>
+<text x="1050" y="431" class="el">writes</text>
+<polyline class="e" points="420,390 420,458 405,458 405,490" marker-end="url(#arrow)"/>
+<text x="428" y="453" class="el">spawns, ≤ 6 at a time</text>
+<polyline class="e" points="420,458 620,458 620,490" marker-end="url(#arrow)"/>
+<polyline class="e" points="620,458 830,458 830,490" marker-end="url(#arrow)"/>
+<polyline class="e" points="240,540 290,540" marker-end="url(#arrow)"/>
+<text x="248" y="534" class="el">read</text>
+<polyline class="e" points="830,594 830,622" marker-end="url(#arrow)"/>
+<text x="836" y="612" class="el">go test / forge</text>
+<polyline class="e" points="930,520 1150,520 1150,400" marker-end="url(#arrow)"/>
+<text x="1080" y="514" class="el">pocs/</text>
+<text x="20" y="740" class="f">Artifact chain: stack.json → inventory.json + binding-table.md + coverage-ledger.json → bundles/&lt;ID&gt;.md → agents/&lt;ID&gt;.md → findings.json → REPORT.md (+ pocs/).</text>
+<text x="20" y="758" class="f">Deterministic steps (tool): detect, inventory, bundle, validate, assemble. Judgment steps (model): binding-table completion, system map, hunting, judging, PoC, critique, report prose fields.</text>
+<text x="20" y="776" class="f">Network: none during the audit except the update check; module downloads only with consent (--allow-network). Install routes: /plugin marketplace, or copy {skill} to ~/.claude/skills/zk-audit.</text>
+</svg>

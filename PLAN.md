@@ -36,7 +36,7 @@ The research behind it is in [`docs/research.md`](docs/research.md).
 | **zkao** | A committed guidance file (`zk-audit.md`) for threat model, trusted parties and accepted risks. Free recon before expensive hunting. `diff` and continuous modes. Evidence type `POC` or `ANALYSIS` on each finding. Dedup across runs. | Its closed engine. It is an optional paid backend only (§6). |
 | **pashov `solidity-auditor` / `x-ray`** (MIT) | Senior-auditor SOP (Feynman, Socratic, Inversion). Asymmetry lens. Memory ledger and `--loop` with KNOWN/NEW tags. A **deterministic report assembler** with no model judgment. The coverage-honesty rule. A read-only clause in every agent prompt. x-ray-style invariant synthesis (guard lift plus a check of every write site). | Its Solidity lenses: we delegate those to the skill itself. Auto `git clone` installs. |
 | **Cloudflare `security-audit`** (MIT) | Coverage ledger made of deterministic units, checked by a validator. Coverage critic plus a final-clean critic. A verifier that did not find the issue ("You did not write this"). Verdicts `confirmed` / `needs_validation` / `rejected`, enforced by JSON schema. Quick, standard and deep profiles with a budget. Output written **outside** the target repo. Sandboxed execution. | Its web, cloud and mobile attack-class files. |
-| **Trail of Bits skills** (CC BY-SA 4.0) | Marketplace and plugin packaging. Router SKILL.md that hands off to schema-bound workflow fan-outs. Refuters that start from `refuted: true`. "Rationalizations to Reject" table. SKILL.md under 500 lines with references one level deep. `case.yaml` evals scored as Δ against a baseline, with an all-safe panel and negative-trigger cases. **Delegation targets** listed in §6. | We **delegate to** ToB skills and do not copy their text, so our license stays MIT. Copying their text would force CC BY-SA on us. |
+| **Trail of Bits skills** (CC BY-SA 4.0) | Marketplace and plugin packaging. Router SKILL.md that hands off to schema-bound workflow fan-outs. Refuters that start from `refuted: true`. "Rationalizations to Reject" table. SKILL.md under 500 lines with references one level deep. `case.yaml` evals scored as Δ against a baseline, with an all-safe panel and negative-trigger cases. **Delegation targets** listed in §6. | We **delegate to** ToB skills and do not copy their text. Copying their text would force CC BY-SA on us; delegating keeps the license choice open (§10 Q1). |
 
 We fill a real gap here. **None** of the five covers gnark, and none seriously covers ZK verifier integration. zkbugs has exactly one gnark entry. The only automated gnark auditor is zkao, which is closed.
 
@@ -333,8 +333,8 @@ zk-audit/
 │  ├─ schemas/{findings,ledger,stack}.schema.json
 │  └─ evals/
 ├─ docs/{research.md, design-notes.md}
-├─ NOTICE                             # MIT attributions: zkSecurity, pashov, Cloudflare
-├─ LICENSE                            # MIT
+├─ NOTICE                             # upstream MIT attributions: zkSecurity, pashov, Cloudflare
+│                                    # no LICENSE file: unlicensed for now (§10 Q1)
 └─ Makefile / CI                      # lint, tool tests, schema tests, plugin metadata validation
 ```
 
@@ -367,7 +367,7 @@ Each case runs 3 times so we can measure variance. We use the ToB `case.yaml` + 
 
 | # | Deliverable | Done when |
 |---|---|---|
-| M0 | Repo renamed; plugin skeleton, marketplace, LICENSE, NOTICE, CI. | `/plugin install` works and `/zk-audit` prints its banner and stack detection. |
+| M0 | Repo renamed; plugin skeleton, marketplace, NOTICE, CI. No LICENSE yet (§10 Q1). | `/plugin install` works and `/zk-audit` prints its banner and stack detection. |
 | M1 | `gnark-inventory` tool, `stack.json`, `binding-table.md`, ledger, context sharding. | It runs on 3 real gnark repos with correct public-input order and hint inventory, and has unit tests. |
 | M2 | Knowledge base: about 80 sourced vectors, version table, footgun reference, rationalizations. | Every vector has a `Source:` and the version table covers all advisories. |
 | M3 | Agents, orchestration, judging, deterministic report: **quick and standard profiles**. | The planted-fixture recall baseline is recorded. |
@@ -381,7 +381,7 @@ Each case runs 3 times so we can measure variance. We use the ToB `case.yaml` + 
 
 ## 10. Open questions for you
 
-1. **License.** Keep MIT and only *delegate* to Trail of Bits, or copy their text and go CC BY-SA? Recommendation: MIT, and delegate.
+1. **License.** Unlicensed for now; the decision is deferred and there is no LICENSE file. `NOTICE` keeps the upstream MIT attributions (zkSecurity, pashov, Cloudflare) that adapted files require. Whatever license is chosen, we keep *delegating* to Trail of Bits skills rather than copying their CC BY-SA 4.0 text, which would force CC BY-SA on us.
 2. **Runtimes.** Claude Code only, or also Codex like zkSecurity? Recommendation: Claude Code first, but keep the prompts runtime-neutral.
 3. **PoC execution.** Is running `go test` and `forge test` on audited code acceptable by default in standard mode, or deep mode only? Recommendation: default on in a scratch worktree, with `--no-poc` to turn it off.
 4. **Real-world eval targets.** Do you have private gnark codebases with known findings we can use as held-out benchmarks?

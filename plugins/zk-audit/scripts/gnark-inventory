@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Builds the bundled gnark-inventory tool once per version (offline, from the
+# vendored sources) into ~/.zk-audit/bin and runs it with the given arguments.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+src="$here/../tools/gnark-inventory"
+ver="$(sed -n 's/^const Version = "\(.*\)"$/\1/p' "$src/main.go")"
+bin_dir="${ZK_AUDIT_BIN:-$HOME/.zk-audit/bin}"
+bin="$bin_dir/gnark-inventory-$ver"
+stale=""
+if [ -x "$bin" ]; then
+  stale="$(find "$src" -name '*.go' -not -path '*/testdata/*' -newer "$bin" -print -quit 2>/dev/null || true)"
+fi
+if [ ! -x "$bin" ] || [ -n "$stale" ]; then
+  if ! command -v go >/dev/null 2>&1; then
+    echo "gnark-inventory: Go >= 1.24 is required to build the tool (https://go.dev/dl/)" >&2
+    exit 2
+  fi
+  mkdir -p "$bin_dir"
+  tmp="$bin.tmp.$$"
+  (cd "$src" && GOWORK=off GOFLAGS=-mod=vendor go build -trimpath -o "$tmp" .)
+  mv "$tmp" "$bin"
+fi
+exec "$bin" "$@"

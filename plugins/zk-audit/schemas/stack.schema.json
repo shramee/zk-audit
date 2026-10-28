@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shramee/zk-audit/schemas/stack.schema.json",
+  "title": "zk-audit stack.json (written by gnark-inventory detect)",
+  "type": "object",
+  "required": ["schema_version", "tool_version", "repo", "go_modules", "gnark", "solidity", "foundry", "hardhat", "circom", "noir", "routes", "notes", "languages"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1" },
+    "tool_version": { "type": "string", "minLength": 1 },
+    "repo": { "type": "string", "minLength": 1 },
+    "go_modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "module"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string" }, "module": { "type": "string" }, "go": { "type": "string" },
+          "toolchain": { "type": "string" }, "gnark": { "type": "string" },
+          "gnark_replaced_by": { "type": "string" }, "gnark_crypto": { "type": "string" }
+        }
+      }
+    },
+    "gnark": {
+      "type": "object",
+      "required": ["present", "versions", "advisories", "backends", "builders", "curves", "features"],
+      "additionalProperties": false,
+      "properties": {
+        "present": { "type": "boolean" },
+        "versions": { "type": "array", "items": { "type": "string" } },
+        "advisories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "severity", "fixed", "action", "url", "status", "module", "version"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^GHSA-" },
+              "severity": { "enum": ["critical", "high", "moderate", "low"] },
+              "status": { "enum": ["affected", "possibly_affected"] },
+              "url": { "type": "string", "pattern": "^https://" }
+            }
+          }
+        },
+        "backends": { "type": "array", "items": { "enum": ["groth16", "plonk"] } },
+        "builders": { "type": "array", "items": { "enum": ["r1cs", "scs"] } },
+        "curves": { "type": "array", "items": { "type": "string" } },
+        "features": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "solidity": {
+      "type": "object",
+      "required": ["present", "files", "verifiers"],
+      "additionalProperties": false,
+      "properties": {
+        "present": { "type": "boolean" },
+        "files": { "type": "integer", "minimum": 0 },
+        "verifiers": { "type": "array", "items": { "type": "object", "required": ["file", "line", "contract", "kind", "nb_public"] } }
+      }
+    },
+    "foundry": { "$ref": "#/$defs/presence" },
+    "hardhat": { "$ref": "#/$defs/presence" },
+    "circom": { "$ref": "#/$defs/presence" },
+    "noir": { "$ref": "#/$defs/presence" },
+    "routes": { "type": "array", "items": { "type": "string" } },
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "languages": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+  },
+  "$defs": {
+    "presence": {
+      "type": "object",
+      "required": ["present", "files"],
+      "additionalProperties": false,
+      "properties": {
+        "present": { "type": "boolean" },
+        "files": { "type": "integer", "minimum": 0 },
+        "paths": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

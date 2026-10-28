@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Validates coverage-ledger.json against schemas/ledger.schema.json plus semantic rules.
+set -euo pipefail
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gnark-inventory" validate ledger "$@"

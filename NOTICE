@@ -1,0 +1,73 @@
+zk-audit
+
+This project adapts ideas, structure and some text from the MIT-licensed
+projects listed below. Files that contain adapted text carry a short header
+comment naming the upstream project. The upstream copyright notices and the
+MIT permission notice are reproduced here as those licenses require.
+
+--------------------------------------------------------------------------------
+zkSecurity zk-skills (circom-auditor)
+https://github.com/zksecurity/zk-skills
+Copyright (c) 2026 zkSecurity
+License: MIT
+
+Adapted: senior-auditor SOP (Feynman / Socratic / Inversion triggers),
+shared-rules output blocks (FINDING needs proof, otherwise LEAD), the four
+judging gates, vector-scan Skip/Drop/Investigate classification, gap-hunter
+seam pattern, bundle-per-agent orchestration with bounded concurrency, and
+the generic ZK vector families rewritten for gnark.
+
+--------------------------------------------------------------------------------
+pashov skills (solidity-auditor, x-ray)
+https://github.com/pashov/skills
+Copyright (c) 2024 AI Skills Contributors
+License: MIT
+
+Adapted: judging gates and confidence deductions, lead promotion rules,
+dedup rules (function isolation, fix-option preservation, completeness
+check), the asymmetry lens, the read-only clause for agents, the
+deterministic report-assembly principle and the coverage-honesty rule.
+
+--------------------------------------------------------------------------------
+Cloudflare security-audit-skill
+https://github.com/cloudflare/security-audit-skill
+Copyright (c) 2025-2026 Cloudflare, Inc.
+License: MIT
+
+Adapted: guidance mode vs full-audit mode, output outside the target repo,
+quick/standard/deep profiles, coverage ledger of deterministic units checked
+by a validator, coverage critic, the "you did not write this candidate"
+verifier stance, and the confirmed / needs_validation / rejected verdict
+schema.
+
+--------------------------------------------------------------------------------
+MIT License (applies to each project above, with its own copyright line)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------------------------------------------------------
+Not copied
+
+Trail of Bits skills (https://github.com/trailofbits/skills) are licensed
+CC BY-SA 4.0. zk-audit only follows their public packaging conventions and
+delegates to their skills by name when the user has them installed. No Trail
+of Bits text is included in this repository.
+
+gnark (https://github.com/Consensys/gnark, Apache-2.0) is referenced by API
+name and source path only. No gnark source is included.

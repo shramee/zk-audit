@@ -9,8 +9,28 @@ left open, it is recorded here with the reason.
   `/<plugin>:<name>`. The skill is named `zk-audit`, so the full form is
   `/zk-audit:zk-audit`; `/zk-audit` works where the runtime resolves
   unambiguous short names. `setup`, `recon` and `diff` are commands
-  (`/zk-audit:setup` etc.) as in PLAN §7. `recon` and `diff` are also accepted
-  as skill arguments (`/zk-audit recon`), as PLAN §3 shows.
+  (`/zk-audit:setup` etc.) as in PLAN §7, and also skill arguments
+  (`/zk-audit setup|recon|diff`), which is the only form a standalone skill
+  install has. The commands are thin wrappers around
+  `references/modes/<mode>.md`.
+- **Self-contained skill folder** (deviation from PLAN §7, which put
+  `tools/`, `scripts/` and `schemas/` at the plugin root). They live under
+  `plugins/zk-audit/skills/zk-audit/` so the folder can be copied alone into
+  `~/.claude/skills/zk-audit`, the pashov/skills install route
+  (`docs/pashov-parity.md`). Every path in the skill is `{skill}/...`; a docs
+  test forbids `{plugin}` and paths above `{skill}`, and
+  `test/standalone-skill.sh` (in `make check`) runs the pipeline from a copy.
+- **Agent files exist twice.** Claude Code discovers plugin agents only in
+  `plugins/zk-audit/agents/`, and a standalone copy needs the briefs inside the
+  skill. `skills/zk-audit/agents/*.md` is canonical; `make sync-agents` copies
+  it and `TestAgentBriefsInSync` fails on drift. Without the plugin agent
+  types, Phase 4 briefs a general-purpose agent with the file.
+- **Version.** `skills/zk-audit/VERSION` (semver) equals `plugin.json` and the
+  tool's `Version` (tested). `scripts/check-version` is a non-blocking update
+  check modelled on pashov's: one GET of the published `VERSION`, a warning
+  only when the local copy is older, silent otherwise, opt-out with
+  `ZK_AUDIT_NO_UPDATE_CHECK=1`. It is the one network call hard rule 8 allows
+  without asking; it sends nothing about the target.
 - **No `allowed-tools` on the skill.** The skill needs Agent, Bash, Read, Write
   (output dir only) and AskUserQuestion. Restricting the list risks silently
   dropping a tool on another runtime, and the read-only rule is enforced by the
@@ -19,7 +39,7 @@ left open, it is recorded here with the reason.
   confidence are assigned in the same pass as the gates, so one file avoids
   drift between them.
 - **Two extra reference files**: `companions.md` (detection and install
-  commands for §6 companions, used by `/zk-audit:setup` and Phase 0) and
+  commands for §6 companions, used by setup mode and Phase 0) and
   `poc-templates.md` (the `PoC:` field of each vector names a template there).
 
 ## gnark-inventory

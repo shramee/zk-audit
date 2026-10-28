@@ -1,7 +1,7 @@
 SKILL := plugins/zk-audit/skills/zk-audit
 TOOL := $(SKILL)/tools/gnark-inventory
 
-.PHONY: check vet test test-types fixtures lint-kb sync-schemas vendor eval-pocs
+.PHONY: check vet test test-types fixtures lint-kb sync-schemas sync-agents vendor eval-pocs
 
 ## check: everything CI runs (offline)
 check: vet test lint-kb
@@ -34,6 +34,10 @@ eval-pocs: fixtures
 ## sync-schemas: copy the canonical schemas into the tool's embed directory
 sync-schemas:
 	cp $(SKILL)/schemas/*.schema.json $(TOOL)/internal/validate/schemas/
+
+## sync-agents: copy the skill's agent briefs (canonical) to the plugin's agents/
+sync-agents:
+	cp $(SKILL)/agents/*.md plugins/zk-audit/agents/
 
 vendor:
 	cd $(TOOL) && go mod tidy && go mod vendor

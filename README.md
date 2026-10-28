@@ -182,13 +182,16 @@ See `plugins/zk-audit/README.md` for every subcommand.
 .claude-plugin/marketplace.json     marketplace "zk-audit"
 plugins/zk-audit/
   .claude-plugin/plugin.json
-  skills/zk-audit/SKILL.md          entry point: modes, profiles, phases
-  skills/zk-audit/references/       knowledge base, lenses, judging, report format
-  commands/                         /zk-audit:setup, /zk-audit:recon, /zk-audit:diff
-  agents/                           agent definitions (poc-builder, refuter)
-  tools/gnark-inventory/            Go tool: detect, inventory, validate, lint-kb
-  scripts/                          thin wrappers around the tool
-  schemas/                          findings, ledger and stack JSON schemas
+  skills/zk-audit/                  self-contained skill folder (works copied alone)
+    SKILL.md                        entry point: modes, profiles, phases
+    references/                     knowledge base, lenses, judging, report format, modes/
+    agents/                         poc-builder and refuter briefs (canonical copy)
+    tools/gnark-inventory/          Go tool: detect, inventory, bundle, validate, assemble, lint-kb
+    scripts/                        thin wrappers around the tool
+    schemas/                        findings, ledger and stack JSON schemas
+  commands/                         /zk-audit:setup, /zk-audit:recon, /zk-audit:diff (thin wrappers)
+  agents/                           plugin agent definitions (copies of skills/zk-audit/agents/)
+  evals/                            eval answer keys, PoCs and the sanitizer
 docs/                               research notes and design notes
 PLAN.md                             the design
 ```

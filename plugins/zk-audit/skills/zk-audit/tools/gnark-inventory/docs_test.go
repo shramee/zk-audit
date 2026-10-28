@@ -165,3 +165,129 @@ func TestDocsLintCatchesMistakes(t *testing.T) {
 		t.Fatalf("known flag reported as unknown: %s", e.String())
 	}
 }
+
+var (
+	reSkillPath  = regexp.MustCompile(`\{skill\}/([A-Za-z0-9_./-]+)`)
+	rePluginRoot = regexp.MustCompile(`\$\{CLAUDE_PLUGIN_ROOT\}(/[A-Za-z0-9_./-]*)?`)
+)
+
+// skillDocs returns the Markdown files inside the skill folder (SKILL.md,
+// references/, agents/), keyed by their path relative to the skill.
+func skillDocs(t *testing.T) map[string]string {
+	t.Helper()
+	docs := map[string]string{}
+	err := filepath.Walk(skillRoot, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() && info.Name() == "tools" {
+			return filepath.SkipDir
+		}
+		if !info.IsDir() && strings.HasSuffix(p, ".md") {
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			rel, _ := filepath.Rel(skillRoot, p)
+			docs[rel] = string(b)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := docs["SKILL.md"]; !ok || len(docs) < 10 {
+		t.Fatalf("skill docs not found under %s (%d files)", skillRoot, len(docs))
+	}
+	return docs
+}
+
+// TestSkillIsSelfContained keeps the skill folder usable when it is copied
+// alone into ~/.claude/skills/zk-audit: no file in it may reach outside
+// {skill}, and every {skill}/<path> it names must exist inside it.
+func TestSkillIsSelfContained(t *testing.T) {
+	checked := 0
+	for name, doc := range skillDocs(t) {
+		if strings.Contains(doc, "{plugin}") {
+			t.Errorf("%s uses {plugin}; the skill folder must not depend on the plugin root", name)
+		}
+		if strings.Contains(doc, "{skill}/..") {
+			t.Errorf("%s resolves a path above {skill}", name)
+		}
+		for _, m := range rePluginRoot.FindAllStringSubmatch(doc, -1) {
+			if m[1] != "/skills/zk-audit" {
+				t.Errorf("%s names ${CLAUDE_PLUGIN_ROOT}%s; inside the skill use {skill}/... paths", name, m[1])
+			}
+		}
+		for _, m := range reSkillPath.FindAllStringSubmatch(doc, -1) {
+			p := strings.TrimRight(m[1], ".")
+			if strings.Contains(p, "*") {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(skillRoot, p)); err != nil {
+				t.Errorf("%s names {skill}/%s, which does not exist in the skill folder", name, p)
+			}
+			checked++
+		}
+	}
+	if checked < 10 {
+		t.Fatalf("only %d {skill}/ paths checked; the pattern no longer matches the docs", checked)
+	}
+}
+
+// TestCommandPathsExist checks every ${CLAUDE_PLUGIN_ROOT}/<path> a command
+// names.
+func TestCommandPathsExist(t *testing.T) {
+	plugin := filepath.Join(repoRoot, "plugins", "zk-audit")
+	cmds, _ := filepath.Glob(filepath.Join(plugin, "commands", "*.md"))
+	checked := 0
+	for _, c := range cmds {
+		b, err := os.ReadFile(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range rePluginRoot.FindAllStringSubmatch(string(b), -1) {
+			p := strings.TrimRight(m[1], ".")
+			if p == "" {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(plugin, p)); err != nil {
+				t.Errorf("%s names ${CLAUDE_PLUGIN_ROOT}%s, which does not exist", filepath.Base(c), p)
+			}
+			checked++
+		}
+	}
+	if len(cmds) == 0 || checked < len(cmds) {
+		t.Fatalf("%d commands, %d plugin paths checked", len(cmds), checked)
+	}
+}
+
+// TestAgentBriefsInSync keeps the plugin's agent definitions identical to the
+// briefs inside the skill folder, which a standalone install hands to a
+// general-purpose agent. Run `make sync-agents` after editing the skill copy.
+func TestAgentBriefsInSync(t *testing.T) {
+	plugin := filepath.Join(repoRoot, "plugins", "zk-audit", "agents")
+	skill := filepath.Join(skillRoot, "agents")
+	names := map[string]bool{}
+	for _, dir := range []string{plugin, skill} {
+		m, _ := filepath.Glob(filepath.Join(dir, "*.md"))
+		for _, p := range m {
+			names[filepath.Base(p)] = true
+		}
+	}
+	if len(names) == 0 {
+		t.Fatal("no agent files found")
+	}
+	for n := range names {
+		a, errA := os.ReadFile(filepath.Join(skill, n))
+		b, errB := os.ReadFile(filepath.Join(plugin, n))
+		switch {
+		case errA != nil:
+			t.Errorf("plugin agent %s has no brief in the skill folder (skills/zk-audit/agents/%s)", n, n)
+		case errB != nil:
+			t.Errorf("skill brief agents/%s has no plugin agent (plugins/zk-audit/agents/%s)", n, n)
+		case !bytes.Equal(a, b):
+			t.Errorf("agents/%s differs between the skill folder and the plugin; run `make sync-agents`", n)
+		}
+	}
+}

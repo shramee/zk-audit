@@ -5,7 +5,7 @@
 `REPORT.md` is written by the deterministic assembler, never by hand:
 
 ```bash
-{plugin}/scripts/gnark-inventory assemble --out <out> --repo <repo>
+{skill}/scripts/gnark-inventory assemble --out <out> --repo <repo>
 ```
 
 It reads `findings.json`, `coverage-ledger.json`, `stack.json` and

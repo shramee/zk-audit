@@ -2,6 +2,14 @@
 
 Audits gnark circuits and the code that consumes their proofs.
 
+```text
+/plugin marketplace add shramee/zk-audit
+/plugin install zk-audit@zk-audit
+```
+
+Or copy `skills/zk-audit/` alone into `~/.claude/skills/zk-audit` (see the
+repository README).
+
 ## Components
 
 | Kind | Name | Purpose |

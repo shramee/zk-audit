@@ -135,14 +135,52 @@ parties (admin, relayer, sequencer) behave.
 
 ## Install
 
+Two routes give the same audit. The skill folder
+`plugins/zk-audit/skills/zk-audit/` is self-contained (tool, scripts, schemas,
+agent briefs, `VERSION`), so it also works copied on its own.
+
+**Ask your agent** (any runtime that loads `~/.claude/skills`, the way
+[pashov/skills](https://github.com/pashov/skills) installs):
+
+```text
+Install https://github.com/shramee/zk-audit and run zk-audit on this repo
+Install https://github.com/shramee/zk-audit and run zk-audit recon on this repo
+update zk-audit to the latest version
+```
+
+What the agent should do for "install" and "update" (one copy, nothing else
+changes):
+
+```bash
+tmp="$(mktemp -d)" && git clone --depth 1 https://github.com/shramee/zk-audit "$tmp/zk-audit"
+mkdir -p ~/.claude/skills && rm -rf ~/.claude/skills/zk-audit
+cp -R "$tmp/zk-audit/plugins/zk-audit/skills/zk-audit" ~/.claude/skills/zk-audit
+```
+
+If the skill list does not show `zk-audit` yet in the running session, read
+`~/.claude/skills/zk-audit/SKILL.md` and follow it. In this route the modes
+are `/zk-audit setup|recon|diff`, and the PoC builder and refuter run as
+general-purpose agents briefed with `agents/*.md` from the skill folder.
+
+**Claude Code plugin** (adds the `/zk-audit:setup|recon|diff` commands and the
+`zk-audit:poc-builder` / `zk-audit:refuter` agent types):
+
 ```text
 /plugin marketplace add shramee/zk-audit
 /plugin install zk-audit@zk-audit
 ```
 
-Requirements: Go ≥ 1.24 for the bundled `gnark-inventory` tool. Optional:
-`forge` (Foundry) for contract PoCs, and the companion skills listed by
-`/zk-audit:setup`.
+Update with `/plugin marketplace update zk-audit` then
+`/plugin update zk-audit@zk-audit`.
+
+Each full audit starts with a non-blocking update check
+(`scripts/check-version`): one request for the published `VERSION` file,
+nothing about your code is sent, and it prints a line only when a newer
+version exists. `ZK_AUDIT_NO_UPDATE_CHECK=1` turns it off.
+
+Requirements: Go ≥ 1.24 for the bundled `gnark-inventory` tool (it builds
+offline from vendored sources). Optional: `forge` (Foundry) for contract
+PoCs, and the companion skills listed by `/zk-audit setup`.
 
 ## Use
 
@@ -153,7 +191,7 @@ Requirements: Go ≥ 1.24 for the bundled `gnark-inventory` tool. Optional:
 | `/zk-audit circuits/transfer.go contracts/Pool.sol` | Limits scope to the named files. |
 | `/zk-audit diff origin/main` or `/zk-audit:diff origin/main` | Reviews a commit range. |
 | `/zk-audit recon` or `/zk-audit:recon` | Recon only: stack, advisories, public-input table, hint and footgun inventory. |
-| `/zk-audit:setup` | Shows companions and tools; installs only after you confirm. |
+| `/zk-audit setup` or `/zk-audit:setup` | Shows companions and tools; installs only after you confirm. |
 
 Flags: `--local`, `--loop N`, `--no-poc`, `--file-output`, `--out DIR`.
 

@@ -1,6 +1,6 @@
 ---
 name: zk-audit
-description: "Audits zero-knowledge systems built with gnark (Go): circuit soundness, completeness and privacy (hints, range checks, field wraparound, emulated arithmetic, std gadgets, commitments, recursion) and the seams where proofs are consumed (Solidity verifier contracts, public-input binding, nullifiers and replay, VK drift, prover services). Use when the user asks to audit, review, security-check or find bugs in gnark circuits, a ZK verifier integration, a Groth16/PLONK verifier contract, or a gnark version bump; also for /zk-audit, /zk-audit recon, /zk-audit diff. Answers quick ZK questions in guidance mode without spawning agents."
+description: "Audits zero-knowledge systems built with gnark (Go): circuit soundness, completeness and privacy (hints, range checks, field wraparound, emulated arithmetic, std gadgets, commitments, recursion) and the seams where proofs are consumed (Solidity verifier contracts, public-input binding, nullifiers and replay, VK drift, prover services). Use when the user asks to audit, review, security-check or find bugs in gnark circuits, a ZK verifier integration, a Groth16/PLONK verifier contract, or a gnark version bump; also for /zk-audit, /zk-audit recon, /zk-audit diff, /zk-audit setup. Answers quick ZK questions in guidance mode without spawning agents."
 ---
 
 # zk-audit

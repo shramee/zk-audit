@@ -3,6 +3,11 @@
 This plan covers a Claude Code plugin that audits ZK systems end to end. It starts with **gnark circuits** and covers how they integrate with **verifier contracts, protocol state and off-chain prover services**. The design lets other frontends plug in later.
 
 The research behind it is in [`docs/research.md`](docs/research.md).
+Where the implementation differs from this plan (for example `detect`,
+`bundle` and `assemble` are subcommands of the Go tool rather than separate
+`scripts/`, and the tool, scripts and schemas live inside the self-contained
+skill folder), [`docs/design-notes.md`](docs/design-notes.md) records it; the
+built system is described in [`docs/x-ray/`](docs/x-ray/x-ray.md).
 
 ---
 

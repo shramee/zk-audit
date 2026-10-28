@@ -184,13 +184,34 @@ Observations from the live runs, not fixed here:
   `testdata/` (fixtures with `BUG:` comments). The standalone copy carries
   `testdata/` too. See the x-ray "worth investigating" list.
 
+### (e) From GitHub
+
+`test/parity/github-routes.sh <tmp-home> feat/pashov-parity`: the repository
+is public as `shramee/zk-audit` (`shramee/circuits-audit` redirects to it).
+
+```text
+## plugin route: marketplace add shramee/zk-audit (default branch)
+√ Successfully added marketplace: zk-audit (declared in user settings)
+√ Successfully installed plugin: zk-audit@zk-audit (scope: user)
+zk-audit 0.1.0
+  Skills (4)  diff, recon, setup, zk-audit
+  Agents (2)  refuter, poc-builder
+## prompt route: clone feat/pashov-parity and copy the skill folder
+SKILL.md  VERSION  agents  references  schemas  scripts  tools
+0.1.0
+## update check against the published VERSION on main (expect silent)
+exit=0
+raw VERSION on main: HTTP 404
+raw VERSION on feat/pashov-parity: HTTP 200
+```
+
+The plugin route installs `main` (the old layout) until this branch merges.
+The update check is silent today because `VERSION` does not exist on `main`
+yet; it starts comparing once this branch is merged. The newer-version
+warning itself was verified with `file://` URLs (`TestCheckVersionScript`).
+
 ### Not verified
 
-- Installing from GitHub (`/plugin marketplace add shramee/zk-audit` and the
-  prompt install): the public raw URL of `VERSION` returns 404 from this
-  environment (the repository is private or not yet at that name), so the
-  update check was verified with `file://` URLs and against the live 404
-  (silent, exit 0) only.
 - Runtimes other than Claude Code.
 - A full audit (Phases 2-6) through either route; only recon and setup ran
   live.

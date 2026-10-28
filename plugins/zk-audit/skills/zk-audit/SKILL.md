@@ -67,8 +67,9 @@ before recon finishes.
 ## 3. Hard rules (apply to every phase and every agent)
 
 1. **Read-only on the target.** Never edit, create or delete files in the
-   audited repository. The only exception is `--file-output`, which writes
-   `REPORT.md` only. Every agent prompt carries this clause.
+   audited repository. The only exceptions are `--file-output`, which writes
+   the report copy only, and the `zk-audit.md` that recon drafts after the
+   user says yes. Every agent prompt carries this clause.
 2. **Output outside the repo.** Write everything to
    `~/.zk-audit/<repo-name>/<run-id>/` (run-id = `YYYYMMDD-HHMMSS`), or to
    `--out`.

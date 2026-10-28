@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -47,6 +48,70 @@ func TestPluginMetadata(t *testing.T) {
 	}
 	if plug.Version != Version {
 		t.Errorf("plugin version %s != tool Version %s", plug.Version, Version)
+	}
+	v, err := os.ReadFile(filepath.Join(skillRoot, "VERSION"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := strings.TrimSpace(string(v)); s != Version {
+		t.Errorf("skills/zk-audit/VERSION %q != tool Version %s", s, Version)
+	}
+}
+
+// TestCheckVersionScript runs scripts/check-version against local files: it
+// warns only when the published version is higher, is silent otherwise, and
+// always exits 0.
+func TestCheckVersionScript(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("no bash")
+	}
+	if _, err := exec.LookPath("curl"); err != nil {
+		t.Skip("no curl")
+	}
+	script, err := filepath.Abs(filepath.Join(skillRoot, "scripts", "check-version"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	parts := strings.Split(Version, ".")
+	cases := []struct {
+		name, remote string
+		warn         bool
+	}{
+		{"newer", "999.0.0", true},
+		{"newer-patch", Version + ".1", true},
+		{"same", Version, false},
+		{"older", "0.0.0", false},
+		{"junk", "<html>Not Found</html>", false},
+		{"missing", "", false},
+	}
+	if len(parts) == 3 && parts[0] != "0" {
+		cases = append(cases, struct {
+			name, remote string
+			warn         bool
+		}{"older-major", "0." + parts[1] + "." + parts[2], false})
+	}
+	for _, c := range cases {
+		url := "file://" + filepath.Join(dir, c.name)
+		if c.name != "missing" {
+			if err := os.WriteFile(filepath.Join(dir, c.name), []byte(c.remote+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cmd := exec.Command("bash", script)
+		cmd.Env = append(os.Environ(), "ZK_AUDIT_VERSION_URL="+url, "ZK_AUDIT_NO_UPDATE_CHECK=")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Errorf("%s: exit %v (want 0): %s", c.name, err, out)
+		}
+		if got := strings.Contains(string(out), "older than the published"); got != c.warn {
+			t.Errorf("%s: warn=%v, want %v: %q", c.name, got, c.warn, out)
+		}
+	}
+	cmd := exec.Command("bash", script)
+	cmd.Env = append(os.Environ(), "ZK_AUDIT_VERSION_URL=file://"+filepath.Join(dir, "newer"), "ZK_AUDIT_NO_UPDATE_CHECK=1")
+	if out, err := cmd.CombinedOutput(); err != nil || len(out) != 0 {
+		t.Errorf("opt-out: err %v out %q", err, out)
 	}
 }
 

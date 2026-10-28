@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Non-blocking update check. Compares {skill}/VERSION with the published one
+# and prints one line only when the local version is lower. Prints nothing
+# when the versions match, when the local one is newer (a development copy),
+# when ZK_AUDIT_NO_UPDATE_CHECK is set, or on any error (offline, private
+# repository, malformed answer). Always exits 0.
+#
+# Network: one GET of a public file with a 3 s limit. Nothing about the
+# audited repository is sent. ZK_AUDIT_VERSION_URL overrides the URL (tests).
+set -u
+[ -n "${ZK_AUDIT_NO_UPDATE_CHECK:-}" ] && exit 0
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+local_v="$(tr -d '[:space:]' < "$here/../VERSION" 2>/dev/null)" || exit 0
+url="${ZK_AUDIT_VERSION_URL:-https://raw.githubusercontent.com/shramee/zk-audit/main/plugins/zk-audit/skills/zk-audit/VERSION}"
+command -v curl >/dev/null 2>&1 || exit 0
+remote_v="$(curl -fsSL --max-time 3 "$url" 2>/dev/null | head -c 64 | tr -d '[:space:]')" || exit 0
+re='^[0-9]+(\.[0-9]+)*$'
+[[ "$local_v" =~ $re && "$remote_v" =~ $re ]] || exit 0
+
+# lower A B: exit 0 when dotted version A < B (missing parts count as 0).
+lower() {
+  local IFS=.
+  local -a a=($1) b=($2)
+  local i n=${#a[@]}
+  [ ${#b[@]} -gt "$n" ] && n=${#b[@]}
+  for ((i = 0; i < n; i++)); do
+    local x=$((10#${a[i]:-0})) y=$((10#${b[i]:-0}))
+    [ "$x" -lt "$y" ] && return 0
+    [ "$x" -gt "$y" ] && return 1
+  done
+  return 1
+}
+
+if lower "$local_v" "$remote_v"; then
+  echo "warning: zk-audit $local_v is older than the published $remote_v. Update: /plugin marketplace update zk-audit then /plugin update zk-audit@zk-audit (plugin), or ask \"update zk-audit to the latest version\" (skill folder). See https://github.com/shramee/zk-audit"
+fi
+exit 0

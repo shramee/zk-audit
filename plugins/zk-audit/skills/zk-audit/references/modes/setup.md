@@ -15,12 +15,22 @@ skill's `SKILL.md`.
    {skill}/scripts/gnark-inventory version
    ```
 
-4. Print one table: `component · status (✔ / ✖) · used for · install command`.
-   Add a last row for zk-audit itself and how it was installed (plugin:
-   `{skill}` is under a `plugins/` cache directory; skill folder: `{skill}` is
-   `~/.claude/skills/zk-audit` or a project `.claude/skills/zk-audit`).
-5. If the arguments contain `--check-only`, stop here.
-6. For each missing component, ask the user with `AskUserQuestion` whether to
+4. Run the update check (one GET of the public `VERSION` file; it prints a
+   line only when a newer release exists, and nothing on any error):
+
+   ```bash
+   {skill}/scripts/check-version
+   ```
+
+5. Print one table: `component · status (✔ / ✖) · used for · install command`.
+   Add a last row for zk-audit itself: `{skill}/VERSION`, the update-check
+   line if any, and how it was installed (plugin: `{skill}` is under a
+   `plugins/` cache directory, update with `/plugin marketplace update zk-audit` then
+   `/plugin update zk-audit@zk-audit`;
+   skill folder: `{skill}` is `~/.claude/skills/zk-audit` or a project
+   `.claude/skills/zk-audit`, update by copying the folder from a fresh clone).
+6. If the arguments contain `--check-only`, stop here.
+7. For each missing component, ask the user with `AskUserQuestion` whether to
    run its install command. Run only the commands the user approves, one at a
    time, and show the output. If the runtime has no `AskUserQuestion`, stop
    after the table and tell the user to run the commands themselves.

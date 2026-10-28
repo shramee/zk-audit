@@ -39,15 +39,19 @@ reason, and record their ledger units as `not_applicable`.
 
 ## Turn 1 — Discover
 
-Print the banner from `SKILL.md`. In parallel:
+Resolve `{skill}` (`SKILL.md`, first paragraph), read `{skill}/VERSION`,
+print the banner from `SKILL.md` and the phase table (all `Pending`). Then, in
+parallel:
 
-1. Resolve `{skill}` (`SKILL.md`, first paragraph).
-2. Create the output directory `~/.zk-audit/<repo>/<run-id>/` (or `--out`).
-3. Run Phase 0: `{skill}/scripts/gnark-inventory detect --repo <repo> --out <out>/stack.json`.
-4. Detect companions (`companions.md`).
+1. Create the output directory `~/.zk-audit/<repo>/<run-id>/` (or `--out`).
+2. Run Phase 0: `{skill}/scripts/gnark-inventory detect --repo <repo> --out <out>/stack.json`.
+3. Detect companions (`companions.md`).
+4. Run the update check: `{skill}/scripts/check-version` (silent unless a
+   newer release exists; never blocks the audit).
 
 Print the stack line and the companion line. Ask the single profile/model
-question (`AskUserQuestion`), or state the default.
+question (`AskUserQuestion`), or state the default, then print
+`profile: <profile> · model: <model>`.
 
 ## Turn 2 — Recon
 
@@ -90,7 +94,8 @@ vendored libraries) are listed by directory, never inlined.
 ## Turn 4 — Hunt (bounded pool, at most 6 running)
 
 Before spawning, print the console. Mark the first six `Running`, the rest
-`Queued`, omitted agents `Skipped`:
+`Pending`, omitted agents `Skipped` (the status words of the phase table in
+`SKILL.md`):
 
 ```markdown
 ## Agent Progress
@@ -100,12 +105,12 @@ Before spawning, print the console. Mark the first six `Running`, the rest
 | V-hints | vector scan: hints | circuit | Running | – |
 | C1 | hint soundness | circuit | Running | – |
 | I1 | public-input binding | integration | Running | – |
-| G2 | binding gaps | all | Queued | – |
+| G2 | binding gaps | all | Pending | – |
 ```
 
 Spawn at most six agents at once. When one returns, mark it `Done` with a
 count (`2 findings, 1 lead`), or `Blocked` with the reason, then start the
-next queued agent. Print the updated table after each batch. If the runtime
+next `Pending` agent. Print the updated table after each batch. If the runtime
 returns parallel results only per batch, spawn batches of six.
 
 Prompt for every hunting agent (fill the placeholders; do not inline the

@@ -92,21 +92,48 @@ before recon finishes.
 7. **Coverage honesty.** The report never says "verified clean", "secure" or
    "no bugs". It says what was examined, from `coverage-ledger.json`.
 8. **No network during the audit**, apart from what the user approves (for
-   example in `/zk-audit setup`, or the one-time build of the inventory tool,
-   which fetches `golang.org/x/tools` if it is not cached). The advisory table
-   is embedded in the tool.
+   example in `/zk-audit setup`) and the update check
+   (`{skill}/scripts/check-version`: one GET of the public `VERSION` file with
+   a 3 s limit, nothing about the target is sent; `ZK_AUDIT_NO_UPDATE_CHECK=1`
+   turns it off). The inventory tool builds offline from vendored sources and
+   the advisory table is embedded in it.
 
 ## 4. Full-audit phases
 
-Print this banner once, then the stack line from Phase 0:
+Before anything else, print this banner once (`<version>` from
+`{skill}/VERSION`):
 
 ```text
-zk-audit · gnark circuits × verifiers × protocol state
-profile: <profile> · scope: <scope> · out: <out-dir>
+zk-audit v<version> · gnark circuits × verifiers × protocol state
+scope: <scope> · out: <out-dir>
 ```
 
-Keep a phase table visible and update it as phases move
-`Pending → Running → Done | Skipped | Blocked`.
+In the same turn run `{skill}/scripts/check-version` alongside Phase 0. It is
+silent unless a newer release exists; print its one line if it prints one,
+and never wait on or retry it. After Phase 0 print the stack line, then, once
+the profile question is answered, `profile: <profile> · model: <model>`.
+
+Keep this phase table visible and reprint it whenever a status changes. Status
+moves `Pending → Running → Done | Skipped | Blocked`; exactly one phase is
+`Running` at a time. Where the runtime has a todo tool (Claude Code
+`TodoWrite`), mirror the seven phases there with the same transitions.
+
+```markdown
+## zk-audit Progress
+
+| Phase | Status | Result |
+|---|---|---|
+| 0 Detect | Done | gnark v0.x.y · advisories: 2 |
+| 1 Recon | Running | – |
+| 2 Hunt | Pending | – |
+| 3 Judge | Pending | – |
+| 4 Prove | Pending | – |
+| 5 Critique | Pending | – |
+| 6 Report | Pending | – |
+```
+
+During Phase 2 the `Agent Progress` table in `references/orchestration.md`
+uses the same status words.
 
 ### Phase 0 — Detect (deterministic)
 

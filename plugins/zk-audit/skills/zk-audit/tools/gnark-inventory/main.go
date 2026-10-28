@@ -26,7 +26,8 @@ import (
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/validate"
 )
 
-// Version of the tool; keep in step with plugin.json.
+// Version of the tool; keep in step with plugin.json and the skill VERSION file
+// (TestPluginMetadata checks all three).
 const Version = "0.1.0"
 
 const usage = `gnark-inventory ` + Version + ` — deterministic recon for zk-audit

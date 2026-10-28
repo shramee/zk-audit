@@ -12,10 +12,14 @@ A companion is available when the runtime lists a skill with that name
 namespaced as `<plugin>:<skill>`). As a fallback, check the usual locations:
 
 ```bash
-for d in ~/.claude/skills ~/.claude/plugins ~/.agents/skills ~/.codex/skills; do
-  [ -d "$d" ] && find "$d" -maxdepth 6 -name SKILL.md -path "*/<skill-name>/*" 2>/dev/null
+for d in ~/.claude/skills .claude/skills ~/.claude/plugins ~/.agents/skills ~/.codex/skills; do
+  [ -d "$d" ] && find -L "$d" -maxdepth 8 -name SKILL.md -path "*/<skill-name>/*" 2>/dev/null
 done; true   # a missing directory is not a failure
 ```
+
+`-L` follows the symlinks the install commands below create, and depth 8
+reaches plugin caches (`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/<skill>/SKILL.md`
+is seven levels down).
 
 Report each as `✔ <name>` or `✖ <name> (install: …)`.
 

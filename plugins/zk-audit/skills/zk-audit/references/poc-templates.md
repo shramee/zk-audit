@@ -6,8 +6,43 @@ user's checkout), fills in the circuit, the false statement and the malicious
 values, and runs it with a time limit and no network:
 
 ```bash
-cd <out>/worktree && GOFLAGS=-mod=readonly GOPROXY=off timeout 600 go test -run 'PoC_' -count=1 ./<pkg>/
+cd <out>/worktree && GOFLAGS=-mod=mod GOPROXY=off timeout 600 go test -run 'PoC_' -count=1 ./<pkg>/
 ```
+
+`-mod=mod` is needed because `gnark/test` imports `testify`, which a target
+that never imported `gnark/test` lacks in `go.mod`; with `GOPROXY=off` the go
+command takes it from the module cache and edits only the worktree's
+`go.mod`/`go.sum`. If the cache lacks it, use the `ccs.Solve` and
+`groth16.Prove` forms (T-HINT-OVERRIDE, T-PROVE-VERIFY), which need no
+`gnark/test`.
+
+## Choosing a template
+
+| The free value comes from | False statement shown by | Template |
+|---|---|---|
+| a hint output (yours or gnark std) | an overridden hint | T-HINT-OVERRIDE, then T-PROVE-VERIFY for Critical/High |
+| the bits hint of a full-width decomposition | the alias `a + r` | T-ALIAS |
+| a witness the prover assigns directly (unbound input, gated check, wrapped `Sub`, missing binding) | a hand-built assignment | T-INVALID-ASSIGNMENT, then T-PROVE-VERIFY for Critical/High |
+| a solver-computed wire (`DivUnchecked(0, 0)`) | a model circuit | T-CONSTRAINT-MODEL (evidence stays `ANALYSIS`) |
+| an honest input that cannot be proven | an honest witness that fails | T-COMPLETENESS |
+| the contract (binding, replay, state) | a Foundry test | T-FOUNDRY-VERIFIER / T-FOUNDRY-REPLAY |
+
+Practical rules (all learned on the eval fixtures):
+
+- Put the test in the circuit's own package (`package circuit`, not
+  `circuit_test`) so it can name unexported hints and types.
+- Build the circuit value with the production shape: copy slice lengths from
+  the code that calls `frontend.Compile` (for example a `cmd/setup`), not from
+  tests.
+- Assign every witness field, including ones the bug does not touch, with
+  values that satisfy the rest of the circuit (non-zero divisors, booleans
+  where `AssertIsBoolean` applies, values under range-check widths).
+- When the circuit hashes, compute the public values natively with the
+  matching gnark-crypto hash (`ecc/bn254/fr/mimc` for `std/hash/mimc` on
+  BN254) and say so in the PoC.
+- A free wire with no public consequence (an unused hint output) is shown by
+  two accepted witnesses for the same public input, with the control that a
+  neighbouring constrained wire is rejected.
 
 Every PoC has three parts. Without all three the evidence is `ANALYSIS`, not
 `POC`:
@@ -190,13 +225,14 @@ only when the bug lives in the caller and the verifier is irrelevant to it.
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 import {Test} from "forge-std/Test.sol";
-import {Pool} from "../src/Pool.sol";
+import {Target} from "../src/Target.sol"; // the contract under test
 
-contract AcceptAll { function verifyProof(bytes calldata, uint256[7] calldata) external pure {} }
+// match the verifier interface the target calls (selector and input length)
+contract AcceptAll { function verifyProof(bytes calldata, uint256[N] calldata) external pure {} }
 
 contract PoC_<FindingID> is Test {
     function test_attack() public {
-        Pool pool = new Pool(address(new AcceptAll()));
+        Target target = new Target(address(new AcceptAll()));
         // 1. honest user action
         // 2. attacker replays / front-runs / swaps inputs
         // 3. assert the state the protocol must forbid

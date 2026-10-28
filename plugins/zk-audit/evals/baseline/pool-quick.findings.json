@@ -1,0 +1,358 @@
+{
+  "schema_version": "1",
+  "repo": "/tmp/tmp.MzMVb5lbA8/eval/target",
+  "commit": "27527ae79034be9718d535c27d450cfee9f435c0",
+  "run_id": "20261027-162733",
+  "profile": "quick",
+  "posture": "The pool trusts a Groth16 proof over seven public inputs, an owner who adds Merkle roots, and keys from an unrecorded setup. The transfer circuit never binds the Merkle leaf to the spent note or its position, so any prover with a public path withdraws arbitrary amounts with unlimited fresh nullifiers. Public-input order, field-range checks and the 64-bit split of In.Value are consistent between circuit and contract. The single most important action is to bind the leaf to H(Secret, In.Value, In.Owner) and order the path by Index bits, then regenerate keys in a multi-party ceremony at a patched gnark version.",
+  "out_of_scope": [
+    "Solidity beyond the ZK integration (Pool deposit flow absent; solidity-auditor not installed)",
+    "SigCircuit integration: no consumer in the repository",
+    "PoC execution (--no-poc)",
+    "circuit/helper_test.go test circuit"
+  ],
+  "companions": {
+    "present": [],
+    "missing": ["fp-check","circom-auditor","solidity-auditor","x-ray","audit-context-building","spec-to-code-compliance","variant-analysis","supply-chain-risk-auditor"]
+  },
+  "hardening": [
+    {"title": "Committed Verifier.sol is a placeholder that always reverts", "location": {"file": "contracts/Verifier.sol", "line": 17, "scope": "Verifier.verifyProof"}},
+    {"title": "No test pins public-input order between gnark and Pool.sol", "detail": "Add a round-trip test that exports the verifier and checks the 7-input order."},
+    {"title": "Debug field tagged gnark:\"-\"", "detail": "Not part of the witness; remove to avoid confusion.", "location": {"file": "circuit/transfer.go", "line": 38, "scope": "TransferCircuit"}},
+    {"title": "Discarded ToBinary with OmitModulusCheck on Out.Owner", "detail": "Adds rows but no meaningful check.", "location": {"file": "circuit/transfer.go", "line": 77, "scope": "TransferCircuit.Define"}}
+  ],
+  "records": [
+    {
+      "fingerprint": "TransferCircuit|Path[0]|leaf-not-bound-to-note",
+      "verdict": "confirmed",
+      "title": "Merkle leaf is not bound to the spent note",
+      "layer": "circuit",
+      "bug_class": "leaf-not-bound-to-note",
+      "location": {"file": "circuit/transfer.go", "line": 50, "scope": "TransferCircuit.Define", "end_line": 56},
+      "related_locations": [
+        {"file": "circuit/transfer.go", "line": 58, "scope": "TransferCircuit.Define", "end_line": 80},
+        {"file": "contracts/Pool.sol", "line": 39, "scope": "Pool.withdraw", "end_line": 51}
+      ],
+      "detected_by": ["C1","G2","V-hash","V-state","V-generic","V-pubin","I1"],
+      "vector_ids": ["V-M3","V-PS3","V-G4","V-PI2"],
+      "description": "Any prover opens any public leaf under a known root, because Path[0] is never derived from Secret, In.Value or In.Owner. In.Value is therefore free, so the prover also picks the payout.",
+      "severity": "critical",
+      "confidence": 90,
+      "evidence": "ANALYSIS",
+      "proof": "Take a root R with knownRoots[R] = true and its leftmost public path (L, S1, S2, S3), so MiMC(MiMC(MiMC(L,S1),S2),S3) = R. Witness: Path = [L,S1,S2,S3], Secret = 7, Index = 1, nf = MiMC(7,1), In.Value = Out.Value = 2^64-1, honest divHint (q = 1), honest splitHint limbs (2^32-1, 2^32-1), Fees = (0,1), In.Owner = Out.Owner = 0, Recipient = attacker, Extra = [0,0]. Every constraint at transfer.go:47-92 holds with honest hints; withdraw(proof, R, nf, attacker, 0, 1, 2^64-1, 0) pays 2^64-1 wei (T-INVALID-ASSIGNMENT, then T-FOUNDRY-VERIFIER).",
+      "impact": "Any prover with no deposit withdraws up to 2^64-1 wei per proof and, with fresh nullifiers, drains the whole Pool.",
+      "gates": {
+        "executes": "No constraint ties Path[0] to Secret, In or Index (transfer.go:47-56); amounts are only related to the free In.Value (transfer.go:64-80).",
+        "reachable": "Tree data under an owner-added root is public; honest hints solve the witness, no hint override needed.",
+        "unprivileged": "Any prover and any caller of Pool.withdraw.",
+        "impact": "Soundness: theft of all pooled ETH."
+      },
+      "fix": {
+        "summary": "Compute the leaf in-circuit from the note and its secret, and assert it equals Path[0].",
+        "options": [{"label": "bind the leaf to the note", "diff": "+\th.Reset()\n+\th.Write(c.Secret, c.In.Value, c.In.Owner)\n+\tapi.AssertIsEqual(c.Path[0], h.Sum())"}]
+      },
+      "refuter": {
+        "verdict": "exploitable",
+        "by": "zk-audit:refuter (fresh general-purpose agent)",
+        "reasoning": "No constraint in TransferCircuit.Define (circuit/transfer.go:42-94) ties Path[0] to Secret, In.Value or In.Owner: cur := c.Path[0] (transfer.go:50) is a raw witness checked only against Root (transfer.go:56). With In.Value = Out.Value = V < 2^64, q = 1 satisfies transfer.go:64, the limb split (66-72) and change = 0 (80) hold, Index = 1 voids the owner gate (82-83), and fresh Secret gives a fresh nf (47-48). Pool.withdraw checks only the root (Pool.sol:39) and the nullifier (Pool.sol:40) before paying value (Pool.sol:51). Caveat: Verifier.sol is a placeholder; the attack assumes the generated verifier is deployed."
+      }
+    },
+    {
+      "fingerprint": "TransferCircuit|Nullifier|nullifier-not-bound-to-note",
+      "verdict": "confirmed",
+      "title": "Nullifier is derived from free Secret and Index",
+      "layer": "circuit",
+      "bug_class": "nullifier-not-bound-to-note",
+      "location": {"file": "circuit/transfer.go", "line": 47, "scope": "TransferCircuit.Define", "end_line": 48},
+      "related_locations": [
+        {"file": "circuit/transfer.go", "line": 50, "scope": "TransferCircuit.Define", "end_line": 56},
+        {"file": "circuit/transfer.go", "line": 82, "scope": "TransferCircuit.Define", "end_line": 83},
+        {"file": "contracts/Pool.sol", "line": 40, "scope": "Pool.withdraw", "end_line": 50}
+      ],
+      "detected_by": ["V-pubin","I1","V-generic","V-state","V-hash","G2"],
+      "vector_ids": ["V-PI2","V-PS4","V-G4","V-M5"],
+      "description": "Any prover mints a fresh nullifier for the same leaf by changing Secret or Index, because neither is the leaf's preimage or its tree position.",
+      "severity": "critical",
+      "confidence": 90,
+      "evidence": "ANALYSIS",
+      "proof": "Fix one path (L, S1, S2, S3) under a known root R and the witness of the leaf finding. Proof k uses Index = k (or Secret = k): nf_k = MiMC(Secret, k) are pairwise distinct and all other constraints are unchanged, since the path hashing at transfer.go:50-56 ignores Index. Each withdraw(proof_k, R, nf_k, ...) passes !nullifiers[nf_k] (Pool.sol:40). Index varies the nullifier even after the leaf is bound to H(Secret, In.Value, In.Owner). Side effect: the always-left path makes every leaf except position 0 unprovable for honest users.",
+      "impact": "Any note holder spends one note an unlimited number of times and drains other depositors' funds.",
+      "gates": {
+        "executes": "nf = MiMC(Secret, Index) (transfer.go:47-48); Index appears only there and in IsZero (transfer.go:82); the path never uses it.",
+        "reachable": "Any Index value solves; honest hints suffice.",
+        "unprivileged": "Any prover.",
+        "impact": "Soundness: double spend / theft."
+      },
+      "fix": {
+        "summary": "Make Index the leaf position by using its bits to order each Merkle level, and derive the nullifier from the bound leaf.",
+        "options": [
+          {"label": "order the path by Index bits", "diff": "-\tcur := c.Path[0]\n-\tfor i := 1; i < len(c.Path); i++ {\n-\t\th.Reset()\n-\t\th.Write(cur, c.Path[i])\n-\t\tcur = h.Sum()\n-\t}\n+\tidx := api.ToBinary(c.Index, Depth)\n+\tcur := c.Path[0]\n+\tfor i := 1; i < len(c.Path); i++ {\n+\t\tl := api.Select(idx[i-1], c.Path[i], cur)\n+\t\tr := api.Select(idx[i-1], cur, c.Path[i])\n+\t\th.Reset()\n+\t\th.Write(l, r)\n+\t\tcur = h.Sum()\n+\t}"},
+          {"label": "nullifier from the bound leaf", "diff": "-\th.Write(c.Secret, c.Index)\n+\th.Write(c.Secret, c.Path[0])"}
+        ]
+      },
+      "refuter": {
+        "verdict": "exploitable",
+        "by": "zk-audit:refuter (fresh general-purpose agent)",
+        "reasoning": "The nullifier is constrained only at circuit/transfer.go:47-48 (MiMC(Secret, Index) == nf). The Merkle check (transfer.go:50-56) always hashes cur on the left and uses neither Secret nor Index, and no other constraint (58-92) involves them except IsZero(Index) at 82-83, which any nonzero Index satisfies. Pool.withdraw (Pool.sol:39-51) tracks only nullifiers, not leaves, so each fresh nf pays again. Even with a bound leaf, Index stays free in the nullifier hash."
+      }
+    },
+    {
+      "fingerprint": "TransferCircuit|q|integer-relation-in-native-field",
+      "verdict": "confirmed",
+      "title": "divHint quotient relation is checked only over the field",
+      "layer": "circuit",
+      "bug_class": "integer-relation-in-native-field",
+      "location": {"file": "circuit/transfer.go", "line": 58, "scope": "TransferCircuit.Define", "end_line": 64},
+      "related_locations": [{"file": "circuit/hints.go", "line": 6, "scope": "divHint", "end_line": 15}],
+      "detected_by": ["V-hints","C1","V-field","V-generic"],
+      "vector_ids": ["V-H3","V-F7","V-G1"],
+      "description": "The circuit asserts q*Out.Value == In.Value mod r and discards the remainder, so any prover passes a non-divisible pair while the honest hint fails it.",
+      "severity": "low",
+      "confidence": 75,
+      "evidence": "ANALYSIS",
+      "proof": "In.Value = 7, Out.Value = 2. Honest divHint returns (3, 1); 3*2 != 7, so the honest prover fails. Override divHint to q = 7*2^-1 mod r; AssertIsEqual at transfer.go:64 holds and all other constraints hold (T-HINT-OVERRIDE).",
+      "impact": "Honest users cannot prove a withdrawal whose amount does not divide their input value; the intended integer rule binds nothing for a malicious prover.",
+      "gates": {
+        "executes": "Only transfer.go:64 constrains q; res[1] is discarded at transfer.go:63; q has no range check.",
+        "reachable": "Any non-divisible (In, Out) with Out != 0.",
+        "unprivileged": "Any prover.",
+        "impact": "Completeness for honest users; the soundness side is bounded by Out.Value <= In.Value (transfer.go:79-80)."
+      },
+      "fix": {"summary": "Constrain q*Out + rem == In with q and rem range-checked to 64 bits and rem < Out, or drop the relation if exact division is not intended."}
+    },
+    {
+      "fingerprint": "TransferCircuit|flag|gated-assert-prover-flag",
+      "verdict": "confirmed",
+      "title": "Owner equality is gated by a prover-chosen Index",
+      "layer": "circuit",
+      "bug_class": "gated-assert-prover-flag",
+      "location": {"file": "circuit/transfer.go", "line": 82, "scope": "TransferCircuit.Define", "end_line": 83},
+      "detected_by": ["V-selector","C1","I1","G2","V-generic"],
+      "vector_ids": ["V-S3","V-G6"],
+      "description": "Any prover sets the private Index to a nonzero value, which zeroes flag and removes the In.Owner == Out.Owner check, so ownerKey proves nothing.",
+      "severity": "low",
+      "confidence": 75,
+      "evidence": "ANALYSIS",
+      "proof": "Witness of the leaf finding with In.Owner = 1, Out.Owner = 2, Index = 1: flag = IsZero(1) = 0 and 0*(1-2) = 0 holds. The same witness with Index = 0 fails (T-INVALID-ASSIGNMENT).",
+      "impact": "Out.Owner (public ownerKey) is unconstrained; any consumer that treats it as the note owner is misled. Pool ignores it today.",
+      "gates": {
+        "executes": "transfer.go:82-83 is the only constraint on Out.Owner besides a discarded ToBinary (transfer.go:77).",
+        "reachable": "Index is a free secret witness.",
+        "unprivileged": "Any prover.",
+        "impact": "Owner continuity is not enforced; promoted on convergence of five agents (judging.md \u00a75), no on-chain victim shown."
+      },
+      "fix": {"summary": "Assert api.AssertIsEqual(c.In.Owner, c.Out.Owner) unconditionally, or gate it on a bound value."}
+    },
+    {
+      "fingerprint": "go.mod|gnark|vulnerable-gnark-version",
+      "verdict": "confirmed",
+      "title": "gnark v0.14.0 matches three std soundness advisories",
+      "layer": "dependency",
+      "bug_class": "vulnerable-gnark-version",
+      "location": {"file": "go.mod", "line": 8, "scope": "go.mod"},
+      "related_locations": [{"file": "circuit/sig.go", "line": 34, "scope": "SigCircuit.Define", "end_line": 38}],
+      "detected_by": ["gnark-inventory detect"],
+      "description": "go.mod pins gnark v0.14.0, below the fixes for GHSA-3mvx-pp85-pm65, GHSA-7fx8-hmgc-82jp and GHSA-fwf3-jmp7-gmrj; SigCircuit uses emulated arithmetic named in GHSA-3mvx.",
+      "severity": "low",
+      "confidence": 80,
+      "evidence": "ANALYSIS",
+      "proof": "go.mod:8 requires github.com/consensys/gnark v0.14.0; fixed versions are v0.16.2, v0.16.4 and v0.16.0 (stack.json). SigCircuit calls emulated.NewField and f.Mul (sig.go:34-38). TransferCircuit uses no affected component; SigCircuit has no consumer.",
+      "impact": "If SigCircuit is deployed, emulated-arithmetic soundness bugs at this version apply; keys made at this version must be regenerated after an upgrade.",
+      "gates": {
+        "executes": "Version match is deterministic.",
+        "reachable": "Only SigCircuit reaches an affected component.",
+        "unprivileged": "Any prover of SigCircuit.",
+        "impact": "Low: no consumer of SigCircuit in the repo; two advisories name components not imported."
+      },
+      "fix": {"summary": "Upgrade gnark to v0.16.4 or later, recompile circuits, and regenerate proving and verifying keys and the Solidity verifier."}
+    },
+    {
+      "fingerprint": "cmd/setup|main|single-party-trusted-setup",
+      "verdict": "needs_validation",
+      "title": "Groth16 keys come from a single-party setup",
+      "layer": "setup",
+      "bug_class": "single-party-trusted-setup",
+      "location": {"file": "cmd/setup/main.go", "line": 21, "scope": "main", "end_line": 31},
+      "detected_by": ["V-prover"],
+      "vector_ids": ["V-PV1"],
+      "description": "cmd/setup runs groth16.Setup in one process and exports its VK, so whoever ran it holds toxic waste and forges proofs for any public inputs.",
+      "severity": "high",
+      "confidence": 60,
+      "proof": "groth16.Setup(ccs) at main.go:21 samples the whole trapdoor; vk.ExportSolidity at main.go:31 is the only key path; no mpcsetup import exists.",
+      "impact": "If production keys came from this command, the setup operator can drain the Pool with forged proofs.",
+      "blockers": ["Which VK is deployed and how it was produced is not in the repository.", "contracts/Verifier.sol is a placeholder, not generator output."],
+      "validation_plan": "Obtain the deployed verifier's VK and the ceremony transcript; confirm it came from a multi-party ceremony (gnark mpcsetup) rather than cmd/setup.",
+      "fix": {"summary": "Generate keys with backend/groth16/bn254/mpcsetup and a published transcript, and export the verifier from that VK."}
+    },
+    {
+      "fingerprint": "Pool|withdraw|verifier-vk-drift",
+      "verdict": "needs_validation",
+      "title": "Deployed verifier cannot be traced to the audited circuit",
+      "layer": "setup",
+      "bug_class": "verifier-vk-drift",
+      "location": {"file": "cmd/setup/main.go", "line": 21, "scope": "main", "end_line": 31},
+      "related_locations": [
+        {"file": "contracts/Verifier.sol", "line": 10, "scope": "Verifier.verifyProof", "end_line": 18},
+        {"file": "contracts/Pool.sol", "line": 4, "scope": "IVerifier", "end_line": 6}
+      ],
+      "detected_by": ["V-verifier","V-prover","G2"],
+      "vector_ids": ["V-VC2","V-VC6"],
+      "description": "cmd/setup discards pk and writes Verifier.sol to the working directory; the committed verifier always reverts, so the live VK and ABI cannot be matched to this code.",
+      "severity": "medium",
+      "confidence": 60,
+      "impact": "Either every withdraw reverts, or the deployed verifier encodes an older, unaudited circuit or a different ABI.",
+      "blockers": ["Deployed verifier address and bytecode are unknown.", "Exact Solidity signature emitted by gnark v0.14.0 ExportSolidity was not checked (module cache unavailable): IVerifier uses verifyProof(bytes,uint256[7])."],
+      "validation_plan": "Regenerate the verifier from TransferCircuit at the pinned gnark, compare its VK and selector with the deployed contract, and add a CI diff.",
+      "fix": {"summary": "Persist pk and vk from one ceremony, write the export to contracts/Verifier.sol, and diff it in CI; generate IVerifier from the exported ABI."}
+    },
+    {
+      "fingerprint": "SigCircuit|sq.Limbs[0]|non-canonical-emulated-limb-read",
+      "verdict": "needs_validation",
+      "title": "Nonzero check reads one limb of an unreduced emulated product",
+      "layer": "circuit",
+      "bug_class": "non-canonical-emulated-limb-read",
+      "location": {"file": "circuit/sig.go", "line": 38, "scope": "SigCircuit.Define", "end_line": 39},
+      "related_locations": [{"file": "circuit/sig.go", "line": 18, "scope": "SigCircuit"}],
+      "detected_by": ["V-field","C1"],
+      "vector_ids": ["V-F3","V-F4"],
+      "description": "SigCircuit asserts sq.Limbs[0] != 0 on a non-strictly reduced f.Mul result, so a prover may pick a representation that makes Amount = 0 mod n pass.",
+      "severity": "low",
+      "confidence": 55,
+      "proof": "Amount.Limbs = n (secp256k1 order); mul hint quotient n-1, remainder n; n*n = (n-1)*n + n and n < 2^256; sq.Limbs[0] = 0xBFD25E8CD0364141 != 0.",
+      "impact": "A zero amount passes the nonzero check, and an honest nonzero square with a zero low limb fails. No consumer of SigCircuit exists.",
+      "blockers": ["Whether gnark v0.14.0 emulated Mul bounds its remainder below the modulus (std not in module cache).", "SigCircuit has no verifier or caller in the repository."],
+      "validation_plan": "Run a T-HINT-OVERRIDE test against gnark v0.14.0 with Amount = n and the overridden mul hint; check whether ccs.Solve succeeds.",
+      "fix": {"summary": "Use f.IsZero(sq) asserted to 0 (or f.ReduceStrict before reading limbs) and f.AssertIsInRange(&c.Amount)."}
+    },
+    {
+      "fingerprint": "decompose|out|hint-output-unconstrained",
+      "verdict": "lead",
+      "title": "decompose returns unchecked splitHint limbs",
+      "layer": "circuit",
+      "bug_class": "hint-output-unconstrained",
+      "location": {"file": "circuit/transfer.go", "line": 96, "scope": "decompose", "end_line": 103},
+      "detected_by": ["V-range","V-hints","C1"],
+      "description": "decompose returns raw splitHint outputs with no recomposition or 32-bit range check; any caller gets prover-chosen limbs.",
+      "code_smells": ["Inventory H3 escapes via return@circuit/transfer.go:102", "Doc comment implies a checked split"],
+      "unverified": "No caller exists today.",
+      "vector_ids": ["V-R6","V-H7"]
+    },
+    {
+      "fingerprint": "Pool|withdraw|proof-not-domain-separated",
+      "verdict": "lead",
+      "title": "Proof and nullifier carry no chain or contract context",
+      "layer": "integration",
+      "bug_class": "proof-not-domain-separated",
+      "location": {"file": "contracts/Pool.sol", "line": 41, "scope": "Pool.withdraw", "end_line": 49},
+      "detected_by": ["V-pubin","G2","I1","V-state"],
+      "description": "A spent proof replays on another Pool or chain that shares the verifier and a root, because no public input names the deployment.",
+      "code_smells": ["No block.chainid, address(this) or epoch in the 7 public inputs", "nullifiers is per-contract storage"],
+      "unverified": "Whether more than one deployment shares a VK and roots.",
+      "vector_ids": ["V-PI5","V-PI4"]
+    },
+    {
+      "fingerprint": "Pool|withdraw|value-width-mismatch",
+      "verdict": "lead",
+      "title": "Circuit caps amounts at 2^64 while the contract pays uint256",
+      "layer": "integration",
+      "bug_class": "value-width-mismatch",
+      "location": {"file": "contracts/Pool.sol", "line": 47, "scope": "Pool.withdraw", "end_line": 51},
+      "detected_by": ["V-pubin"],
+      "description": "Notes worth 2^64 wei or more cannot be withdrawn in one proof, because In.Value is split into two 32-bit limbs.",
+      "code_smells": ["transfer.go:66-72 limits In.Value below 2^64"],
+      "unverified": "Whether deposits above 2^64 wei exist.",
+      "vector_ids": ["V-PI6"],
+      "related_locations": [{"file": "circuit/transfer.go", "line": 66, "scope": "TransferCircuit.Define", "end_line": 72}]
+    },
+    {
+      "fingerprint": "TransferCircuit|Recipient|discarded-predicate",
+      "verdict": "lead",
+      "title": "IsZero(Recipient) result is discarded",
+      "layer": "circuit",
+      "bug_class": "discarded-predicate",
+      "location": {"file": "circuit/transfer.go", "line": 85, "scope": "TransferCircuit.Define"},
+      "detected_by": ["V-selector"],
+      "description": "The circuit computes IsZero(Recipient) and drops it, so Recipient = 0 proves; this call is also what keeps Recipient in the Groth16 input commitment.",
+      "code_smells": ["Predicate result never asserted", "Deleting it would leave Recipient in no constraint"],
+      "unverified": "Whether a nonzero-recipient check was intended; zero recipient is self-harm today.",
+      "vector_ids": ["V-S4"]
+    },
+    {
+      "fingerprint": "TransferCircuit|ratio|div-unchecked-zero-denominator",
+      "verdict": "lead",
+      "title": "Fee ratio check pins nothing",
+      "layer": "circuit",
+      "bug_class": "div-unchecked-zero-denominator",
+      "location": {"file": "circuit/transfer.go", "line": 74, "scope": "TransferCircuit.Define", "end_line": 75},
+      "detected_by": ["V-field"],
+      "description": "DivUnchecked(Fees0, Fees1) and its re-check are a field tautology for Fees1 != 0, and leave ratio free at 0/0.",
+      "code_smells": ["ratio unused after line 75", "Pool ignores fee0/fee1"],
+      "unverified": "Whether an off-chain consumer relies on a fee policy.",
+      "vector_ids": ["V-F1"]
+    },
+    {
+      "fingerprint": "TransferCircuit|nf|hash-domain-separation-missing",
+      "verdict": "lead",
+      "title": "Nullifier and Merkle nodes share one untagged MiMC",
+      "layer": "circuit",
+      "bug_class": "hash-domain-separation-missing",
+      "location": {"file": "circuit/transfer.go", "line": 47, "scope": "TransferCircuit.Define", "end_line": 53},
+      "detected_by": ["V-hash"],
+      "description": "The nullifier and node hashes use the same two-input MiMC with no tag, so a value from one role can be presented in another.",
+      "code_smells": ["nf can equal an internal node (Secret = left, Index = right)"],
+      "unverified": "Any exploit beyond the leaf-binding finding.",
+      "vector_ids": ["V-M2"]
+    },
+    {
+      "fingerprint": "TransferCircuit|cur|native-hash-mismatch",
+      "verdict": "lead",
+      "title": "No native tree builder or vectors for the circuit root",
+      "layer": "integration",
+      "bug_class": "native-hash-mismatch",
+      "location": {"file": "circuit/transfer.go", "line": 50, "scope": "TransferCircuit.Define", "end_line": 56},
+      "detected_by": ["V-hash"],
+      "description": "Roots reach the contract only through addRoot from off-chain code not in the repo; the circuit's always-left ordering may not match it.",
+      "code_smells": ["No gnark-crypto MiMC tree code or test vectors"],
+      "unverified": "How the off-chain indexer builds roots.",
+      "vector_ids": ["V-M7"]
+    },
+    {
+      "fingerprint": "TransferCircuit|Out.Owner|output-note-not-committed",
+      "verdict": "lead",
+      "title": "No output or change note is committed",
+      "layer": "integration",
+      "bug_class": "output-note-not-committed",
+      "location": {"file": "circuit/transfer.go", "line": 77, "scope": "TransferCircuit.Define", "end_line": 83},
+      "detected_by": ["G2"],
+      "description": "Out.Owner, fees and change In.Value - Out.Value are never committed or inserted as a new note.",
+      "code_smells": ["Contract ignores ownerKey, fee0, fee1"],
+      "unverified": "Whether an off-chain service treats ownerKey or fees as authenticated."
+    },
+    {
+      "fingerprint": "TransferCircuit|Index|go-branch-on-witness",
+      "verdict": "lead",
+      "title": "Go nil-check on Index is compile-time dead code",
+      "layer": "circuit",
+      "bug_class": "go-branch-on-witness",
+      "location": {"file": "circuit/transfer.go", "line": 87, "scope": "TransferCircuit.Define", "end_line": 92},
+      "detected_by": ["V-selector"],
+      "description": "if c.Index == nil runs at compile time on a non-nil placeholder, so it expresses no runtime condition on Index.",
+      "code_smells": ["FG-GO-BRANCH-ON-WITNESS"],
+      "unverified": "Author intent; Extra is unused elsewhere.",
+      "vector_ids": ["V-S1"]
+    },
+    {
+      "fingerprint": "SigCircuit|PubKey.A|point-not-on-curve-checked",
+      "verdict": "lead",
+      "title": "SigCircuit adds no curve check on PubKey.A and Sig.R",
+      "layer": "circuit",
+      "bug_class": "point-not-on-curve-checked",
+      "location": {"file": "circuit/sig.go", "line": 31, "scope": "SigCircuit.Define"},
+      "detected_by": ["V-curves"],
+      "description": "Witness points go straight into eddsa.Verify; this matters only if v0.14.0 omits on-curve checks and SigCircuit gets a consumer.",
+      "code_smells": ["No AssertIsOnCurve by the caller"],
+      "unverified": "Whether eddsa.Verify at v0.14.0 checks A and R on the curve.",
+      "vector_ids": ["V-E4"]
+    }
+  ]
+}

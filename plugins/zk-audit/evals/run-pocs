@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Runs the eval PoCs of a fixture in a sanitized scratch copy, offline and
+# with a time limit. Never runs anything inside this repository.
+#
+# Usage: evals/run-pocs <fixture-name> <scratch-dir>
+#   Copies the fixture with evals/sanitize to <scratch-dir>/<fixture-name>,
+#   copies evals/<fixture-name>/pocs/*_test.go into the package named in
+#   evals/<fixture-name>/pocs/PACKAGE, and runs the PoC_ and Decoy_ tests.
+# Needs the fixture's modules in the Go module cache (make fixtures).
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+name="${1:?fixture name}"
+scratch="${2:?scratch directory}"
+pocs="$here/$name/pocs"
+pkg="$(cat "$pocs/PACKAGE")"
+dest="$scratch/$name"
+"$here/sanitize" "$name" "$dest" >/dev/null
+cp "$pocs"/*_test.go "$dest/$pkg/"
+cd "$dest"
+# -mod=mod lets the go command record go.sum lines for test-only imports from
+# the module cache; GOPROXY=off keeps it offline unless EVAL_GOPROXY is set
+# (make eval-pocs sets it, after `make fixtures` has used the network anyway).
+GOWORK=off GOFLAGS=-mod=mod GOPROXY="${EVAL_GOPROXY:-off}" timeout 900 go test -count=1 -run '^Test(PoC|Decoy)_' -v "./$pkg/"

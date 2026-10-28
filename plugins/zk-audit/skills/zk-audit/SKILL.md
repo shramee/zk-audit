@@ -29,7 +29,7 @@ the user did not ask for.
 ```text
 /zk-audit                                  standard profile, whole repo
 /zk-audit quick | standard | deep          choose a profile
-/zk-audit circuits/transfer.go contracts/Pool.sol   restrict scope to these files
+/zk-audit circuits/vote.go contracts/Ballot.sol   restrict scope to these files
 /zk-audit diff origin/main                 review a commit range (also /zk-audit:diff)
 /zk-audit recon                            recon only, no hunting (also /zk-audit:recon)
 /zk-audit:setup                            show companion skills and tools; install only after consent
@@ -37,7 +37,7 @@ the user did not ask for.
 
 Flags: `--local` (single agent, no subagents) · `--loop N` (N passes with a
 memory ledger; deep default 3) · `--no-poc` (skip PoC generation and
-execution) · `--file-output` (also write `REPORT.md` into the target repo) ·
+execution; the refuter still runs) · `--file-output` (also write `REPORT.md` into the target repo) ·
 `--out DIR` (override the output directory).
 
 **Profiles**
@@ -66,9 +66,11 @@ before recon finishes.
 3. **PoCs run in a scratch git worktree** under the output directory, never in
    the user's checkout: `git -C <repo> worktree add --detach <out>/worktree HEAD`.
    Run them with a time limit and without network
-   (`GOFLAGS=-mod=readonly GOPROXY=off timeout 600 go test -run PoC ./...`).
-   If the module cache lacks the target's dependencies, ask before running
-   `go mod download`. `--no-poc` disables PoCs. Remove the worktree at the end
+   (`GOFLAGS=-mod=mod GOPROXY=off timeout 600 go test -run PoC_ ./<pkg>/`).
+   `-mod=mod` lets the go command add `go.sum` lines for test-only imports
+   such as `gnark/test` from the module cache; it only rewrites the
+   worktree's `go.mod`, never the user's. If the module cache lacks the
+   target's dependencies, ask before running `go mod download`. `--no-poc` disables PoCs. Remove the worktree at the end
    (`git -C <repo> worktree remove --force <out>/worktree`).
 4. **No silent installs.** Never install a skill, a Go module, `forge` or
    anything else without the user's explicit yes. `/zk-audit:setup` prints the
@@ -133,6 +135,9 @@ seeded `coverage-ledger.json`. Then the orchestrator itself (no subagent):
 2. Completes `binding-table.md`: one row per public input in public-witness
    order, with its contract source expression, range check, and binding to
    sender / chain / contract / nonce. Unknown cells stay `?`, never guessed.
+   Write facts and source expressions only, no verdicts ("free", "unbound",
+   "bug"): the table is inlined into every bundle and must not steer the
+   hunters.
 3. Writes `system-map.md`: actors, trust boundaries, prover → relayer →
    contract flow, trusted parties (setup ceremony, admin, sequencer).
 4. Reads `zk-audit.md` at the repo root if present (scope, trusted parties,
@@ -187,17 +192,33 @@ deep also runs a final-clean critic. Units left open stay `planned` or
 
 ### Phase 6 — Report
 
-Write `findings.json` (schema in `{plugin}/schemas/findings.schema.json`) and
-validate it:
+1. Write `findings.json` (schema in `{plugin}/schemas/findings.schema.json`).
+   Besides `records`, fill the report-only fields the assembler cannot
+   derive: `posture` (three to six sentences), `out_of_scope`, `companions`
+   (`present` / `missing`) and `hardening`. With zero records, set
+   `no_findings: true` and a `no_findings_reason` that says what was examined.
+2. Close the ledger: every unit still `planned` or `in_progress` becomes
+   `deferred` or `blocked` with a `reason`.
+3. Validate both files and fix every error:
 
-```bash
-{plugin}/scripts/gnark-inventory validate findings <out>/findings.json
-{plugin}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json
-```
+   ```bash
+   {plugin}/scripts/gnark-inventory validate findings <out>/findings.json
+   {plugin}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json
+   ```
 
-Fix every validation error before you continue. Then render `REPORT.md` with
-the structure in `references/report-format.md` and print the report path and
-the findings table. Do not re-judge or re-word findings while rendering.
+4. Render the report with the deterministic assembler. It validates again,
+   refuses invalid input (exit 1, no report), quotes the constraint lines
+   verbatim from `<repo>` and computes coverage only from the ledger:
+
+   ```bash
+   {plugin}/scripts/gnark-inventory assemble --out <out> --repo <repo>
+   ```
+
+   Read its warnings (a ledger fingerprint missing from `findings.json`, a unit
+   still planned). Fix the inputs and rerun; never edit `REPORT.md` by hand.
+5. With `--file-output`, copy the result:
+   `cp <out>/REPORT.md <repo>/zk-audit-report-<run-id>.md`.
+6. Print the report path, the findings table and the coverage line.
 
 ## 5. Companions
 

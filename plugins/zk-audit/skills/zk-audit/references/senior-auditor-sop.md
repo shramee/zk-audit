@@ -32,7 +32,7 @@ constraint, `Assert`, or `api.`.
 Where your explanation gets vague, or you reach for gnark vocabulary to stay
 accurate, you have found a free value.
 
-Example. `res, _ := api.Compiler().NewHint(divHint, 2, a, b); api.AssertIsEqual(api.Add(api.Mul(res[0], b), res[1]), a)`.
+Example. `res, _ := api.Compiler().NewHint(quoRemHint, 2, a, b); api.AssertIsEqual(api.Add(api.Mul(res[0], b), res[1]), a)`.
 "It computes `a / b`" is not Feynman. Feynman is: "the prover names two numbers
 `q` and `r` such that `q·b + r = a`". Keep going: is there a second pair? Yes,
 `(q - 1, r + b)`, because nothing says `r < b`. Bug.

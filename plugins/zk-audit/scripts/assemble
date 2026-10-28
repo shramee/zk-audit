@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Renders REPORT.md from findings.json and coverage-ledger.json (PLAN §4 Phase 6).
+# Usage: assemble --out DIR [--repo DIR] [other gnark-inventory assemble flags]
+set -euo pipefail
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gnark-inventory" assemble "$@"

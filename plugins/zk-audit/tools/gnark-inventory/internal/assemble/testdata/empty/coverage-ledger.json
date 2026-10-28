@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "repo": "edge",
+  "generated_by": "gnark-inventory test",
+  "units": [
+    {"id": "circuit:Edge|hint-soundness", "kind": "circuit", "subject": "Edge", "class": "hint-soundness", "lenses": ["C1", "V"], "paths": ["c/edge.go:10"], "status": "covered", "agent_ids": ["C1"], "reviewed_paths": ["c/edge.go"], "result_fingerprints": []},
+    {"id": "circuit:Edge|range-decomposition", "kind": "circuit", "subject": "Edge", "class": "range-decomposition", "lenses": ["C2", "V"], "paths": ["c/edge.go:10"], "status": "covered", "agent_ids": ["V-range"], "reviewed_paths": ["c/edge.go"], "result_fingerprints": []},
+    {"id": "circuit:Edge|field-arithmetic", "kind": "circuit", "subject": "Edge", "class": "field-arithmetic", "lenses": ["C3", "V"], "paths": ["c/edge.go:10"], "status": "deferred", "agent_ids": [], "reviewed_paths": [], "result_fingerprints": [], "reason": "C3 is not in the quick profile"}
+  ]
+}

@@ -1,7 +1,7 @@
 TOOL := plugins/zk-audit/tools/gnark-inventory
 SKILL := plugins/zk-audit/skills/zk-audit
 
-.PHONY: check vet test test-types fixtures lint-kb sync-schemas vendor
+.PHONY: check vet test test-types fixtures lint-kb sync-schemas vendor eval-pocs
 
 ## check: everything CI runs (offline)
 check: vet test lint-kb
@@ -25,6 +25,11 @@ test-types: fixtures
 
 lint-kb:
 	cd $(TOOL) && go run . lint-kb ../../skills/zk-audit
+
+## eval-pocs: run the pool fixture's eval PoCs in a sanitized scratch copy
+## (network for the fixture modules, like test-types)
+eval-pocs: fixtures
+	EVAL_GOPROXY="$$(go env GOPROXY)" plugins/zk-audit/evals/run-pocs pool "$$(mktemp -d)"
 
 ## sync-schemas: copy the canonical schemas into the tool's embed directory
 sync-schemas:

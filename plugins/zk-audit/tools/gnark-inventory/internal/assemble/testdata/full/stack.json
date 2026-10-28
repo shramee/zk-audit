@@ -1,0 +1,129 @@
+{
+  "schema_version": "1",
+  "tool_version": "0.1.0",
+  "repo": "/nonexistent/pool",
+  "go_modules": [
+    {
+      "path": "go.mod",
+      "module": "example.com/pool",
+      "go": "1.24.0",
+      "toolchain": "go1.24.7",
+      "gnark": "v0.14.0",
+      "gnark_crypto": "v0.19.0"
+    }
+  ],
+  "gnark": {
+    "present": true,
+    "versions": [
+      "v0.14.0"
+    ],
+    "advisories": [
+      {
+        "id": "GHSA-7fx8-hmgc-82jp",
+        "aliases": [],
+        "severity": "high",
+        "class": "soundness",
+        "component": "std/algebra emulated scalar multiplication (fake-GLV); std/signature/ecdsa incl. P-256",
+        "summary": "Fake-GLV scalar-multiplication hint result is not checked to be on the curve, which lets a prover forge ECDSA / P-256 verification in-circuit.",
+        "introduced": "0",
+        "fixed": "v0.16.4",
+        "action": "Upgrade to v0.16.4 or later, recompile every affected circuit and regenerate proving and verifying keys; redeploy any verifier contract built from the old keys.",
+        "regenerate_keys": true,
+        "url": "https://github.com/Consensys/gnark/security/advisories/GHSA-7fx8-hmgc-82jp",
+        "verified": false,
+        "status": "affected",
+        "module": "go.mod",
+        "version": "v0.14.0"
+      },
+      {
+        "id": "GHSA-3mvx-pp85-pm65",
+        "aliases": [],
+        "severity": "critical",
+        "class": "soundness",
+        "component": "std (emulated arithmetic, torus, GLV, uints lookups for SHA2/Keccak, pairing Miller loop, comb scalar mul)",
+        "summary": "Eleven std-library issues where a hint output is consumed without a binding or range constraint (emulated carry not range-checked, unconstrained torus scale, unbound GLV sub-scalars, remainder vs runtime modulus, uints lookup key collision, Miller loop with Q = 0, comb top bit).",
+        "introduced": "0",
+        "fixed": "v0.16.2",
+        "action": "Upgrade to v0.16.2 or later (v0.16.4 also fixes GHSA-7fx8), recompile affected circuits and regenerate keys and verifier contracts.",
+        "regenerate_keys": true,
+        "url": "https://github.com/Consensys/gnark/security/advisories/GHSA-3mvx-pp85-pm65",
+        "verified": false,
+        "status": "affected",
+        "module": "go.mod",
+        "version": "v0.14.0"
+      },
+      {
+        "id": "GHSA-fwf3-jmp7-gmrj",
+        "aliases": [],
+        "severity": "moderate",
+        "class": "soundness",
+        "component": "std/algebra pairing G2 membership (IsOnTwist vs AssertIsOnTwist)",
+        "summary": "A G2 subgroup / twist check is computed but its result is discarded, so points off the twist are accepted.",
+        "introduced": "0",
+        "fixed": "v0.16.0",
+        "action": "Upgrade past v0.15.0, recompile affected circuits and regenerate keys. Research notes give the fix as 'after v0.15.0'; confirm the exact version on the advisory page.",
+        "regenerate_keys": true,
+        "url": "https://github.com/Consensys/gnark/security/advisories/GHSA-fwf3-jmp7-gmrj",
+        "verified": false,
+        "status": "affected",
+        "module": "go.mod",
+        "version": "v0.14.0"
+      }
+    ],
+    "backends": [
+      "groth16"
+    ],
+    "builders": [
+      "r1cs"
+    ],
+    "curves": [
+      "bn254"
+    ],
+    "features": [
+      "emulated-arithmetic",
+      "export-solidity",
+      "signatures"
+    ]
+  },
+  "solidity": {
+    "present": true,
+    "files": 2,
+    "verifiers": [
+      {
+        "file": "contracts/Verifier.sol",
+        "line": 6,
+        "contract": "Verifier",
+        "kind": "gnark-groth16",
+        "nb_public": 7
+      }
+    ]
+  },
+  "foundry": {
+    "present": true,
+    "files": 1,
+    "paths": [
+      "foundry.toml"
+    ]
+  },
+  "hardhat": {
+    "present": false,
+    "files": 0
+  },
+  "circom": {
+    "present": false,
+    "files": 0
+  },
+  "noir": {
+    "present": false,
+    "files": 0
+  },
+  "routes": [
+    "gnark: native zk-audit engine",
+    "solidity: integration lenses I1-I3 (delegate broad Solidity review to solidity-auditor if installed)"
+  ],
+  "notes": [],
+  "languages": {
+    "go": 5,
+    "solidity": 2
+  }
+}

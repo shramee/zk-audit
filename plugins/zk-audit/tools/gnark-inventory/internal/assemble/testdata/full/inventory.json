@@ -1,0 +1,8 @@
+{
+  "schema_version": "1",
+  "tool_version": "test",
+  "repo": "/home/auditor/src/pool",
+  "load_mode": "syntax",
+  "load_errors": ["go/packages: cannot find module providing package github.com/consensys/gnark/frontend"],
+  "circuits": []
+}

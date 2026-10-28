@@ -124,24 +124,44 @@ delete any file in it, do not run commands that write to it, and do not
 install anything or use the network.
 
 Return only FINDING / LEAD blocks as shared-rules.md specifies, each with
-detected_by: <ID>. A FINDING needs a concrete proof:; otherwise write a LEAD.
+detected_by: <ID> exactly (no suffix). A FINDING needs a concrete `proof:`
+field; otherwise write a LEAD. Every block carries a `code:` line copied
+verbatim from its `location`.
+<If stack.json's gnark version is not in the module cache, add:>
+gnark std source at the pinned version is not available. Do not reason about
+std internals from memory: when a path depends on them, write a LEAD whose
+`unverified:` names the std function.
 ```
 
-After each agent returns, update the ledger units it owned: `covered` (with
-`agent_ids` and `reviewed_paths`), `candidate` (with `result_fingerprints`), or
-`blocked` (with a reason).
+Check whether gnark is cached before the first spawn:
+`ls "$(go env GOMODCACHE)/github.com/consensys/gnark@<version>"`.
+
+After each agent returns:
+
+1. Save its raw return to `<out>/agents/<ID>.md` (the critic and the judge
+   read these).
+2. Update the ledger units it owned: `covered` (with `agent_ids` and
+   `reviewed_paths`), `candidate` (with `result_fingerprints`), or `blocked`
+   (with a reason).
 
 ## Turn 5 — Judge
 
 Follow `judging.md`: dedup, completeness line, four gates, severity and
 confidence, lead promotion. Write draft records to `<out>/findings.json`.
 
-## Turn 6 — Prove (unless `--no-poc`)
+## Turn 6 — Prove and refute
+
+`--no-poc` skips steps 1, 2 and 5 (no worktree, no PoC). The refuter (step
+3) still runs. If the runtime has no `zk-audit:poc-builder` or
+`zk-audit:refuter` agent type (the plugin is not installed, for example when
+running from a checkout), spawn a general-purpose agent and give it the
+agent file (`{plugin}/agents/poc-builder.md` or `refuter.md`) as its brief,
+with the same tool limits.
 
 1. Create the scratch worktree: `git -C <repo> worktree add --detach <out>/worktree HEAD`.
 2. For each confirmed circuit finding (quick: Critical and High only), spawn
    `zk-audit:poc-builder` with the record, the vector's template from
-   `poc-templates.md`, and the worktree path. It writes `pocs/<id>_test.go`
+   `poc-templates.md`, and the worktree path. It writes `pocs/<finding-number>_poc_test.go`
    (or `.t.sol`) under `<out>/pocs/`, copies it into the worktree, runs it with
    a time limit and no network, and returns the result.
 3. Spawn a fresh `zk-audit:refuter` (or `fp-check`) per confirmed item, with
@@ -167,12 +187,17 @@ after the last wave. Every unit still open gets `deferred` with a reason.
 
 ## Turn 8 — Report
 
-1. Validate:
+1. Fill the report-only fields of `findings.json` (`posture`,
+   `out_of_scope`, `companions`, `hardening`) and close every open ledger unit
+   (`deferred` or `blocked`, with a reason).
+2. Validate:
    `gnark-inventory validate findings <out>/findings.json` and
    `gnark-inventory validate ledger <out>/coverage-ledger.json`. Fix errors and
    rerun until both pass.
-2. Render `REPORT.md` per `report-format.md`.
-3. Print the findings table, the coverage line and the output path.
+3. Render: `{plugin}/scripts/gnark-inventory assemble --out <out> --repo <repo>`.
+   It writes `<out>/REPORT.md` per `report-format.md`, or exits 1 and writes
+   nothing when an input is invalid. Never edit the report by hand.
+4. Print the findings table, the coverage line and the output path.
 
 ## Loop mode (`--loop N`, deep)
 

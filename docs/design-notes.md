@@ -71,11 +71,36 @@ left open, it is recorded here with the reason.
   prover and all shards, with one circuit shard per package when there are more
   than two circuit packages. Bundles list source files with line counts and
   never inline source (PLAN §2 "Leave: full source duplicated in all bundles").
-- **Not yet implemented (M3 remainder).** The deterministic `assemble` step
-  (`findings.json` + ledger → `REPORT.md`) is specified in
-  `references/report-format.md` but not coded; the orchestrator renders the
-  report by hand until then. The deep profile's "regenerate `Verifier.sol` and
+- **`assemble` subcommand (Phase 6).** Like `bundle`, the report assembler
+  lives in the Go tool (`gnark-inventory assemble`, wrapped by
+  `scripts/assemble`) rather than a separate Node script, so the plugin keeps
+  one zero-dependency binary. Judgment prose the assembler cannot derive
+  (posture, out-of-scope notes, companion availability, hardening notes) is
+  carried in optional top-level `findings.json` fields, so the report is a
+  pure function of validated inputs. It quotes constraint lines from the
+  audited tree, refuses invalid input and forbidden clean claims, and counts
+  coverage only from the ledger.
+- **Docs lint.** `docs_test.go` fails when the skill, a command or an agent
+  names a script, subcommand, flag, `validate` kind, reference file or
+  `zk-audit:` agent that does not exist.
+- **Not yet implemented.** The deep profile's "regenerate `Verifier.sol` and
   diff" is described in the I2 lens but not automated.
+
+## Evals
+
+- **Blind runs.** Fixtures keep their `// BUG:` comments for the inventory
+  tests. `plugins/zk-audit/evals/sanitize` copies a fixture outside the
+  repository, strips the hints with a per-fixture sed script and fails if
+  hint text survives. Answer keys and eval PoCs live in `evals/<fixture>/`,
+  which no skill file references; a docs test keeps fixture identifiers out
+  of every plugin doc so hunters are not primed.
+- **Answer keys score real impact, not the planted comment.** Several pool
+  `BUG:` comments describe patterns that are harmless in context (one is a
+  decoy), so the key records the reviewed ground truth and the accepted
+  verdict range per item.
+- **Eval PoCs** (`evals/pool/pocs`) run against gnark v0.14.0 in a sanitized
+  scratch copy (`evals/run-pocs`, `make eval-pocs`, CI). They pin the
+  templates in `poc-templates.md` to working code.
 
 ## Knowledge base
 

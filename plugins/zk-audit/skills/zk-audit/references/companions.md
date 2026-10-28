@@ -13,8 +13,8 @@ namespaced as `<plugin>:<skill>`). As a fallback, check the usual locations:
 
 ```bash
 for d in ~/.claude/skills ~/.claude/plugins ~/.agents/skills ~/.codex/skills; do
-  find "$d" -maxdepth 6 -name SKILL.md -path "*/<skill-name>/*" 2>/dev/null
-done
+  [ -d "$d" ] && find "$d" -maxdepth 6 -name SKILL.md -path "*/<skill-name>/*" 2>/dev/null
+done; true   # a missing directory is not a failure
 ```
 
 Report each as `✔ <name>` or `✖ <name> (install: …)`.

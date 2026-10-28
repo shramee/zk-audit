@@ -248,11 +248,11 @@ built", "no end-to-end run", eval "not started"); plugin README missing
 `assemble`; skill description missing `/zk-audit setup`; hard rule 1 omitting
 the recon `zk-audit.md` write; PLAN not pointing at the deviations.
 
-Not fixable in-repo: the manifests, README, Go module path and update-check URL
-name `shramee/zk-audit`, while the git remote is `shramee/circuits-audit`
-(PLAN M0 "repo renamed" is still open). `/plugin marketplace add
-shramee/zk-audit` and the prompt install work only after the rename (or with
-the old name).
+Repository name: manifests, README, Go module path and the update-check URL
+use `shramee/zk-audit`, which is the public repository; local clones made
+before the rename still point at `shramee/circuits-audit`, which GitHub
+redirects. Both install routes were run from GitHub
+([pashov-parity.md](../pashov-parity.md) (e)).
 
 ---
 
@@ -321,7 +321,7 @@ Design weak spots, in priority order. Investigation pointers, not findings.
 7. **Profiles are defined four times** — add a test that parses the `SKILL.md` profile table against `bundle.Agents` ([P-17](invariants.md#p-17)).
 8. **Inside-repo writes only warn** — `inventory --out` and `assemble --report` inside the target could be refused unless `--file-output` semantics apply ([G-16](invariants.md#g-16)).
 9. **Symlinked quotes** — resolve with `filepath.EvalSymlinks` and recheck the prefix before quoting ([G-13](invariants.md#g-13)).
-10. **Update check is default-on** — the one network call in an otherwise offline design; the URL 404s until the repository is public under `shramee/zk-audit` ([G-19](invariants.md#g-19)).
+10. **Update check is default-on** — the one network call in an otherwise offline design; the URL returns 404 until `VERSION` reaches `main`, and the check is silent until then ([G-19](invariants.md#g-19)).
 11. **Binary cache keyed by version + mtime** — two checkouts at the same `Version` share `~/.zk-audit/bin/gnark-inventory-<ver>`; a content hash would remove the mtime dependence (`scripts/gnark-inventory:9-13`).
 12. **Prompt-only features** — `--loop` memory, diff triggers, critic waves and companion delegation have no tool support; their behaviour is untested ([P-18](invariants.md#p-18)).
 

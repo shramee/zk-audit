@@ -1,6 +1,6 @@
 # Answer key — pool fixture
 
-Fixture: `plugins/zk-audit/tools/gnark-inventory/testdata/pool` (gnark
+Fixture: `plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/testdata/pool` (gnark
 v0.14.0, Groth16, BN254, Foundry). Audits run on the sanitized copy made by
 `evals/sanitize pool <scratch>`; nothing an audit reads may point here.
 

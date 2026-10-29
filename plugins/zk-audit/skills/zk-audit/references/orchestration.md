@@ -39,20 +39,23 @@ reason, and record their ledger units as `not_applicable`.
 
 ## Turn 1 — Discover
 
-Print the banner from `SKILL.md`. In parallel:
+Resolve `{skill}` (`SKILL.md`, first paragraph), read `{skill}/VERSION`,
+print the banner from `SKILL.md` and the phase table (all `Pending`). Then, in
+parallel:
 
-1. Resolve `{skill}` and `{plugin}`; read `{skill}/../../.claude-plugin/plugin.json`
-   for the version.
-2. Create the output directory `~/.zk-audit/<repo>/<run-id>/` (or `--out`).
-3. Run Phase 0: `{plugin}/scripts/gnark-inventory detect --repo <repo> --out <out>/stack.json`.
-4. Detect companions (`companions.md`).
+1. Create the output directory `~/.zk-audit/<repo>/<run-id>/` (or `--out`).
+2. Run Phase 0: `{skill}/scripts/gnark-inventory detect --repo <repo> --out <out>/stack.json`.
+3. Detect companions (`companions.md`).
+4. Run the update check: `{skill}/scripts/check-version` (silent unless a
+   newer release exists; never blocks the audit).
 
 Print the stack line and the companion line. Ask the single profile/model
-question (`AskUserQuestion`), or state the default.
+question (`AskUserQuestion`), or state the default, then print
+`profile: <profile> · model: <model>`.
 
 ## Turn 2 — Recon
 
-1. `{plugin}/scripts/gnark-inventory inventory --repo <repo> --out <out> [--files …]`.
+1. `{skill}/scripts/gnark-inventory inventory --repo <repo> --out <out> [--files …]`.
    If the load mode is not `types`, say so; offer `--allow-network` (it lets the
    go command download modules) only with the user's consent.
 2. Read `inventory.md`, every `Define`, and the contracts that call verifiers.
@@ -64,7 +67,7 @@ question (`AskUserQuestion`), or state the default.
 ## Turn 3 — Build bundles
 
 ```bash
-{plugin}/scripts/gnark-inventory bundle --out <out> --skill {skill} --profile <profile>
+{skill}/scripts/gnark-inventory bundle --out <out> --skill {skill} --profile <profile>
 ```
 
 This writes `<out>/bundles/<agent-id>.md` for every selected agent and prints a
@@ -91,7 +94,8 @@ vendored libraries) are listed by directory, never inlined.
 ## Turn 4 — Hunt (bounded pool, at most 6 running)
 
 Before spawning, print the console. Mark the first six `Running`, the rest
-`Queued`, omitted agents `Skipped`:
+`Pending`, omitted agents `Skipped` (the status words of the phase table in
+`SKILL.md`):
 
 ```markdown
 ## Agent Progress
@@ -101,12 +105,12 @@ Before spawning, print the console. Mark the first six `Running`, the rest
 | V-hints | vector scan: hints | circuit | Running | – |
 | C1 | hint soundness | circuit | Running | – |
 | I1 | public-input binding | integration | Running | – |
-| G2 | binding gaps | all | Queued | – |
+| G2 | binding gaps | all | Pending | – |
 ```
 
 Spawn at most six agents at once. When one returns, mark it `Done` with a
 count (`2 findings, 1 lead`), or `Blocked` with the reason, then start the
-next queued agent. Print the updated table after each batch. If the runtime
+next `Pending` agent. Print the updated table after each batch. If the runtime
 returns parallel results only per batch, spawn batches of six.
 
 Prompt for every hunting agent (fill the placeholders; do not inline the
@@ -153,10 +157,10 @@ confidence, lead promotion. Write draft records to `<out>/findings.json`.
 
 `--no-poc` skips steps 1, 2 and 5 (no worktree, no PoC). The refuter (step
 3) still runs. If the runtime has no `zk-audit:poc-builder` or
-`zk-audit:refuter` agent type (the plugin is not installed, for example when
-running from a checkout), spawn a general-purpose agent and give it the
-agent file (`{plugin}/agents/poc-builder.md` or `refuter.md`) as its brief,
-with the same tool limits.
+`zk-audit:refuter` agent type (the skill folder was copied into
+`~/.claude/skills/` without the plugin, or runs from a checkout), spawn a
+general-purpose agent and give it the agent file (`{skill}/agents/poc-builder.md`
+or `{skill}/agents/refuter.md`) as its brief, with the same tool limits.
 
 1. Create the scratch worktree: `git -C <repo> worktree add --detach <out>/worktree HEAD`.
 2. For each confirmed circuit finding (quick: Critical and High only), spawn
@@ -194,7 +198,7 @@ after the last wave. Every unit still open gets `deferred` with a reason.
    `gnark-inventory validate findings <out>/findings.json` and
    `gnark-inventory validate ledger <out>/coverage-ledger.json`. Fix errors and
    rerun until both pass.
-3. Render: `{plugin}/scripts/gnark-inventory assemble --out <out> --repo <repo>`.
+3. Render: `{skill}/scripts/gnark-inventory assemble --out <out> --repo <repo>`.
    It writes `<out>/REPORT.md` per `report-format.md`, or exits 1 and writes
    nothing when an input is invalid. Never edit the report by hand.
 4. Print the findings table, the coverage line and the output path.

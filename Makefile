@@ -1,10 +1,10 @@
-TOOL := plugins/zk-audit/tools/gnark-inventory
 SKILL := plugins/zk-audit/skills/zk-audit
+TOOL := $(SKILL)/tools/gnark-inventory
 
-.PHONY: check vet test test-types fixtures lint-kb sync-schemas vendor eval-pocs
+.PHONY: check vet test test-types fixtures lint-kb standalone sync-schemas sync-agents vendor eval-pocs
 
 ## check: everything CI runs (offline)
-check: vet test lint-kb
+check: vet test lint-kb standalone
 
 vet:
 	cd $(TOOL) && go vet ./...
@@ -24,7 +24,12 @@ test-types: fixtures
 	cd $(TOOL) && ZK_INVENTORY_REQUIRE_TYPES=1 go test -count=1 ./internal/inventory/
 
 lint-kb:
-	cd $(TOOL) && go run . lint-kb ../../skills/zk-audit
+	cd $(TOOL) && go run . lint-kb ../..
+
+## standalone: copy only the skill folder into a throwaway ~/.claude/skills and
+## run the deterministic pipeline from the copy (the pashov-style install)
+standalone:
+	test/standalone-skill.sh
 
 ## eval-pocs: run the pool fixture's eval PoCs in a sanitized scratch copy
 ## (network for the fixture modules, like test-types)
@@ -33,7 +38,11 @@ eval-pocs: fixtures
 
 ## sync-schemas: copy the canonical schemas into the tool's embed directory
 sync-schemas:
-	cp plugins/zk-audit/schemas/*.schema.json $(TOOL)/internal/validate/schemas/
+	cp $(SKILL)/schemas/*.schema.json $(TOOL)/internal/validate/schemas/
+
+## sync-agents: copy the skill's agent briefs (canonical) to the plugin's agents/
+sync-agents:
+	cp $(SKILL)/agents/*.md plugins/zk-audit/agents/
 
 vendor:
 	cd $(TOOL) && go mod tidy && go mod vendor

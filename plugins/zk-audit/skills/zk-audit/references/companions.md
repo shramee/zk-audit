@@ -2,7 +2,7 @@
 
 zk-audit delegates to companion skills when they are installed and falls back
 to its own minimum when they are not. **It never installs anything without the
-user's explicit yes.** `/zk-audit:setup` shows this table with live status and
+user's explicit yes.** `/zk-audit setup` (or `/zk-audit:setup`) shows this table with live status and
 offers each install command; Phase 0 prints one status line.
 
 ## Detecting a companion skill
@@ -12,10 +12,14 @@ A companion is available when the runtime lists a skill with that name
 namespaced as `<plugin>:<skill>`). As a fallback, check the usual locations:
 
 ```bash
-for d in ~/.claude/skills ~/.claude/plugins ~/.agents/skills ~/.codex/skills; do
-  [ -d "$d" ] && find "$d" -maxdepth 6 -name SKILL.md -path "*/<skill-name>/*" 2>/dev/null
+for d in ~/.claude/skills .claude/skills ~/.claude/plugins ~/.agents/skills ~/.codex/skills; do
+  [ -d "$d" ] && find -L "$d" -maxdepth 8 -name SKILL.md -path "*/<skill-name>/*" 2>/dev/null
 done; true   # a missing directory is not a failure
 ```
+
+`-L` follows the symlinks the install commands below create, and depth 8
+reaches plugin caches (`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/<skill>/SKILL.md`
+is seven levels down).
 
 Report each as `✔ <name>` or `✖ <name> (install: …)`.
 
@@ -33,7 +37,7 @@ Report each as `✔ <name>` or `✖ <name> (install: …)`.
 | `static-analysis` | Trail of Bits skills | Semgrep / CodeQL on Go and Solidity | skip; note it under coverage | `/plugin install static-analysis@trailofbits` |
 | `building-secure-contracts` | Trail of Bits skills | Slither on verifier callers | skip; note it under coverage | `/plugin install building-secure-contracts@trailofbits` |
 | `supply-chain-risk-auditor` | Trail of Bits skills | `go.mod` dependency risk | `gnark-versions.md` | `/plugin install supply-chain-risk-auditor@trailofbits` |
-| `differential-review` | Trail of Bits skills | PR review | `/zk-audit:diff` | `/plugin install differential-review@trailofbits` |
+| `differential-review` | Trail of Bits skills | PR review | `/zk-audit diff` | `/plugin install differential-review@trailofbits` |
 | `property-based-testing`, `mutation-testing` | Trail of Bits skills | deep profile: oracle tests (native Go == circuit), constraint-deletion mutants | suggested tests in the report | `/plugin install property-based-testing@trailofbits` |
 
 zk-audit only **names** Trail of Bits skills and calls them when installed. It
@@ -48,7 +52,7 @@ other agent.
 | Tool | Detect | Used for | Without it |
 |---|---|---|---|
 | Go ≥ 1.24 | `go version` | building `gnark-inventory`; running circuit PoCs | no inventory and no PoCs: guidance mode or `--local` manual review only |
-| gnark-inventory | `{plugin}/scripts/gnark-inventory version` | Phase 0 and 1 | as above |
+| gnark-inventory | `{skill}/scripts/gnark-inventory version` | Phase 0 and 1 | as above |
 | Foundry | `forge --version` | contract PoCs (T-FOUNDRY-*) | contract findings get `evidence: ANALYSIS` |
 | Semgrep | `semgrep --version` | optional rules, `static-analysis` companion | skipped |
 | Slither | `slither --version` | `building-secure-contracts` companion | skipped |

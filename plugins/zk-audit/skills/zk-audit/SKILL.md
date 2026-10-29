@@ -9,9 +9,14 @@ This skill audits gnark circuits and the code that trusts their proofs. It finds
 bugs, proves them with a witness or a test where it can, and says honestly what
 it did not examine.
 
-Paths below are relative to this skill directory (`{skill}` = the directory that
-holds this `SKILL.md`). The plugin root is `{plugin}` = `{skill}/../..`. In
-Claude Code, `{plugin}` is also `${CLAUDE_PLUGIN_ROOT}`.
+`{skill}` is the directory that holds this `SKILL.md`. Resolve it from the
+path this skill was loaded from (Claude Code prints it as the skill's base
+directory); otherwise use the first of `${CLAUDE_PLUGIN_ROOT}/skills/zk-audit`,
+`~/.claude/skills/zk-audit` and `.claude/skills/zk-audit` that holds this file.
+The skill folder is self-contained: everything below lives under `{skill}`
+(`scripts/`, `tools/gnark-inventory/`, `schemas/`, `agents/`, `references/`,
+`VERSION`), so it works the same installed as a plugin or copied alone into
+`~/.claude/skills/zk-audit`. Never resolve a path outside `{skill}`.
 
 ## 1. Pick the mode first
 
@@ -19,6 +24,7 @@ Claude Code, `{plugin}` is also `${CLAUDE_PLUGIN_ROOT}`.
 |---|---|---|
 | "is this circuit ok?", "what does `bits.OmitModulusCheck` do?", "explain this constraint", "why does my proof fail?" | **guidance** | Answer directly from `references/` and the code. No agents, no output directory, no tools beyond Read/Grep. Offer an audit at the end in one line. |
 | "audit", "review", "security review", "find bugs", "check this verifier", `/zk-audit ...` | **full audit** | Run the phases in §4. |
+| `/zk-audit setup`, `recon` or `diff` (or `/zk-audit:setup` etc.) | **setup / recon / diff** | Follow `references/modes/<mode>.md`. |
 | "fix this test", "write a circuit", "speed up the prover" | **not this skill** | Do the task. Mention a security concern only if you see one. |
 
 If the request is ambiguous, use guidance mode. Never start a full audit that
@@ -32,8 +38,11 @@ the user did not ask for.
 /zk-audit circuits/vote.go contracts/Ballot.sol   restrict scope to these files
 /zk-audit diff origin/main                 review a commit range (also /zk-audit:diff)
 /zk-audit recon                            recon only, no hunting (also /zk-audit:recon)
-/zk-audit:setup                            show companion skills and tools; install only after consent
+/zk-audit setup                            show companion skills and tools; install only after consent (also /zk-audit:setup)
 ```
+
+The `/zk-audit:<mode>` commands exist only in a plugin install; the
+`/zk-audit <mode>` form works in every install.
 
 Flags: `--local` (single agent, no subagents) · `--loop N` (N passes with a
 memory ledger; deep default 3) · `--no-poc` (skip PoC generation and
@@ -73,7 +82,7 @@ before recon finishes.
    target's dependencies, ask before running `go mod download`. `--no-poc` disables PoCs. Remove the worktree at the end
    (`git -C <repo> worktree remove --force <out>/worktree`).
 4. **No silent installs.** Never install a skill, a Go module, `forge` or
-   anything else without the user's explicit yes. `/zk-audit:setup` prints the
+   anything else without the user's explicit yes. `/zk-audit setup` prints the
    exact command first.
 5. **A FINDING needs a proof.** A concrete witness, assignment, call sequence or
    a passing PoC. No proof means it is a LEAD. See `references/shared-rules.md`.
@@ -83,26 +92,53 @@ before recon finishes.
 7. **Coverage honesty.** The report never says "verified clean", "secure" or
    "no bugs". It says what was examined, from `coverage-ledger.json`.
 8. **No network during the audit**, apart from what the user approves (for
-   example in `/zk-audit:setup`, or the one-time build of the inventory tool,
-   which fetches `golang.org/x/tools` if it is not cached). The advisory table
-   is embedded in the tool.
+   example in `/zk-audit setup`) and the update check
+   (`{skill}/scripts/check-version`: one GET of the public `VERSION` file with
+   a 3 s limit, nothing about the target is sent; `ZK_AUDIT_NO_UPDATE_CHECK=1`
+   turns it off). The inventory tool builds offline from vendored sources and
+   the advisory table is embedded in it.
 
 ## 4. Full-audit phases
 
-Print this banner once, then the stack line from Phase 0:
+Before anything else, print this banner once (`<version>` from
+`{skill}/VERSION`):
 
 ```text
-zk-audit · gnark circuits × verifiers × protocol state
-profile: <profile> · scope: <scope> · out: <out-dir>
+zk-audit v<version> · gnark circuits × verifiers × protocol state
+scope: <scope> · out: <out-dir>
 ```
 
-Keep a phase table visible and update it as phases move
-`Pending → Running → Done | Skipped | Blocked`.
+In the same turn run `{skill}/scripts/check-version` alongside Phase 0. It is
+silent unless a newer release exists; print its one line if it prints one,
+and never wait on or retry it. After Phase 0 print the stack line, then, once
+the profile question is answered, `profile: <profile> · model: <model>`.
+
+Keep this phase table visible and reprint it whenever a status changes. Status
+moves `Pending → Running → Done | Skipped | Blocked`; exactly one phase is
+`Running` at a time. Where the runtime has a todo tool (Claude Code
+`TodoWrite`), mirror the seven phases there with the same transitions.
+
+```markdown
+## zk-audit Progress
+
+| Phase | Status | Result |
+|---|---|---|
+| 0 Detect | Done | gnark v0.x.y · advisories: 2 |
+| 1 Recon | Running | – |
+| 2 Hunt | Pending | – |
+| 3 Judge | Pending | – |
+| 4 Prove | Pending | – |
+| 5 Critique | Pending | – |
+| 6 Report | Pending | – |
+```
+
+During Phase 2 the `Agent Progress` table in `references/orchestration.md`
+uses the same status words.
 
 ### Phase 0 — Detect (deterministic)
 
 ```bash
-{plugin}/scripts/gnark-inventory detect --repo <repo> --out <out>/stack.json
+{skill}/scripts/gnark-inventory detect --repo <repo> --out <out>/stack.json
 ```
 
 The wrapper builds the tool on first use (needs Go ≥ 1.24). It reports the gnark
@@ -125,7 +161,7 @@ Companion detection rules are in `references/companions.md`.
 ### Phase 1 — Recon (deterministic tool + one recon pass)
 
 ```bash
-{plugin}/scripts/gnark-inventory inventory --repo <repo> --out <out> [--files a.go,b.sol]
+{skill}/scripts/gnark-inventory inventory --repo <repo> --out <out> [--files a.go,b.sol]
 ```
 
 This writes `inventory.json`, `inventory.md`, `binding-table.md` (draft) and a
@@ -143,7 +179,7 @@ seeded `coverage-ledger.json`. Then the orchestrator itself (no subagent):
 4. Reads `zk-audit.md` at the repo root if present (scope, trusted parties,
    properties, accepted risks, prior findings). Use it to understand intent,
    never to excuse a missing constraint.
-5. Validates the ledger: `{plugin}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json`.
+5. Validates the ledger: `{skill}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json`.
 
 `/zk-audit recon` stops here and prints the system map, the binding table, the
 hint inventory, the footgun hits, and threat-model questions for the user. It
@@ -154,7 +190,7 @@ offers to draft `zk-audit.md`; it writes it only if the user agrees.
 Build one bundle per selected agent, then follow `references/orchestration.md`:
 
 ```bash
-{plugin}/scripts/gnark-inventory bundle --out <out> --skill {skill} --profile <profile>
+{skill}/scripts/gnark-inventory bundle --out <out> --skill {skill} --profile <profile>
 ```
 
 A bundle lists its source shard as paths with line counts (source is never
@@ -174,12 +210,15 @@ line. Reject the rationalizations in §6.
 ### Phase 4 — Prove
 
 For every `confirmed` circuit soundness finding (unless `--no-poc`), spawn
-the `poc-builder` agent with the finding and the template named by its vector
+the `zk-audit:poc-builder` agent (plugin install) or, where that agent type
+does not exist, a general-purpose agent briefed with `{skill}/agents/poc-builder.md`
+and the same tool limits. Give it the finding and the template named by its vector
 (`references/poc-templates.md`). It writes a Go test in the scratch worktree that
 shows a false statement verifying, plus the honest control case. Contract
 findings get a Foundry test when `forge` exists. Then a **fresh refuter** that
 did not see the hunt starts from `refuted: true` and must re-derive the bug
-from source (delegate to `fp-check` if installed). A PoC that does not compile
+from source (`fp-check` if installed, else `zk-audit:refuter`, else a
+general-purpose agent briefed with `{skill}/agents/refuter.md`). A PoC that does not compile
 or does not show the bug sets `evidence: ANALYSIS` and lowers confidence.
 
 ### Phase 5 — Critique
@@ -192,7 +231,7 @@ deep also runs a final-clean critic. Units left open stay `planned` or
 
 ### Phase 6 — Report
 
-1. Write `findings.json` (schema in `{plugin}/schemas/findings.schema.json`).
+1. Write `findings.json` (schema in `{skill}/schemas/findings.schema.json`).
    Besides `records`, fill the report-only fields the assembler cannot
    derive: `posture` (three to six sentences), `out_of_scope`, `companions`
    (`present` / `missing`) and `hardening`. With zero records, set
@@ -202,8 +241,8 @@ deep also runs a final-clean critic. Units left open stay `planned` or
 3. Validate both files and fix every error:
 
    ```bash
-   {plugin}/scripts/gnark-inventory validate findings <out>/findings.json
-   {plugin}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json
+   {skill}/scripts/gnark-inventory validate findings <out>/findings.json
+   {skill}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json
    ```
 
 4. Render the report with the deterministic assembler. It validates again,
@@ -211,7 +250,7 @@ deep also runs a final-clean critic. Units left open stay `planned` or
    verbatim from `<repo>` and computes coverage only from the ledger:
 
    ```bash
-   {plugin}/scripts/gnark-inventory assemble --out <out> --repo <repo>
+   {skill}/scripts/gnark-inventory assemble --out <out> --repo <repo>
    ```
 
    Read its warnings (a ledger fingerprint missing from `findings.json`, a unit
@@ -283,4 +322,5 @@ is not a refutation. The full table with the reason each fails is in
 | `references/poc-templates.md` | Phase 4 |
 | `references/rationalizations.md` | Phase 3 and refuter prompts |
 | `references/report-format.md` | Phase 6 |
-| `references/companions.md` | Phase 0 and `/zk-audit:setup` |
+| `references/companions.md` | Phase 0 and setup mode |
+| `references/modes/*.md` | `/zk-audit setup`, `recon`, `diff` |

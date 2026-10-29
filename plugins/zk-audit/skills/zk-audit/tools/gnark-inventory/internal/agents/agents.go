@@ -28,6 +28,9 @@ type Entry struct {
 	Leads    int    `json:"leads"`
 	Bytes    int    `json:"bytes"`
 	Attempts int    `json:"attempts"`
+	// Model is the model the runtime ran the agent on, when it said so
+	// (a fallback to another model is recorded here and in the reason).
+	Model string `json:"model,omitempty"`
 }
 
 // Index is agents/index.json.
@@ -46,6 +49,11 @@ var (
 // A blocked, failed or refused agent needs a reason; saving the same id again
 // counts another attempt and replaces the output.
 func Save(out, id, content, status, reason string) (*Entry, error) {
+	return SaveWith(out, id, content, status, reason, "")
+}
+
+// SaveWith is Save that also records the model the agent ran on.
+func SaveWith(out, id, content, status, reason, model string) (*Entry, error) {
 	if !reID.MatchString(id) || strings.Contains(id, "..") {
 		return nil, fmt.Errorf("agents save: %q is not an agent id", id)
 	}
@@ -66,7 +74,7 @@ func Save(out, id, content, status, reason string) (*Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := Entry{ID: id, Status: status, Reason: reason, Bytes: len(content),
+	e := Entry{ID: id, Status: status, Reason: reason, Bytes: len(content), Model: model,
 		Findings: len(reFinding.FindAllStringIndex(content, -1)), Leads: len(reLead.FindAllStringIndex(content, -1))}
 	if strings.TrimSpace(content) != "" {
 		e.File = "agents/" + validate.SafeName(id) + ".md"

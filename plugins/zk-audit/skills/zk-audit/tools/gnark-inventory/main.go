@@ -47,6 +47,7 @@ Usage:
   gnark-inventory inventory --repo DIR --out DIR [--files a.go,dir/] [--syntax-only] [--allow-network]
   gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile P]
   gnark-inventory estimate  --out DIR [--profile P]... [--passes N] [--no-poc] [--json]
+  gnark-inventory budget    record --out DIR --id ID [--role R] [--tokens N] [--status S] [--model M] | check --out DIR --before LABEL [--hunter N] [--poc N] [--refuter N] [--critic N] [--wave N] [--budget USD] | show --out DIR [--json]
   gnark-inventory profiles  [--profile P] [--markdown] [--check-docs SKILL_DIR] [--sync-docs SKILL_DIR]
   gnark-inventory validate  findings|ledger|stack FILE [--out DIR]
   gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F] [--file-output]
@@ -55,7 +56,7 @@ Usage:
   gnark-inventory ledger    mark --out DIR (--unit ID|--match S|--lens L|--kind K|--class C)... [--from STATUS] [--status S] [--agent A]... [--reviewed P]... [--fingerprint F]... [--reason R] [--notes T] [--wave N]
   gnark-inventory ledger    add  --out DIR --kind K --subject S --class C --lens L [--path FILE:LINE] [--notes T]
   gnark-inventory ledger    show --out DIR
-  gnark-inventory agents    save --out DIR --id ID [--from FILE] [--status done|blocked|failed|refused] [--reason R]
+  gnark-inventory agents    save --out DIR --id ID [--from FILE] [--status done|blocked|failed|refused] [--reason R] [--tokens N] [--tool-uses N] [--duration-ms N] [--model M] [--role R]
   gnark-inventory agents    list --out DIR
   gnark-inventory verifier  abi|diff|vk|bytecode|regen|ceremony [flags]   (gnark-inventory verifier help)
   gnark-inventory convert   pashov --in PATH --out FILE [--inventory FILE]
@@ -100,6 +101,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = cmdBundle(args[1:], stdout)
 	case "estimate":
 		err = cmdEstimate(args[1:], stdout)
+	case "budget":
+		code, err = cmdBudget(args[1:], stdout)
 	case "validate":
 		code, err = cmdValidate(args[1:], stdout)
 	case "lint-kb":

@@ -135,23 +135,25 @@ type ItemResult struct {
 
 // Result is the score of one run.
 type Result struct {
-	Case           string       `json:"case"`
-	Label          string       `json:"label,omitempty"`
-	Items          []ItemResult `json:"items"`
-	Decoys         []ItemResult `json:"decoys"`
-	Recall         float64      `json:"recall"`
-	CriticalRecall *float64     `json:"critical_recall,omitempty"`
-	Found          int          `json:"found"`
-	Partial        int          `json:"partial"`
-	Missed         int          `json:"missed"`
-	FalsePositives []string     `json:"false_positives"`
-	Noise          []string     `json:"noise"`
-	Precision      *float64     `json:"precision,omitempty"`
-	SeverityAgree  *float64     `json:"severity_agreement,omitempty"`
-	PoCRate        *float64     `json:"poc_rate,omitempty"`
-	CostUSD        *float64     `json:"cost_usd,omitempty"`
-	DurationS      *float64     `json:"duration_s,omitempty"`
-	Error          string       `json:"error,omitempty"`
+	Case   string       `json:"case"`
+	Label  string       `json:"label,omitempty"`
+	Items  []ItemResult `json:"items"`
+	Decoys []ItemResult `json:"decoys"`
+	// Recall is nil for an all-safe fixture (no planted items): recall is
+	// undefined, not zero, so summaries print it as "–".
+	Recall         *float64 `json:"recall"`
+	CriticalRecall *float64 `json:"critical_recall,omitempty"`
+	Found          int      `json:"found"`
+	Partial        int      `json:"partial"`
+	Missed         int      `json:"missed"`
+	FalsePositives []string `json:"false_positives"`
+	Noise          []string `json:"noise"`
+	Precision      *float64 `json:"precision,omitempty"`
+	SeverityAgree  *float64 `json:"severity_agreement,omitempty"`
+	PoCRate        *float64 `json:"poc_rate,omitempty"`
+	CostUSD        *float64 `json:"cost_usd,omitempty"`
+	DurationS      *float64 `json:"duration_s,omitempty"`
+	Error          string   `json:"error,omitempty"`
 }
 
 func score(k *Key, es []entry) *Result {
@@ -248,7 +250,8 @@ func score(k *Key, es []entry) *Result {
 		}
 	}
 	if n := len(k.Items); n > 0 {
-		res.Recall = (float64(res.Found) + 0.5*float64(res.Partial)) / float64(n)
+		v := (float64(res.Found) + 0.5*float64(res.Partial)) / float64(n)
+		res.Recall = &v
 	}
 	if critTotal > 0 {
 		v := critFound / float64(critTotal)

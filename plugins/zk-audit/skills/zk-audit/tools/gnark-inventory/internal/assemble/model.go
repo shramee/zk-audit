@@ -132,15 +132,15 @@ type Companions struct {
 
 // Findings is findings.json.
 type Findings struct {
-	Repo             string      `json:"repo"`
-	Commit           string      `json:"commit"`
-	RunID            string      `json:"run_id"`
-	Profile          string      `json:"profile"`
-	NoFindings       bool        `json:"no_findings"`
-	NoFindingsReason string      `json:"no_findings_reason"`
-	Posture          string      `json:"posture"`
-	OutOfScope       []string    `json:"out_of_scope"`
-	Companions       *Companions `json:"companions"`
+	Repo             string         `json:"repo"`
+	Commit           string         `json:"commit"`
+	RunID            string         `json:"run_id"`
+	Profile          string         `json:"profile"`
+	NoFindings       bool           `json:"no_findings"`
+	NoFindingsReason string         `json:"no_findings_reason"`
+	Posture          string         `json:"posture"`
+	OutOfScope       []string       `json:"out_of_scope"`
+	Companions       *Companions    `json:"companions"`
 	Hardening        []Hardening    `json:"hardening"`
 	AcceptedRisks    []AcceptedRisk `json:"accepted_risks"`
 	Records          []Record       `json:"records"`

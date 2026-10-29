@@ -1,0 +1,10 @@
+{
+  "schema_version": "1", "case": "nonbool-mux", "fixture": "nonbool-mux",
+  "items": [
+    {"id": "S1", "class": "soundness", "critical": true,
+     "title": "Mux selector not constrained boolean",
+     "ranges": [{"file": "circuit/circuit.go", "anchors": ["out := api.Add(c.Lane0, api.Mul(c.Select, api.Sub(c.Lane1, c.Lane0)))"]}],
+     "match": "(?i)select|boolean|mux|selector|assertisboolean|{0, ?1}|affine|weight",
+     "expect": ["confirmed"], "partial": ["needs_validation", "lead"], "severity": ["high", "critical", "medium"]}
+  ], "decoys": [], "other": []
+}

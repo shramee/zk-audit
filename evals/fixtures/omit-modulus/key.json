@@ -1,0 +1,10 @@
+{
+  "schema_version": "1", "case": "omit-modulus", "fixture": "omit-modulus",
+  "items": [
+    {"id": "R1", "class": "soundness", "critical": true,
+     "title": "Full-width recomposition without a canonical (< r) check",
+     "ranges": [{"file": "circuit/circuit.go", "anchors": ["api.AssertIsEqual(sum, c.Value)", "api.AssertIsEqual(c.Positive, c.Bits[Width-1])"]}],
+     "match": "(?i)canonical|modulus|alias|\\+ ?r|non.?canonical|reduc|two decomp|top bit|high bit|omitmodulus",
+     "expect": ["confirmed"], "partial": ["needs_validation", "lead"], "severity": ["high", "critical", "medium"]}
+  ], "decoys": [], "other": []
+}

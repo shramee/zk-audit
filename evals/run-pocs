@@ -17,12 +17,14 @@ dest="$scratch/$name"
 "$here/sanitize" "$name" "$dest" >/dev/null
 cp "$pocs"/*_test.go "$dest/$pkg/"
 # Run through the skill's sandbox, the same command an audit uses: no network
-# (GOPROXY=off; set EVAL_GOPROXY to allow downloads), the scratch copy the
+# (GOPROXY=off; EVAL_GOPROXY fetches missing modules first), the scratch copy the
 # only writable tree, cgo off, local toolchain, time and memory limits.
 # Without bwrap / sandbox-exec it warns and runs with the limits only.
-net=()
 if [ "${EVAL_GOPROXY:-off}" != off ]; then
-  net=(--allow-network --env "GOPROXY=$EVAL_GOPROXY")
+  # Fetch the PoCs' module dependencies (gnark/test needs testify) before
+  # the offline run. `go list` resolves imports without building or running
+  # anything, so this step needs no sandbox.
+  GOWORK=off CGO_ENABLED=0 GOFLAGS=-mod=mod GOPROXY="$EVAL_GOPROXY" go -C "$dest" list -test -deps "./$pkg/" >/dev/null
 fi
-exec "$here/../plugins/zk-audit/skills/zk-audit/scripts/sandbox" --rw "$dest" --timeout 900 ${net[@]+"${net[@]}"} -- \
+exec "$here/../plugins/zk-audit/skills/zk-audit/scripts/sandbox" --rw "$dest" --timeout 900 -- \
   go -C "$dest" test -count=1 -run '^Test(PoC|Decoy)_' -v "./$pkg/"

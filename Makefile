@@ -32,9 +32,10 @@ standalone:
 	test/standalone-skill.sh
 
 ## eval-pocs: run the pool fixture's eval PoCs in a sanitized scratch copy,
-## inside the skill's sandbox and offline (make fixtures downloads the modules)
+## inside the skill's sandbox and offline; missing modules (testify for
+## gnark/test) are fetched first, outside the sandbox, with `go list`
 eval-pocs: fixtures
-	evals/run-pocs pool "$$(mktemp -d)"
+	EVAL_GOPROXY="$$(go env GOPROXY)" evals/run-pocs pool "$$(mktemp -d)"
 
 ## sync-schemas: copy the canonical schemas into the tool's embed directory
 sync-schemas:

@@ -391,8 +391,19 @@ func Run(argv []string, opt Options) (int, *Engine, error) {
 		// Read-only re-binds of what the masked home or /tmp may hide.
 		roBinds := append([]string{}, ro...)
 		roBinds = append(roBinds, filepath.Dir(bin), self)
-		for _, k := range []string{"GOROOT", "GOMODCACHE"} {
-			if v := goEnvValue(k); v != "" {
+		if v := goEnvValue("GOROOT"); v != "" {
+			roBinds = append(roBinds, v)
+		}
+		// The module cache is read-only, except when the user allowed the
+		// network: then the go command may download into it.
+		if v := goEnvValue("GOMODCACHE"); v != "" {
+			if opt.Network {
+				if err := os.MkdirAll(v, 0o755); err == nil {
+					if r, err := filepath.EvalSymlinks(v); err == nil {
+						rw = append(rw, r)
+					}
+				}
+			} else {
 				roBinds = append(roBinds, v)
 			}
 		}

@@ -223,8 +223,9 @@ the record (`refuter`).
 - `bits.ToBinary(..., bits.WithNbDigits(n))` for `n` below the field size: also a
   range check.
 - `rangecheck.New(api).Check(v, n)` on gnark ≥ v0.9.2.
-- `eddsa.Verify` on gnark ≥ v0.14.0 for signature canonicity (but see V-E2 for
-  identities).
+- `eddsa.Verify` on gnark ≥ v0.14.0 for the bound on `S` only (v0.14.0
+  accepts `S = order`; strict from v0.15.0). It does not check `A` or `R` on
+  the curve or in the subgroup: see V-E2 and V-E4.
 - Emulated `Field` arithmetic results (internal elements); `ReduceStrict`,
   `AssertIsInRange`, `ToBitsCanonical` before representation-sensitive use.
 - Generated gnark Groth16 verifiers for inputs ≥ r (`PublicInputNotInField`).

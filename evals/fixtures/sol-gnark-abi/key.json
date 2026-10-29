@@ -1,0 +1,47 @@
+{
+  "schema_version": "1",
+  "case": "sol-gnark-abi",
+  "fixture": "sol-gnark-abi",
+  "items": [
+    {
+      "id": "A1",
+      "class": "integration",
+      "title": "Verifier interface does not match the gnark v0.14.0 verifier, so every redeem reverts",
+      "ranges": [
+        {
+          "file": "contracts/Redeemer.sol",
+          "anchors": [
+            "function verifyProof(bytes calldata proof, uint256[2] calldata input) external view returns (bool);"
+          ]
+        },
+        {
+          "file": "contracts/Redeemer.sol",
+          "anchors": [
+            "require(verifier.verifyProof(proof, [tag, root]), \"bad proof\");"
+          ]
+        }
+      ],
+      "match": "(?i)abi|selector|interface|signature|uint256\\[8\\]|bytes|return|revert|mismatch",
+      "expect": ["confirmed"],
+      "partial": ["needs_validation", "lead"],
+      "severity": ["medium", "high"]
+    },
+    {
+      "id": "A2",
+      "class": "setup",
+      "title": "Single-party groth16.Setup produces the shipped verifier",
+      "ranges": [
+        {
+          "file": "cmd/export/main.go",
+          "anchors": ["_, vk, err := groth16.Setup(ccs)"]
+        }
+      ],
+      "match": "(?i)setup|toxic|ceremony|trusted|single.?party",
+      "expect": ["needs_validation", "confirmed"],
+      "partial": ["lead", "hardening"],
+      "severity": ["high", "critical"]
+    }
+  ],
+  "decoys": [],
+  "other": []
+}

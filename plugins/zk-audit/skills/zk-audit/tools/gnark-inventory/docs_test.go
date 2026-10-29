@@ -139,7 +139,7 @@ func TestDocumentedCommandsExist(t *testing.T) {
 // evalNames are identifiers of the eval fixtures. Hunting agents read the
 // skill docs, so an example that uses them primes the agents toward the
 // planted bugs and inflates eval recall.
-var evalNames = []string{"TransferCircuit", "SigCircuit", "EdgeCircuit", "divHint", "splitHint", "transfer.go", "Pool.sol", "Pool.withdraw", "RootRing", "liveness-roots"}
+var evalNames = []string{"TransferCircuit", "SigCircuit", "EdgeCircuit", "divHint", "splitHint", "transfer.go", "Pool.sol", "Pool.withdraw", "RootRing", "liveness-roots", "RedeemCircuit", "Redeemer", "IRedeemVerifier", "sol-gnark-abi"}
 
 func TestDocsDoNotNameEvalFixtures(t *testing.T) {
 	for name, doc := range pluginDocs(t) {

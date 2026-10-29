@@ -266,7 +266,10 @@ findings get a Foundry test when `forge` exists. Then a **fresh refuter** that
 did not see the hunt starts from `refuted: true` and must re-derive the bug
 from source (`fp-check` if installed, else `zk-audit:refuter`, else a
 general-purpose agent briefed with `{skill}/agents/refuter.md`). A PoC that does not compile
-or does not show the bug sets `evidence: ANALYSIS` and lowers confidence.
+or does not show the bug sets `evidence: ANALYSIS` and lowers confidence; a
+PoC on a model circuit is `poc.result: demonstrated_on_model` with
+`ANALYSIS`. Every PoC stays in `<out>/pocs/` and on its record, also when the
+record is later demoted.
 
 ### Phase 5 — Critique
 
@@ -286,11 +289,13 @@ deep also runs a final-clean critic. Units left open stay `planned` or
    `no_findings: true` and a `no_findings_reason` that says what was examined.
 2. Close the ledger: every unit still `planned` or `in_progress` becomes
    `deferred` or `blocked` with a `reason`.
-3. Validate both files and fix every error:
+3. Validate both files and fix every error. `--out` checks the evidence on
+   disk: every `poc.path` under `<out>/pocs/`, and an output in
+   `<out>/agents/` for every agent of a `covered` unit:
 
    ```bash
-   {skill}/scripts/gnark-inventory validate findings <out>/findings.json
-   {skill}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json
+   {skill}/scripts/gnark-inventory validate findings <out>/findings.json --out <out>
+   {skill}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json --out <out>
    ```
 
 4. Render the report with the deterministic assembler. It validates again,
@@ -302,7 +307,10 @@ deep also runs a final-clean critic. Units left open stay `planned` or
    ```
 
    Read its warnings (a ledger fingerprint missing from `findings.json`, a unit
-   still planned). Fix the inputs and rerun; never edit `REPORT.md` by hand.
+   still planned or candidate, a PoC file no record names). Fix the inputs and
+   rerun; never edit `REPORT.md` by hand. It also writes
+   `<out>/pocs/MANIFEST.json` (each PoC file, its hash, record, package and
+   command) so a PoC can be re-run after the worktree is removed.
 5. With `--file-output`, add `--file-output` to the assemble command; it also
    writes `<repo>/zk-audit-report-<run-id>.md`. The tool refuses every other
    output path inside the repository (exit 2).
@@ -351,7 +359,7 @@ is not a refutation. The full table with the reason each fails is in
 
 `~/.zk-audit/<repo>/<run-id>/` contains `stack.json`, `inventory.json`,
 `inventory.md`, `binding-table.md`, `system-map.md`, `coverage-ledger.json`,
-`findings.json`, `REPORT.md`, `pocs/`, and `bundles/`. Every finding carries
+`findings.json`, `REPORT.md`, `pocs/` (with `MANIFEST.json`), `agents/`, and `bundles/`. Every finding carries
 `verdict` (`confirmed` / `needs_validation` / `rejected`), `severity`,
 `confidence` (0–100), `evidence` (`POC` / `ANALYSIS`) and `detected_by`.
 

@@ -75,7 +75,7 @@ func TestGoldenFull(t *testing.T) {
 		"Rejected candidates: 1",
 		"Inventory load mode: `syntax` (1 load error)",
 		"GHSA-7fx8-hmgc-82jp (high, fixed v0.16.4)",
-		"Examined (covered or candidate): 3 of 6 applicable units (50%)",
+		"Examined (covered): 1 of 6 applicable units (16%)",
 		"`circuit:SigCircuit|crypto-gadgets` — planned — no reason recorded",
 		"Smells: api.IsZero(c.Recipient) result dropped; Recipient | appears in no AssertIsEqual.",
 		"Companions not available: circom-auditor, solidity-auditor",
@@ -110,7 +110,7 @@ func TestGoldenEmpty(t *testing.T) {
 		"The absence of confirmed findings does not mean the code is free of bugs.",
 		"The run recorded no findings: no candidate survived judging in the 2 covered units.",
 		"| Stack | not recorded (no stack.json) |",
-		"Examined (covered or candidate): 2 of 3 applicable units (66%)",
+		"Examined (covered): 2 of 3 applicable units (66%)",
 		"`circuit:Edge|field-arithmetic` — deferred — C3 is not in the quick profile",
 		"Absence of a finding is not\n> evidence of absence of bugs.",
 	} {

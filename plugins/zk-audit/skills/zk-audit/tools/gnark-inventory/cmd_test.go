@@ -146,3 +146,55 @@ func TestRefuseWritesInRepo(t *testing.T) {
 		}
 	}
 }
+
+// TestAssemblePoCManifest: assemble refuses a POC record whose file is not
+// in <out>/pocs/, and writes pocs/MANIFEST.json listing every PoC file
+// (including one no record references) with its hash.
+func TestAssemblePoCManifest(t *testing.T) {
+	out := t.TempDir()
+	var buf bytes.Buffer
+	if err := cmdInventory([]string{"--repo", fixture.Dir(t, "pool"), "--out", out, "--syntax-only"}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	rec := `{"schema_version":"1","repo":"pool","run_id":"20261029-121212","profile":"standard","records":[
+	{"fingerprint":"VoteCircuit|tally|hint-output-unconstrained","verdict":"confirmed","title":"t","layer":"circuit","bug_class":"hint-output-unconstrained",
+	 "location":{"file":"circuit/transfer.go","line":3,"scope":"X.Define"},"detected_by":["C1"],"description":"d",
+	 "severity":"low","confidence":60,"evidence":"POC","proof":"p","impact":"i",
+	 "gates":{"executes":"e","reachable":"r","unprivileged":"u","impact":"i"},
+	 "poc":{"path":"pocs/1_poc_test.go","command":"go test","result":"demonstrated","demonstrates":"soundness","package":"circuit"}}]}`
+	os.WriteFile(out+"/findings.json", []byte(rec), 0o644)
+	buf.Reset()
+	code, err := cmdAssemble([]string{"--out", out}, &buf)
+	if code != 1 || err != nil || !strings.Contains(buf.String(), "does not exist under") {
+		t.Fatalf("missing PoC file: %d %v %s", code, err, buf.String())
+	}
+	os.MkdirAll(out+"/pocs", 0o755)
+	os.WriteFile(out+"/pocs/1_poc_test.go", []byte("package circuit\n"), 0o644)
+	os.WriteFile(out+"/pocs/4_poc_test.go", []byte("package circuit\n// demoted\n"), 0o644)
+	buf.Reset()
+	code, err = cmdAssemble([]string{"--out", out}, &buf)
+	if code != 0 || err != nil {
+		t.Fatalf("assemble: %d %v %s", code, err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "pocs/4_poc_test.go is not the poc.path of any record") {
+		t.Errorf("no orphan warning: %s", buf.String())
+	}
+	b, err := os.ReadFile(out + "/pocs/MANIFEST.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var man struct {
+		PoCs []struct {
+			File, SHA256, Fingerprint, Package string
+		}
+	}
+	if err := json.Unmarshal(b, &man); err != nil || len(man.PoCs) != 2 {
+		t.Fatalf("manifest %v: %s", err, b)
+	}
+	if man.PoCs[0].File != "pocs/1_poc_test.go" || man.PoCs[0].Fingerprint == "" || man.PoCs[0].Package != "circuit" || len(man.PoCs[0].SHA256) != 64 {
+		t.Errorf("entry 0: %+v", man.PoCs[0])
+	}
+	if man.PoCs[1].File != "pocs/4_poc_test.go" || man.PoCs[1].Fingerprint != "" {
+		t.Errorf("orphan entry: %+v", man.PoCs[1])
+	}
+}

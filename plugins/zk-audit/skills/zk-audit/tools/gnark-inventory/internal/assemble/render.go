@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 )
 
 const disclaimer = `> This review is a time-boxed, best-effort search for bugs by an automated
@@ -154,6 +156,9 @@ func render(in *input) string {
 			w("- **%s** — %s · %s · detected by %s — %s Smells: %s. Unverified: %s\n",
 				inline(titleOf(r)), code(r.Location.Scope), code(locStr(r.Location)), strings.Join(agentOrder(r.DetectedBy), ", "),
 				endSentence(inline(r.Description)), inline(strings.Join(r.CodeSmells, "; ")), endSentence(inline(r.Unverified)))
+			if r.PoC != nil {
+				w("  PoC kept: %s\n", pocLine(r.PoC))
+			}
 		}
 		w("\n")
 	}
@@ -167,6 +172,11 @@ func render(in *input) string {
 			w("| **%s** · %s | %s | %d | %s | %s |\n", cell(titleOf(r)), cell(code(locStr(r.Location))), r.Severity, conf(r), cell(strings.Join(r.Blockers, "; ")), cell(r.ValidationPlan))
 		}
 		w("\n")
+		for _, r := range needs {
+			if r.PoC != nil {
+				w("- PoC kept for **%s**: %s\n", inline(titleOf(r)), pocLine(r.PoC))
+			}
+		}
 	}
 
 	w("## 7. Hardening notes\n\n")
@@ -219,6 +229,7 @@ func (in *input) writeScope(b *strings.Builder) {
 
 	var files []string
 	for _, u := range in.l.Units {
+		// candidate units were read too; they only lack a closed judgment
 		if u.Status == "covered" || u.Status == "candidate" {
 			files = append(files, u.ReviewedPaths...)
 		}
@@ -300,11 +311,24 @@ func (in *input) writeScope(b *strings.Builder) {
 	for _, r := range in.f.Records {
 		agents = append(agents, r.DetectedBy...)
 	}
-	agents = agentOrder(uniq(agents))
+	var other []string
+	known := agents[:0]
+	for _, a := range uniq(agents) {
+		if profile.Load().AgentKnown(a) {
+			known = append(known, a)
+		} else {
+			other = append(other, a)
+		}
+	}
+	agents = agentOrder(known)
 	if len(agents) == 0 {
 		w("| Agents | none recorded |\n")
 	} else {
 		w("| Agents | %s |\n", cell(strings.Join(agents, ", ")))
+	}
+	if len(other) > 0 {
+		sort.Strings(other)
+		w("| Other sources | %s |\n", cell(strings.Join(other, ", ")))
 	}
 
 	oos := append([]string(nil), in.f.OutOfScope...)
@@ -391,7 +415,7 @@ func (in *input) writeDetail(b *strings.Builder, n int, r *Record) {
 			inline(r.Gates.Executes), inline(r.Gates.Reachable), inline(r.Gates.Unprivileged), inline(r.Gates.Impact))
 	}
 	if r.PoC != nil {
-		w("**PoC.** %s — %s → %s.\n\n", code(r.PoC.Path), code(r.PoC.Command), strings.ReplaceAll(r.PoC.Result, "_", " "))
+		w("**PoC.** %s\n\n", pocLine(r.PoC))
 		if ex := strings.TrimRight(r.PoC.OutputExcerpt, "\n"); ex != "" {
 			lines := strings.Split(ex, "\n")
 			if len(lines) > maxQuote {
@@ -424,7 +448,18 @@ func (in *input) writeDetail(b *strings.Builder, n int, r *Record) {
 		if r.Refuter.By != "" {
 			by = " (by " + inline(r.Refuter.By) + ")"
 		}
-		w("**Refuter.** %s — %s%s\n\n", strings.ReplaceAll(r.Refuter.Verdict, "_", " "), endSentence(inline(r.Refuter.Reasoning)), by)
+		var split []string
+		if r.Refuter.Mechanism != "" {
+			split = append(split, "mechanism "+r.Refuter.Mechanism)
+		}
+		if r.Refuter.Impact != "" {
+			split = append(split, "impact "+r.Refuter.Impact)
+		}
+		verdict := strings.ReplaceAll(r.Refuter.Verdict, "_", " ")
+		if len(split) > 0 {
+			verdict += " (" + strings.Join(split, ", ") + ")"
+		}
+		w("**Refuter.** %s — %s%s\n\n", verdict, endSentence(inline(r.Refuter.Reasoning)), by)
 	} else {
 		w("**Refuter.** not run.\n\n")
 	}
@@ -575,18 +610,21 @@ func (in *input) writeCoverage(b *strings.Builder, rejected int) {
 	if app > 0 {
 		pct = ex * 100 / app
 	}
-	w("\nExamined (covered or candidate): %d of %d applicable units (%d%%).\n\n", ex, app, pct)
+	w("\nExamined (covered): %d of %d applicable units (%d%%).\n\n", ex, app, pct)
 
 	var open, skipped []Unit
 	for _, u := range in.l.Units {
 		switch u.Status {
-		case "planned", "in_progress", "deferred", "blocked":
+		case "planned", "in_progress", "candidate", "deferred", "blocked":
 			open = append(open, u)
 		case "not_applicable", "out_of_scope":
 			skipped = append(skipped, u)
 		}
 	}
 	reason := func(u Unit) string {
+		if u.Status == "candidate" && strings.TrimSpace(u.Reason) == "" {
+			return "raised " + strings.Join(u.ResultFingerprints, ", ") + "; not closed after judging"
+		}
 		if strings.TrimSpace(u.Reason) == "" {
 			return "no reason recorded"
 		}
@@ -635,4 +673,14 @@ func (in *input) writeCoverage(b *strings.Builder, rejected int) {
 			w("\n")
 		}
 	}
+}
+
+// pocLine describes a PoC: file, command, result, and which property it
+// breaks.
+func pocLine(p *PoC) string {
+	res := strings.ReplaceAll(p.Result, "_", " ")
+	if p.Demonstrates != "" {
+		res += " (" + p.Demonstrates + ")"
+	}
+	return fmt.Sprintf("%s — %s → %s.", code(p.Path), code(p.Command), res)
 }

@@ -21,7 +21,7 @@ Rendered by `gnark-inventory assemble` from `findings.json` and `coverage-ledger
 
 Proofs gate withdrawals from a shared pool. The Merkle membership check does not bind the spent note to the leaf, so any prover can withdraw. The owner can swap the verifier at any time. The single most important action is to hash the note into the leaf and bind Index into the path.
 
-Totals: 3 confirmed (1 critical, 1 high, 1 low) · 1 needs validation · 1 lead · 1 rejected. Ledger: 3 of 6 applicable units examined.
+Totals: 3 confirmed (1 critical, 1 high, 1 low) · 1 needs validation · 1 lead · 1 rejected. Ledger: 1 of 6 applicable units examined.
 
 ## 3. Findings
 
@@ -167,12 +167,14 @@ Trails worth manual work. No severity, no fix.
 | prover | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
 | **total** | 8 | 1 | 0 | 1 | 2 | 1 | 1 | 1 | 1 |
 
-Examined (covered or candidate): 3 of 6 applicable units (50%).
+Examined (covered): 1 of 6 applicable units (16%).
 
 Units not examined:
 
+- `circuit:TransferCircuit|hint-soundness` — candidate — raised TransferCircuit|res[1]|hint-output-unconstrained, TransferCircuit|Path[0]|merkle-leaf-unbound; not closed after judging
 - `circuit:TransferCircuit|spec-invariant` — deferred — C6 is not in the quick profile
 - `circuit:SigCircuit|crypto-gadgets` — planned — no reason recorded
+- `public-input:TransferCircuit.Recipient|public-input-binding` — candidate — raised Pool|withdraw|recipient-not-constrained, Pool|withdraw|missing-fingerprint; not closed after judging
 - `contract-fn:Pool.withdraw|protocol-state` — blocked — agent hit its turn limit
 
 Units not applicable or out of scope:

@@ -35,6 +35,8 @@ source proves otherwise.
 
 ```text
 verdict: exploitable | not_exploitable | uncertain
+mechanism: holds | refuted | uncertain   (does the free value or missing check exist?)
+impact: holds | refuted | uncertain      (does it harm someone as the finding claims?)
 reasoning: one paragraph, with file:line references
 blocking_location: file:line (only for not_exploitable)
 ```

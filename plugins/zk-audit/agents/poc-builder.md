@@ -65,14 +65,21 @@ only API shapes you may use without checking the pinned gnark source first.
    times. If the attack is rejected, read the rejecting constraint: the
    finding may be wrong. Report that; do not weaken the test.
 7. The result is `demonstrated` only if the attack passes **and** the honest
-   control fails as expected **and** the sanity case passes.
+   control fails as expected **and** the sanity case passes, against the
+   production circuit or contract. A PoC on a model circuit
+   (T-CONSTRAINT-MODEL) is `demonstrated_on_model`. Say which property it
+   breaks: `soundness` (a false statement is accepted) or `completeness` (an
+   honest statement is rejected); a PoC that shows only one side of a finding
+   that claims both says so.
 
 ## Return
 
 ```text
 poc_path: pocs/<file>
+package: <repository-relative package directory or Foundry root the file was copied into>
 command: <exact command>
-result: demonstrated | not_demonstrated | does_not_compile | not_run
+result: demonstrated | demonstrated_on_model | not_demonstrated | does_not_compile | not_run
+demonstrates: soundness | completeness
 output_excerpt: <the last 30 lines>
 notes: <template used and why; model circuit? assumptions? the rejecting constraint if not demonstrated>
 ```

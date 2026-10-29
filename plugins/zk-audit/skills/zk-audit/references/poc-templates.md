@@ -199,7 +199,7 @@ Use when the free value comes from the solver, not a hint, so no hook exists.
 `api.DivUnchecked(0, 0)` is an example. Copy the gadget's constraints into a
 small model circuit in the scratch worktree and expose the free wire through a
 hint, then apply T-HINT-OVERRIDE to the model. Record `evidence: ANALYSIS`
-unless you also show that the model and the original emit the same constraints
+and `poc.result: demonstrated_on_model` unless you also show that the model and the original emit the same constraints
 (same `ccs.GetNbConstraints()` for the gadget in isolation). Say in the finding
 that the PoC is a model.
 

@@ -18,15 +18,37 @@ Where each part comes from:
 | Report part | Source |
 |---|---|
 | Scope: profile, run, commit, companions, out of scope | `findings.json` top-level fields |
-| Scope: files reviewed, agents | ledger `reviewed_paths` and `agent_ids` of covered or candidate units, plus `detected_by` |
+| Scope: files reviewed, agents | ledger `reviewed_paths` and `agent_ids` of covered or candidate units, plus `detected_by`; ids that are no lens or critic go to an "Other sources" row |
 | Scope: stack, versions, advisories | `stack.json` |
 | Posture | `findings.json` `posture` (written by the orchestrator), then computed totals |
 | Findings, details, leads, needs validation | `records`, by verdict |
 | Constraint / code quote | the lines `location.line`–`end_line` of `<repo>/<file>`, verbatim, at most 30 |
 | Hardening notes | `findings.json` `hardening` |
-| Coverage | ledger statuses only; load mode from `inventory.json` |
+| Coverage | ledger statuses only (examined = `covered`); load mode from `inventory.json` |
+| PoC lines, `pocs/MANIFEST.json` | `poc` objects of every verdict, and the files in `<out>/pocs/` |
 
 The assembler rejects the claims listed under Language in any free-text field.
+
+## Evidence checks
+
+`validate findings|ledger FILE --out <out>` and `assemble --out <out>` check
+the records against the files in `<out>`. Errors stop the report (exit 1);
+warnings print and the report is written.
+
+| Check | Error | Warning |
+|---|---|---|
+| `evidence: POC` | no `poc`, `result` not `demonstrated`, or `demonstrated_on_model` (model PoCs keep `ANALYSIS`) | – |
+| `poc.path` | outside `<out>/pocs/`, or missing for a demonstrated PoC or `evidence: POC` | missing for `not_run`, `not_demonstrated`, `does_not_compile` |
+| `poc.demonstrates` | – | absent on a demonstrated PoC |
+| `evidence: ANALYSIS` with `result: demonstrated` | – | use `POC`, or `demonstrated_on_model` |
+| file in `<out>/pocs/` no record names | – | attach it to its (possibly demoted) record |
+| `covered` / `candidate` unit agent | no `<out>/agents/<ID>.md` (`C1@pkg/x` → `C1__pkg_x.md`) | id is no lens or critic in the profiles |
+| `covered` unit `reviewed_paths` | absolute or `..` path, or none is the unit's own file (or a directory holding it) | – |
+| unit still `planned`, `in_progress` or `candidate` | – | listed as not examined |
+
+Without `--out`, the file checks are skipped; the path checks still run.
+Errors are claims the run cannot back with a file; warnings are gaps a human
+should see but that do not make the report false.
 
 Path: `~/.zk-audit/<repo>/<run-id>/REPORT.md`. With `--file-output` (pass
 `assemble --file-output`), the same file is also written to
@@ -101,7 +123,7 @@ Also at: `Ballot.cast` `contracts/Ballot.sol:31`     (related_locations, if any)
 
 **Impact.** <impact>
 
-**PoC.** `pocs/<file>` — `go test -run PoC_1 ./circuit` → demonstrated.
+**PoC.** `pocs/<file>` — `go test -run PoC_1 ./circuit` → demonstrated (soundness).
 
 **Fix.** <fix summary>
 
@@ -113,7 +135,7 @@ Option A — <label>
 
 **Chain.** `<fingerprint>` → …     (if chain)
 
-**Refuter.** exploitable — <one paragraph> (by fp-check)
+**Refuter.** exploitable (mechanism holds, impact holds) — <one paragraph> (by fp-check)
 
 ## 5. Leads
 
@@ -136,9 +158,11 @@ repo, no public-input-order test, `api.Println` in a circuit).
 | Kind | Units | planned | in progress | covered | candidate | deferred | blocked | not applicable | out of scope |
 |---|---|---|---|---|---|---|---|---|---|
 
-Examined (covered or candidate): X of Y applicable units (Z%).
+Examined (covered): X of Y applicable units (Z%).
 
-- Units not examined, with status and reason (copied from the ledger).
+- Units not examined, with status and reason (copied from the ledger). A
+  `candidate` unit is not examined coverage: judging must close it as
+  `covered` (keeping its `result_fingerprints`) or `blocked`.
 - Units not applicable or out of scope, with reasons.
 - Rejected candidates: N (kept in `findings.json`).
 - Companions not available.

@@ -220,6 +220,32 @@ tables and `gnark-inventory profiles` all follow the entry.
   the quoted file with `filepath.EvalSymlinks`, requires the real file to be
   a regular file inside the real root, and otherwise prints no quote.
 
+## Evidence truthfulness (validate and assemble)
+
+- **Checked against files** (x-ray G-3, G-8). `validate ... --out <out>`
+  and `assemble` check that every `poc.path` is a regular file under
+  `<out>/pocs/` and that every agent of a `covered` or `candidate` unit has
+  a saved output in `<out>/agents/`. Covered units' `reviewed_paths` must be
+  repository-relative and include the unit's own file. Missing evidence for
+  a claim (a POC without its file, coverage without an agent output) is an
+  error; gaps that do not make the report false (orphan PoC files, a PoC
+  that did not run, unknown agent ids, no `demonstrates`) are warnings. The
+  table is in `references/report-format.md`.
+- **Schema additions** from the 2026-10-29 measurement runs
+  (shramee/zk-audit#10): `poc.result: demonstrated_on_model` (a model-circuit
+  PoC with `ANALYSIS` read as a contradiction), `poc.demonstrates:
+  soundness|completeness` (a completeness-only PoC was labelled POC for a
+  soundness claim), `poc.package` (to re-run after the worktree is gone),
+  `poc` on non-confirmed records (a demoted record keeps its PoC), and
+  `refuter.mechanism` / `refuter.impact` (the one refutation was about
+  impact, not the mechanism). `assemble` writes `pocs/MANIFEST.json` with
+  every PoC file's hash and record.
+- **`candidate` is not coverage.** Examined = `covered` only; a candidate
+  unit is listed as not examined until judging closes it. The runs showed 28
+  of 39 units as candidates reported as "39 of 39 examined".
+- **Agents row.** Ids that are no lens or critic (orchestrator phases, wave
+  labels) go to an "Other sources" row instead of being listed as agents.
+
 ## Invocation parsing
 
 - **`gnark-inventory args`** turns the words after `/zk-audit` into JSON

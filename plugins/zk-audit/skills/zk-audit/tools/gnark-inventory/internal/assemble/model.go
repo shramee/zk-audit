@@ -29,6 +29,8 @@ type PoC struct {
 	Path          string `json:"path"`
 	Command       string `json:"command"`
 	Result        string `json:"result"`
+	Demonstrates  string `json:"demonstrates"`
+	Package       string `json:"package"`
 	OutputExcerpt string `json:"output_excerpt"`
 }
 
@@ -44,6 +46,8 @@ type Gates struct {
 type Refuter struct {
 	Verdict   string `json:"verdict"`
 	Reasoning string `json:"reasoning"`
+	Mechanism string `json:"mechanism"`
+	Impact    string `json:"impact"`
 	By        string `json:"by"`
 }
 

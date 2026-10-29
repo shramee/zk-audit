@@ -41,7 +41,7 @@ Usage:
   gnark-inventory inventory --repo DIR --out DIR [--files a.go,dir/] [--syntax-only] [--allow-network]
   gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile P]
   gnark-inventory profiles  [--profile P] [--markdown] [--check-docs SKILL_DIR] [--sync-docs SKILL_DIR]
-  gnark-inventory validate  findings|ledger|stack FILE
+  gnark-inventory validate  findings|ledger|stack FILE [--out DIR]
   gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F] [--file-output]
   gnark-inventory sandbox   [--rw DIR]... [--ro DIR]... [--cwd DIR] [--timeout SEC] [--mem MB] [--allow-network] [--engine E] [--require] [--check] -- CMD [ARGS...]
   gnark-inventory lint-kb   [--gnark-src DIR] SKILL_DIR
@@ -358,15 +358,30 @@ func cmdBundle(args []string, stdout io.Writer) error {
 	return writeJSONFile(filepath.Join(*out, "bundles", "index.json"), res)
 }
 
+// cmdValidate checks one document. Flags may come before KIND or after
+// FILE: `validate findings F --out DIR`.
 func cmdValidate(args []string, stdout io.Writer) (int, error) {
-	if len(args) != 2 {
-		return 2, fmt.Errorf("validate: want KIND FILE")
+	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
+	out := fs.String("out", "", "audit output directory: check poc.path files under <out>/pocs/ and agent outputs under <out>/agents/")
+	if err := fs.Parse(args); err != nil {
+		return 2, err
 	}
+	pos := fs.Args()
+	if len(pos) > 2 {
+		if err := fs.Parse(pos[2:]); err != nil {
+			return 2, err
+		}
+		pos = append(pos[:2:2], fs.Args()...)
+	}
+	if len(pos) != 2 {
+		return 2, fmt.Errorf("validate: want [--out DIR] KIND FILE")
+	}
+	args = pos
 	doc, err := os.ReadFile(args[1])
 	if err != nil {
 		return 2, err
 	}
-	rep, err := validate.Document(args[0], doc)
+	rep, err := validate.DocumentWith(args[0], doc, validate.Options{Out: *out})
 	if err != nil {
 		return 2, err
 	}
@@ -422,7 +437,7 @@ func cmdAssemble(args []string, stdout io.Writer) (int, error) {
 	def(stack, "stack.json", true)
 	def(inv, "inventory.json", true)
 	def(reportPath, "REPORT.md", false)
-	res, err := assemble.Assemble(assemble.Options{Findings: *findings, Ledger: *ledgerPath, Stack: *stack, Inventory: *inv, Repo: *repo})
+	res, err := assemble.Assemble(assemble.Options{Out: *out, Findings: *findings, Ledger: *ledgerPath, Stack: *stack, Inventory: *inv, Repo: *repo})
 	if err != nil {
 		var ie *assemble.InvalidError
 		if errors.As(err, &ie) {
@@ -451,6 +466,14 @@ func cmdAssemble(args []string, stdout io.Writer) (int, error) {
 	}
 	if err := os.WriteFile(*reportPath, []byte(res.Report), 0o644); err != nil {
 		return 2, err
+	}
+	if res.Manifest != nil {
+		if err := os.MkdirAll(filepath.Join(*out, "pocs"), 0o755); err != nil {
+			return 2, err
+		}
+		if err := os.WriteFile(filepath.Join(*out, "pocs", "MANIFEST.json"), res.Manifest, 0o644); err != nil {
+			return 2, err
+		}
 	}
 	fmt.Fprintf(stdout, "wrote %s: %s\n", *reportPath, res.Summary)
 	if copyPath != "" {

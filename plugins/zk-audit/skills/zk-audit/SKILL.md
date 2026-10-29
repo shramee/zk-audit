@@ -25,6 +25,7 @@ The skill folder is self-contained: everything below lives under `{skill}`
 | "is this circuit ok?", "what does `bits.OmitModulusCheck` do?", "explain this constraint", "why does my proof fail?" | **guidance** | Answer directly from `references/` and the code. No agents, no output directory, no tools beyond Read/Grep. Offer an audit at the end in one line. |
 | "audit", "review", "security review", "find bugs", "check this verifier", `/zk-audit ...` | **full audit** | Run the phases in §4. |
 | `/zk-audit setup`, `recon` or `diff` (or `/zk-audit:setup` etc.) | **setup / recon / diff** | Follow `references/modes/<mode>.md`. |
+| `/zk-audit library`, or an audit of a repository that exports gnark gadgets with no production circuit and no verifier contract (`stack.json` `library.mode`) | **library** | Full audit with the `library` profile; follow `references/modes/library.md`. |
 | "fix this test", "write a circuit", "speed up the prover" | **not this skill** | Do the task. Mention a security concern only if you see one. |
 
 If the request is ambiguous, use guidance mode. Never start a full audit that
@@ -38,6 +39,7 @@ the user did not ask for.
 /zk-audit circuits/vote.go contracts/Ballot.sol   restrict scope to these files
 /zk-audit diff origin/main                 review a commit range (also /zk-audit:diff)
 /zk-audit recon                            recon only, no hunting (also /zk-audit:recon)
+/zk-audit library                          audit a gnark gadget library (no production circuit)
 /zk-audit setup                            show companion skills and tools; install only after consent (also /zk-audit:setup)
 ```
 
@@ -206,8 +208,11 @@ hints, and whether Solidity, Foundry, Hardhat, Circom or Noir are present.
 - `.circom` in scope → delegate to `circom-auditor` if installed, else apply the
   generic vectors in `references/attack-vectors/generic-zk.md`.
 - `Nargo.toml` → out of scope for v1. Say so in the report.
-- No gnark and no verifier contract → tell the user this skill does not fit and
-  stop.
+- `library.mode` in `stack.json` (exported gadgets, no production circuit,
+  no verifier contract) → library mode: preselect the `library` profile in
+  the profile question and follow `references/modes/library.md`.
+- No gnark, no exported gadget and no verifier contract → tell the user this
+  skill does not fit and stop.
 
 Print one stack line: `gnark v0.x.y (advisories: N) · groth16/plonk · bn254 ·
 solidity: yes · foundry: yes · sandbox: bwrap · companions: ✔ fp-check ✖ circom-auditor`.
@@ -283,7 +288,8 @@ For every `confirmed` circuit soundness finding (unless `--no-poc`), spawn
 the `zk-audit:poc-builder` agent (plugin install) or, where that agent type
 does not exist, a general-purpose agent briefed with `{skill}/agents/poc-builder.md`
 and the same tool limits. Give it the finding and the template named by its vector
-(`references/poc-templates.md`). It writes a Go test in the scratch worktree that
+(`references/poc-templates.md`); for a gadget no production circuit calls
+(library mode), first `gnark-inventory harness` (T-GADGET-HARNESS). It writes a Go test in the scratch worktree that
 shows a false statement verifying, plus the honest control case. Contract
 findings (deep, or where the profile's PoC policy covers them) get a Foundry
 test when `forge` exists, against the verifier gnark exports with a real
@@ -412,4 +418,4 @@ is not a refutation. The full table with the reason each fails is in
 | `references/rationalizations.md` | Phase 3 and refuter prompts |
 | `references/report-format.md` | Phase 6 |
 | `references/companions.md` | Phase 0 and setup mode |
-| `references/modes/*.md` | `/zk-audit setup`, `recon`, `diff` |
+| `references/modes/*.md` | `/zk-audit setup`, `recon`, `diff`, `library` |

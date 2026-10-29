@@ -210,6 +210,63 @@ left open, it is recorded here with the reason.
 Nothing else changes: bundles, ledger seeding and validation, the docs
 tables and `gnark-inventory profiles` all follow the entry.
 
+## Library mode (gadget libraries)
+
+- **Detection.** `detect` parses (syntax only) the non-test, non-`main`
+  Go files that import gnark's `frontend` or `std/math/emulated` and counts
+  exported functions and methods with a `frontend.API` or
+  `(*)emulated.Field[T]` parameter (gadgets) and non-test `Define` methods
+  (production circuits). `library.mode` is true when there are gadgets, no
+  production circuit and no verifier contract. It is a profile
+  (`library`), not a mode word, so `/zk-audit library` needs no parser
+  change; Phase 0 preselects it in the profile question. A repository with
+  circuits and exported helpers is a normal audit; `deep` adds L1 there
+  (`when: exported-gadgets`).
+- **Auditing gnark std in place.** A directory with no `go.mod` reads the
+  enclosing one (`gomod.Enclosing`): `detect` reports gnark itself at the
+  version in the module cache path (`gnark@vX`) and the loader type-checks
+  the packages under the directory with the enclosing module. Checked on
+  gnark v0.14.0 `std/math/bits` (7 gadgets), `std/rangecheck` (1: `New`;
+  the checkers are unexported types) and `std/math/cmp` (11), typed mode.
+  The output looked right: every `Assert*` and comparison input is
+  `constrained`, `cmp.IsEqual`'s inputs `escape` (`IsZero` of the
+  difference), and `bits.FromBase`'s doc ("its canonical representation")
+  draws a `promise-canonical` check, a real doc-versus-constraint question.
+- **Gadget inventory.** The hint taint pass is split into steps
+  (`findSites`, `propagate`, `sinks`) so the gadget pass can root one state
+  per parameter next to the hint states, and an `onCall` hook follows
+  same-package callees (memoised per callee parameter, depth 4), so
+  `ToBits → recompose → AssertIsEqual` reads as constrained. Doc comments
+  are split into sentences and classified by regular expressions:
+  preconditions (`caller must`, `assumes`, `must be`, `not checked`, …)
+  and promises by property (boolean, range, canonical, on-curve, nonzero,
+  relation). `doc_checks` are deliberately coarse facts for L1: a promised
+  property with no constraining call of a matching name in the gadget or
+  its same-package callees, a returned hint output no constraint touches,
+  a witness input that reaches no constraint and that no precondition
+  names. Constraints behind an interface or in another package are not
+  followed, so a missing check proves nothing; L1 reads the code.
+- **Lens and ledger.** L1 owns class `doc-contract`, seeded per gadget
+  (seed kind `gadget`, ledger kind `gadget`). Without a production circuit
+  the `circuit`-seeded classes get one unit per gadget package (ledger kind
+  `package`) instead of none, so C1-C6 coverage is still tracked. Gadget
+  packages join the circuit shard.
+- **Harness.** `gnark-inventory harness` generates the wrapper from the
+  inventory alone (no go command): inputs become witness fields, `int` and
+  `bool` parameters `gnark:"-"` fields, outputs `Out<i>` fields asserted
+  equal (element outputs with `Field.AssertIsEqual`, with a comment that a
+  canonical promise needs a limb-by-limb check), variadic options are
+  dropped with a note. In-package by default so unexported hints are in
+  reach; `--external` writes `<pkg>_test` for packages that `gnark/test`
+  or the builders import (gnark std: in-package tests import-cycle). It
+  refuses a destination inside the audited repository. The eval PoCs of
+  `lib-gadgets` use the generated files unchanged and a tool test fails
+  when the generator drifts from them, so the generator is compiled and
+  run in CI (`make eval-pocs`).
+- **Differential tests** are a template (T-DIFFERENTIAL), not a tool
+  command: the native reference differs per library (its own Go code,
+  gnark-crypto, `math/big`). Mutants are guidance for deep, not automated.
+
 ## Solidity scan: inheritance, imports and several verifiers
 
 - **Two phases, still lexical.** The scan first splits every file into

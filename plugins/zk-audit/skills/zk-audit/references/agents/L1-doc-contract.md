@@ -29,8 +29,8 @@ For each gadget, in inventory order:
    encoding), point on the curve or in the subgroup, result non-zero,
    relation between outputs and inputs (`a = q*b + r`, recomposition),
    "asserts X" (the gadget fails for every input that violates X). An
-   undocumented gadget promises what its name says (`ToBits`, `IsLess`,
-   `Canonical`); say that you took the contract from the name.
+   undocumented gadget promises what its name says (`Decompose`, `Less`,
+   `Reduced`); say that you took the contract from the name.
 2. **Enforcement.** For each promise, name the constraint lines that
    enforce it, reading the body and every helper it calls, std gadgets
    included (at the pinned version, from the absolute std path in your

@@ -27,6 +27,7 @@ Where each part comes from:
 | Privacy | records with `property: privacy`, a `V-PR*` vector or `trust.breaks` privacy; ledger units of class `privacy` |
 | Hardening notes | `findings.json` `hardening` |
 | Coverage | ledger statuses only (examined = `covered`); load mode from `inventory.json` |
+| Coverage: gadget contracts (library mode) | `inventory.json` `gadgets` (doc promises, preconditions, doc checks) and each gadget's `doc-contract` ledger unit with the records it names |
 | Not covered | fixed text, then the lenses outside the profile (`profiles.json`), the ledger units not examined and the missing companions |
 | PoC lines, `pocs/MANIFEST.json` | `poc` objects of every verdict, and the files in `<out>/pocs/` |
 

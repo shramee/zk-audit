@@ -146,7 +146,7 @@ parties (admin, relayer, sequencer) behave.
 
 | Part | State |
 |---|---|
-| `gnark-inventory`: `args`, `detect`, `inventory`, `bundle`, `profiles`, `validate`, `assemble`, `ledger`, `agents`, `memory`, `diff`, `sandbox`, `lint-kb`, `advisories`, `rules` | Implemented, unit tested, run in CI. |
+| `gnark-inventory`: `args`, `detect`, `preflight`, `inventory`, `bundle`, `profiles`, `validate`, `assemble`, `ledger`, `agents`, `memory`, `diff`, `sandbox`, `harness`, `lint-kb`, `advisories`, `rules` | Implemented, unit tested, run in CI. |
 | Safety by code | Hunters and critics are read-only plugin agent types (Read, Grep, Glob); PoCs and recon type loading run in an OS sandbox (bubblewrap on Linux: no network, writes only to the worktree; `sandbox-exec` on macOS, untested in CI); the tool refuses writes into the target and symlinked quotes; `validate` / `assemble` check PoC files and agent outputs on disk. A standalone skill install restricts agent tools by prompt only. |
 | Findings, ledger and stack schemas with validators | Implemented. |
 | Deterministic report assembler (`assemble`) | Implemented: validates its inputs, refuses forbidden clean claims, quotes code from the audited tree, counts coverage only from the ledger; golden tests. |
@@ -220,6 +220,7 @@ PoCs, and the companion skills listed by `/zk-audit setup`.
 | `/zk-audit circuits/transfer.go contracts/Pool.sol` | Limits scope to the named files. |
 | `/zk-audit diff origin/main` or `/zk-audit:diff origin/main` | Reviews a commit range. |
 | `/zk-audit recon` or `/zk-audit:recon` | Recon only: stack, advisories, public-input table, hint and footgun inventory. |
+| `/zk-audit library` | Audits a gnark gadget library (no production circuit, no verifier contract): exported-gadget inventory, doc-contract lens L1, a PoC harness per gadget, differential tests. Phase 0 proposes it when it detects such a repository. |
 | `/zk-audit setup` or `/zk-audit:setup` | Shows companions and tools; installs only after you confirm. |
 
 Flags: `--local`, `--loop N`, `--no-poc`, `--file-output`, `--out DIR`,

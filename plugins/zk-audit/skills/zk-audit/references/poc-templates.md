@@ -32,6 +32,8 @@ command takes it from the module cache and edits only the worktree's
 | a verifier gnark did not generate (inputs, points, transcript) | a changed proof or input that still verifies | T-FOUNDRY-MALLEATE |
 | a public value that singles out the user (privacy) | a candidate set with one match | T-LINKAGE |
 | a root window or capacity an attacker can flush (liveness) | a front-run that makes an honest proof revert | T-FOUNDRY-STALE-ROOT |
+| an exported gadget no production circuit calls (library mode) | the gadget's wrapper circuit from `gnark-inventory harness` | T-GADGET-HARNESS, then the template above that fits |
+| a gadget with a native reference (library mode) | honest inputs on which gadget and reference disagree | T-DIFFERENTIAL |
 
 Practical rules (all learned on the eval fixtures):
 
@@ -402,6 +404,92 @@ Use try/catch instead of the returned bool for a verifier that reverts on
 failure. Run it like T-FOUNDRY-VERIFIER. Name the consumer that keys state on
 the changed value (a nullifier, a proof hash) in the finding; without one
 the impact is malleability only.
+
+## T-GADGET-HARNESS
+
+Use in library mode: the gadget is exported and no production circuit
+calls it, so there is no circuit to compile. Generate the wrapper into the
+PoC worktree:
+
+```bash
+{skill}/scripts/gnark-inventory harness --out <out> --gadget <G-id or pkg.Func>
+```
+
+`zkaudit_harness_<name>_test.go` holds `wrap<Name>` (inputs as witness
+fields, compile-time parameters as `gnark:"-"` fields, each output asserted
+equal to an `Out<i>` field), `new<Wrap>()` for the shape, and skipped
+skeletons of the honest control, the invalid assignment, one hint override
+per hint the gadget creates and the differential test. Then apply the usual
+template to the wrapper:
+
+```go
+// T-HINT-OVERRIDE through the wrapper: the doc of QuoRem promises 0 <= r < d
+bad := &wrapQuoRem{N: 23, D: 4, Out0: 4, Out1: 7} // r = 7 >= d
+evil := func(_ *big.Int, in, out []*big.Int) error {
+	out[0].SetInt64(4)
+	out[1].SetInt64(7)
+	return nil
+}
+ccs, _ := frontend.Compile(field, r1cs.NewBuilder, newWrapQuoRem())
+w, _ := frontend.NewWitness(bad, field)
+_, err := ccs.Solve(w, solver.OverrideHint(solver.GetHintID(quoRemHint), evil)) // attack: nil
+_, err = ccs.Solve(w)                                                           // control: error
+```
+
+- A promise about the representation (canonical, `< p`, reduced) needs
+  the output compared limb by limb (`out.Limbs[i]`): `Field.AssertIsEqual`
+  compares modulo p and hides the bug. Use the strict API
+  (`ReduceStrict`) in the same wrapper as the control.
+- A method gadget: the wrapper builds the object with `New<Type>(api)`;
+  add the later calls a caller makes on the same object.
+- A gnark std package (or any package that `gnark/test` imports)
+  import-cycles with an in-package test: rerun with `--external`. Hints
+  are then unexported; find them by name (T-HINT-OVERRIDE).
+- Keep the shape the library's callers use (bit widths, slice lengths):
+  `nbBits = 2` is a fine PoC only if callers may pass 2.
+
+## T-DIFFERENTIAL
+
+Use in library mode for every gadget with a native reference (the
+library's own Go function, `gnark-crypto`, `math/big`). It finds
+completeness and correctness bugs (an honest input the gadget gets wrong or
+cannot prove); it does not find under-constraint, which needs a malicious
+prover (T-GADGET-HARNESS).
+
+```go
+func TestDiff_LessThan(t *testing.T) {
+	field := ecc.BN254.ScalarField()
+	rng := rand.New(rand.NewSource(1))
+	cases := [][2]uint64{{0, 0}, {0, 1}, {1, 0}, {^uint64(0), ^uint64(0)}} // edges first
+	for i := 0; i < 64; i++ {
+		cases = append(cases, [2]uint64{rng.Uint64(), rng.Uint64()})
+	}
+	for _, c := range cases {
+		a := &wrapLessThan{X: c[0], Y: c[1], Out0: lessThanRef(c[0], c[1])}
+		if err := test.IsSolved(newWrapLessThan(), a, field); err != nil {
+			t.Fatalf("LessThan(%d, %d) disagrees with the reference: %v", c[0], c[1], err)
+		}
+	}
+}
+```
+
+- Inputs: random values inside the documented domain, then the edges (0,
+  1, every documented bound, `2^n - 1`, `r - 1`, the point at infinity).
+  An input outside the documented domain tests a precondition, not the
+  contract: report it under the precondition, not as a wrong result.
+- `test.IsSolved` runs the test engine (fast, no setup). Use
+  `test.NewAssert(t).ProverSucceeded(..., test.WithCurves(...))` once on a
+  few cases to cover the real builders.
+- Property tests: the same loop with a property instead of a reference
+  (`FromBinary(ToBinary(x)) == x`, `Mul(Inverse(x), x) == 1` for x ≠ 0).
+- **Mutants** (deep): copy the gadget into the worktree, delete one
+  constraint at a time (`Assert*`, a range check, a recomposition), and
+  rerun the harness and differential tests on each mutant. A mutant that
+  every test still accepts marks a constraint no test exercises: write the
+  PoC that needs it, or report the constraint as untested (hardening).
+- Evidence: a disagreement on an honest input is `POC` for a completeness
+  or correctness finding. Agreement is no evidence of soundness; record it
+  in the gadget's ledger unit notes only.
 
 ## T-DOS
 

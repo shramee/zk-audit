@@ -244,6 +244,39 @@ tables and `gnark-inventory profiles` all follow the entry.
   the sandbox. `make eval-pocs` runs both fixtures; CI installs Foundry
   v1.7.1 with `foundry-rs/foundry-toolchain`.
 
+## Severity calibration
+
+- **Anchors, not a table of adjectives.** `references/severity-calibration.md`
+  holds 21 anchors (`SC-*`), each a fact pattern with the verdicts and
+  severities it allows, the ledger classes and vectors it applies to, and a
+  rule for choosing inside the range. Records name their anchor in
+  `calibration`; `validate findings` refuses a verdict or severity outside
+  it and warns when a confirmed or needs-validation record names none. The
+  2026-10-29 runs rated an unused remainder hint `medium` three times (key:
+  low or info) and judged one owner-gated circuit check `confirmed low` twice
+  and `lead` once (shramee/zk-audit#10): `SC-UNUSED-FREE-VALUE` caps the first
+  at `low`, and Gate 4's "nobody is harmed" rules now send the second to
+  `SC-MASKED-BYPASS` (`confirmed low` with a chain) instead of "rejected or
+  lead".
+- **Published labels.** 60 published findings back the anchors: the
+  zkSecurity gnark std, Kudelski gnark-crypto and Sigma Prime KZG reports in
+  `gnark/audits/` (the Least Authority reports there carry no severity
+  labels), gnark GitHub advisories, and 29 public zkSecurity reports read on
+  2026-10-29. Where library audits rate a latent flaw higher than an
+  application audit would (zkSecurity gnark std 05, Medium, unreachable with
+  current parameters), the anchor says so and rates for application audits.
+  zkSecurity's scale has no Critical, so its High maps to `high` or
+  `critical`.
+- **Machine-readable copy.** The JSON lives in the tool
+  (`internal/calibration/calibration.json`, embedded) and in the reference's
+  fenced block; `lint-kb` keeps them identical (like the advisory table) and
+  checks that every anchor is in the human table, has a published example,
+  names existing vectors and ledger classes, and that every reference is an
+  allowed host or a report in `gnark/audits/`.
+- **Pool key unchanged.** The new rules move P13/P14 to `needs_validation`
+  and P6 to `confirmed`, both already in the key's expected verdicts; no new
+  verdict class was needed.
+
 ## Sandbox (PoCs and recon)
 
 - **`gnark-inventory sandbox`** (wrapped by `scripts/sandbox`) is the one

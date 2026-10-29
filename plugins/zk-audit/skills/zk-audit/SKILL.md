@@ -254,8 +254,9 @@ fingerprints, NEW / KNOWN tags and the stop rule.
 
 Follow `references/judging.md`: dedup by `group_key` (never across circuits or
 functions; keep distinct fixes as Option A/B), run the four gates once per item,
-assign severity and confidence, apply lead promotion, print the completeness
-line. Reject the rationalizations in §6.
+assign severity from the anchors in `references/severity-calibration.md`
+(name the anchor in `calibration`) and confidence, apply lead promotion,
+print the completeness line. Reject the rationalizations in §6.
 
 ### Phase 4 — Prove
 
@@ -382,6 +383,7 @@ is not a refutation. The full table with the reason each fails is in
 | `references/gnark-api-footguns.md` | Any question about what a gnark API constrains |
 | `references/gnark-versions.md` | Phase 0; any version or upgrade question |
 | `references/judging.md` | Phase 3; any "is this real?" question |
+| `references/severity-calibration.md` | Phase 3 severity; any "how bad is this?" question |
 | `references/poc-templates.md` | Phase 4 |
 | `references/rationalizations.md` | Phase 3 and refuter prompts |
 | `references/report-format.md` | Phase 6 |

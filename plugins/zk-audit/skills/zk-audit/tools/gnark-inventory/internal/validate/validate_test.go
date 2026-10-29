@@ -188,7 +188,7 @@ func TestLedgerLensesAndClassesFromProfiles(t *testing.T) {
 
 func pocDoc(evidence, result, path, extra string) string {
 	return `{"schema_version":"1","repo":"r","run_id":"20261029-101010","profile":"standard","records":[
-	{"fingerprint":"VoteCircuit|tally|hint-output-unconstrained","verdict":"confirmed","title":"t","layer":"circuit","bug_class":"hint-output-unconstrained",
+	{"fingerprint":"VoteCircuit|tally|hint-output-unconstrained","verdict":"confirmed","calibration":"SC-UNUSED-FREE-VALUE","title":"t","layer":"circuit","bug_class":"hint-output-unconstrained",
 	 "location":{"file":"c/vote.go","line":3,"scope":"VoteCircuit.Define"},"detected_by":["C1"],"description":"d",
 	 "severity":"low","confidence":60,"evidence":"` + evidence + `","proof":"p","impact":"i",
 	 "gates":{"executes":"e","reachable":"r","unprivileged":"u","impact":"i"},
@@ -340,6 +340,33 @@ func TestTrustedPartyRules(t *testing.T) {
 		errs, warns := strings.Join(rep.Errors, "\n"), strings.Join(rep.Warnings, "\n")
 		if c.wantErr == "" && !rep.OK() {
 			t.Errorf("%s: unexpected errors: %s", c.name, errs)
+		}
+		if c.wantErr != "" && !strings.Contains(errs, c.wantErr) {
+			t.Errorf("%s: want error %q, got %q", c.name, c.wantErr, errs)
+		}
+		if c.wantWarn != "" && !strings.Contains(warns, c.wantWarn) {
+			t.Errorf("%s: want warning %q, got %q", c.name, c.wantWarn, warns)
+		}
+	}
+}
+
+func TestCalibrationAnchors(t *testing.T) {
+	base := trustDoc("needs_validation", "high", "", "")
+	cases := []struct{ name, doc, wantErr, wantWarn string }{
+		{"no anchor warns", base, "", "no calibration anchor"},
+		{"fitting anchor", strings.Replace(base, `"verdict": "needs_validation",`, `"verdict": "needs_validation", "calibration": "SC-TRUST-SOUNDNESS",`, 1), "", ""},
+		{"unknown anchor", strings.Replace(base, `"verdict": "needs_validation",`, `"verdict": "needs_validation", "calibration": "SC-NOPE",`, 1), "unknown calibration anchor", ""},
+		{"severity outside anchor", strings.Replace(base, `"verdict": "needs_validation",`, `"verdict": "needs_validation", "calibration": "SC-TRUST-HYGIENE",`, 1), "severity high is not allowed by SC-TRUST-HYGIENE", ""},
+		{"verdict outside anchor", strings.Replace(base, `"verdict": "needs_validation",`, `"verdict": "needs_validation", "calibration": "SC-MASKED-BYPASS",`, 1), "verdict needs_validation is not allowed", ""},
+	}
+	for _, c := range cases {
+		rep, err := Document("findings", []byte(c.doc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		errs, warns := strings.Join(rep.Errors, "\n"), strings.Join(rep.Warnings, "\n")
+		if c.wantErr == "" && !rep.OK() {
+			t.Errorf("%s: unexpected errors %s", c.name, errs)
 		}
 		if c.wantErr != "" && !strings.Contains(errs, c.wantErr) {
 			t.Errorf("%s: want error %q, got %q", c.name, c.wantErr, errs)

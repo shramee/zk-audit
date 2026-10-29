@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/calibration"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/jsonschema"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 )
@@ -112,6 +113,7 @@ type record struct {
 	Detected []string `json:"detected_by"`
 	Blockers []string `json:"blockers"`
 	Trust    *trust   `json:"trust"`
+	Calib    string   `json:"calibration"`
 }
 
 // trust is a record's trusted-party object (judging.md Gate 3).
@@ -178,6 +180,26 @@ func checkTrust(at string, r record, rep *Report) {
 	}
 }
 
+// checkCalibration checks a record's severity-calibration anchor: a named
+// anchor must exist and allow the verdict and severity; a confirmed or
+// needs_validation record without one gets a warning.
+func checkCalibration(at string, r record, rep *Report) {
+	if r.Calib == "" {
+		if r.Verdict == "confirmed" || r.Verdict == "needs_validation" {
+			rep.Warnings = append(rep.Warnings, at+": no calibration anchor; name the one that fits (references/severity-calibration.md) so the severity is the rubric's, not a judgment call")
+		}
+		return
+	}
+	a, ok := calibration.Load().Anchor(r.Calib)
+	if !ok {
+		rep.Errors = append(rep.Errors, at+": unknown calibration anchor "+r.Calib)
+		return
+	}
+	if msg := a.Check(r.Verdict, r.Severity); msg != "" {
+		rep.Errors = append(rep.Errors, at+": "+msg)
+	}
+}
+
 // blockerNamesParty reports whether a blocker mentions the party (its first
 // word or its role).
 func blockerNamesParty(blockers []string, t *trust) bool {
@@ -239,6 +261,7 @@ func semanticFindings(doc []byte, rep *Report, opt Options) {
 			checkPoC(at, r.Evidence == "POC", r.Poc.Path, r.Poc.Result, r.Poc.Demonstrates, opt, rep, referenced)
 		}
 		checkTrust(at, r, rep)
+		checkCalibration(at, r, rep)
 		if r.Verdict != "confirmed" {
 			continue
 		}

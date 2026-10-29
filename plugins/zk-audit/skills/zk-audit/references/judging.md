@@ -87,7 +87,7 @@ Who triggers it?
   - add a `trust` object: `party`, `role`, `power`, `breaks`
     (soundness / funds / liveness / privacy), `assumption`, and `mitigation`
     when the repository shows one;
-  - severity (§3): `high` by default (the harm if
+  - severity from `severity-calibration.md` (`SC-TRUST-SOUNDNESS`): `high` by default (the harm if
     the assumption fails); `medium` only when `trust.mitigation` quotes a
     timelock, a multisig or governance owner, or a multi-party ceremony in
     the repository; never below `medium` (the validator enforces both);
@@ -125,11 +125,25 @@ Who triggers it?
   bricked → **confirmed**.
 - Privacy: the proof or its public data reveals a meaningful function of secrets
   the protocol claims to hide → **confirmed**.
-- Dust-level, self-harm only, or no victim → **rejected** or **lead**.
+- The mechanism holds but nobody is harmed. Decide by why, never by taste
+  (`severity-calibration.md`):
+  - only the prover's own proof or funds break (self-harm) → **rejected**;
+  - the free value reaches no public input, state, payout or later check →
+    **confirmed** under `SC-UNUSED-FREE-VALUE` (`info`; `low` when a consumer
+    exists without protocol effect);
+  - the bypass reaches nothing beyond an honest witness or another reported
+    bug that masks it → **confirmed** `low` under `SC-MASKED-BYPASS`, with
+    `chain` to the masking record;
+  - the path is not traced to the end → **lead** (that is a missing link, not
+    "no victim").
 
 ## 3. Severity and confidence (two axes)
 
-**Severity** is impact × likelihood, and never exceeds impact.
+**Severity** is impact × likelihood, and never exceeds impact. Pick it from
+the anchors in `severity-calibration.md` and name the anchor in the record's
+`calibration` field; `validate findings` refuses a verdict or severity the
+anchor does not allow and warns when a confirmed or needs-validation record
+names none. The table below is the summary; the anchors decide.
 
 | Severity | Typical ZK meaning |
 |---|---|
@@ -211,7 +225,8 @@ number per profile is in the profile table (`SKILL.md` §2). Record
 `mechanism` and `impact` in the record's `refuter` object.
 `not_exploitable` with a quoted blocking line (mechanism refuted) moves the
 item to `rejected`. Mechanism holds but impact refuted (no victim) is Gate 4:
-demote to `lead` and keep the PoC.
+apply its "nobody is harmed" rules (`SC-UNUSED-FREE-VALUE`,
+`SC-MASKED-BYPASS`, or rejected for self-harm) and keep the PoC.
 `uncertain` keeps it and lowers confidence by 10. Keep the refuter's text in
 the record (`refuter`).
 
@@ -236,8 +251,8 @@ the record (`refuter`).
 
 | Verdict | When | Required fields |
 |---|---|---|
-| `confirmed` | passed all gates | severity, confidence, evidence, proof, impact, gates, fix (≥ 80) |
-| `needs_validation` | blocked by facts not in the source, or a trusted-party power (Gate 3) | severity, confidence, blockers, validation_plan; `trust` for trusted-party items |
+| `confirmed` | passed all gates | severity, confidence, evidence, proof, impact, gates, fix (≥ 80); `calibration` |
+| `needs_validation` | blocked by facts not in the source, or a trusted-party power (Gate 3) | severity, confidence, blockers, validation_plan; `calibration`; `trust` for trusted-party items |
 | `rejected` | failed a gate | reason, refuting_location |
 | `lead` | real smell, incomplete path | code_smells, unverified |
 

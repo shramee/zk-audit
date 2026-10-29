@@ -233,7 +233,8 @@ plugins/zk-audit/
     schemas/                        findings, ledger and stack JSON schemas
   commands/                         /zk-audit:setup, /zk-audit:recon, /zk-audit:diff (thin wrappers)
   agents/                           plugin agent definitions (copies of skills/zk-audit/agents/)
-  evals/                            eval answer keys, PoCs and the sanitizer
+evals/                              eval answer keys, PoCs and the sanitizer (not installed)
+testdata/                           tool test fixtures and golden reports (not installed)
 docs/                               research notes and design notes
 PLAN.md                             the design
 ```

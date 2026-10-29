@@ -2,7 +2,7 @@ package ledger
 
 import (
 	"encoding/json"
-	"path/filepath"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fixture"
 	"strings"
 	"testing"
 
@@ -13,7 +13,7 @@ import (
 )
 
 func TestSeedValidates(t *testing.T) {
-	root := filepath.Join("..", "..", "testdata", "pool")
+	root := fixture.Dir(t, "pool")
 	prog, err := load.Load(root, load.Options{SyntaxOnly: true})
 	if err != nil {
 		t.Fatal(err)

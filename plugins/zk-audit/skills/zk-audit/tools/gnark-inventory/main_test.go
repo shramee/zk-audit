@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fixture"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -166,7 +167,7 @@ func TestValidateExitCodes(t *testing.T) {
 func TestInventoryCommand(t *testing.T) {
 	out := t.TempDir()
 	var buf bytes.Buffer
-	if err := cmdInventory([]string{"--repo", filepath.Join("testdata", "pool"), "--out", out, "--syntax-only"}, &buf); err != nil {
+	if err := cmdInventory([]string{"--repo", fixture.Dir(t, "pool"), "--out", out, "--syntax-only"}, &buf); err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range []string{"inventory.json", "inventory.md", "binding-table.md", "coverage-ledger.json", "stack.json"} {
@@ -198,7 +199,7 @@ func TestInventoryCommand(t *testing.T) {
 func TestAssembleCommand(t *testing.T) {
 	out := t.TempDir()
 	var buf bytes.Buffer
-	if err := cmdInventory([]string{"--repo", filepath.Join("testdata", "pool"), "--out", out, "--syntax-only"}, &buf); err != nil {
+	if err := cmdInventory([]string{"--repo", fixture.Dir(t, "pool"), "--out", out, "--syntax-only"}, &buf); err != nil {
 		t.Fatal(err)
 	}
 	// The seeded ledger has only planned units; findings say nothing was found.

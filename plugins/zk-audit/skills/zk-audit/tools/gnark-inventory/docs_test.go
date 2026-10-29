@@ -291,3 +291,30 @@ func TestAgentBriefsInSync(t *testing.T) {
 		}
 	}
 }
+
+// TestInstallShipsNoFixtures keeps eval answer keys and planted-bug fixtures
+// out of the plugin directory, which is what a plugin install copies. They
+// live in the repository's top-level evals/ and testdata/.
+func TestInstallShipsNoFixtures(t *testing.T) {
+	plugin := filepath.Join(repoRoot, "plugins", "zk-audit")
+	err := filepath.Walk(plugin, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			return nil
+		}
+		switch info.Name() {
+		case "vendor":
+			return filepath.SkipDir
+		case "evals", "testdata":
+			rel, _ := filepath.Rel(repoRoot, p)
+			t.Errorf("%s ships with the plugin; move it to the repository's top-level %s/", rel, info.Name())
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

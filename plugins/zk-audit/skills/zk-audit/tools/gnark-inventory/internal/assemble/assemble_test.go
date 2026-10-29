@@ -2,6 +2,7 @@ package assemble
 
 import (
 	"flag"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fixture"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,26 +12,26 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden REPORT.golden.md files")
 
-var poolRepo = filepath.Join("..", "..", "testdata", "pool")
-
-func opts(dir string, withStack, withInv bool) Options {
+func opts(t *testing.T, dir string, withStack, withInv bool) Options {
+	t.Helper()
+	golden := fixture.Dir(t, "assemble", dir)
 	o := Options{
-		Findings: filepath.Join("testdata", dir, "findings.json"),
-		Ledger:   filepath.Join("testdata", dir, "coverage-ledger.json"),
-		Repo:     poolRepo,
+		Findings: filepath.Join(golden, "findings.json"),
+		Ledger:   filepath.Join(golden, "coverage-ledger.json"),
+		Repo:     fixture.Dir(t, "pool"),
 	}
 	if withStack {
-		o.Stack = filepath.Join("testdata", dir, "stack.json")
+		o.Stack = filepath.Join(golden, "stack.json")
 	}
 	if withInv {
-		o.Inventory = filepath.Join("testdata", dir, "inventory.json")
+		o.Inventory = filepath.Join(golden, "inventory.json")
 	}
 	return o
 }
 
 func golden(t *testing.T, dir, got string) {
 	t.Helper()
-	p := filepath.Join("testdata", dir, "REPORT.golden.md")
+	p := filepath.Join(fixture.Dir(t, "assemble"), dir, "REPORT.golden.md")
 	if *update {
 		if err := os.WriteFile(p, []byte(got), 0o644); err != nil {
 			t.Fatal(err)
@@ -49,7 +50,7 @@ func golden(t *testing.T, dir, got string) {
 var forbidden = regexp.MustCompile(`(?i)verified clean|fully audited|no vulnerabilities|no bugs|bug-free|\bis secure\b`)
 
 func TestGoldenFull(t *testing.T) {
-	res, err := Assemble(opts("full", true, true))
+	res, err := Assemble(opts(t, "full", true, true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +96,7 @@ func TestGoldenFull(t *testing.T) {
 }
 
 func TestGoldenEmpty(t *testing.T) {
-	res, err := Assemble(opts("empty", false, false))
+	res, err := Assemble(opts(t, "empty", false, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,12 +121,12 @@ func TestGoldenEmpty(t *testing.T) {
 }
 
 func TestDeterministic(t *testing.T) {
-	a, err := Assemble(opts("full", true, true))
+	a, err := Assemble(opts(t, "full", true, true))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 5; i++ {
-		b, err := Assemble(opts("full", true, true))
+		b, err := Assemble(opts(t, "full", true, true))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -155,19 +156,19 @@ func read(t *testing.T, p string) string {
 }
 
 func TestRefusesInvalidInput(t *testing.T) {
-	goodF := read(t, filepath.Join("testdata", "full", "findings.json"))
-	goodL := read(t, filepath.Join("testdata", "full", "coverage-ledger.json"))
+	goodF := read(t, filepath.Join(fixture.Dir(t, "assemble"), "full", "findings.json"))
+	goodL := read(t, filepath.Join(fixture.Dir(t, "assemble"), "full", "coverage-ledger.json"))
 	cases := map[string]struct {
 		f, l, want string
 	}{
-		"schema error in findings": {strings.Replace(goodF, `"severity": "critical"`, `"severity": "severe"`, 1), goodL, "findings"},
-		"semantic error in findings": {strings.Replace(goodF, `"result": "demonstrated"`, `"result": "does_not_compile"`, 1), goodL, "evidence POC requires"},
-		"empty findings without statement": {`{"schema_version":"1","repo":"r","run_id":"20261027-101500","profile":"quick","records":[]}`, goodL, "zero records"},
-		"empty ledger": {goodF, `{"schema_version":"1","repo":"r","generated_by":"t","units":[]}`, "zero units"},
-		"covered without evidence": {goodF, strings.Replace(goodL, `"agent_ids": ["V-range"]`, `"agent_ids": []`, 1), "covered units need agent_ids"},
-		"clean claim in posture": {strings.Replace(goodF, `"posture": "Proofs gate`, `"posture": "The circuit is verified clean. Proofs gate`, 1), goodL, "forbidden claim"},
+		"schema error in findings":          {strings.Replace(goodF, `"severity": "critical"`, `"severity": "severe"`, 1), goodL, "findings"},
+		"semantic error in findings":        {strings.Replace(goodF, `"result": "demonstrated"`, `"result": "does_not_compile"`, 1), goodL, "evidence POC requires"},
+		"empty findings without statement":  {`{"schema_version":"1","repo":"r","run_id":"20261027-101500","profile":"quick","records":[]}`, goodL, "zero records"},
+		"empty ledger":                      {goodF, `{"schema_version":"1","repo":"r","generated_by":"t","units":[]}`, "zero units"},
+		"covered without evidence":          {goodF, strings.Replace(goodL, `"agent_ids": ["V-range"]`, `"agent_ids": []`, 1), "covered units need agent_ids"},
+		"clean claim in posture":            {strings.Replace(goodF, `"posture": "Proofs gate`, `"posture": "The circuit is verified clean. Proofs gate`, 1), goodL, "forbidden claim"},
 		"clean claim in no_findings_reason": {`{"schema_version":"1","repo":"r","run_id":"20261027-101500","profile":"quick","no_findings":true,"no_findings_reason":"the code is secure","records":[]}`, goodL, "forbidden claim"},
-		"not json": {`{`, goodL, "findings"},
+		"not json":                          {`{`, goodL, "findings"},
 	}
 	for name, c := range cases {
 		_, err := Assemble(writeCase(t, c.f, c.l))
@@ -185,11 +186,11 @@ func TestRefusesInvalidInput(t *testing.T) {
 }
 
 func TestLocationPastEOFAndOptionPrefix(t *testing.T) {
-	f := read(t, filepath.Join("testdata", "full", "findings.json"))
+	f := read(t, filepath.Join(fixture.Dir(t, "assemble"), "full", "findings.json"))
 	f = strings.Replace(f, `"line": 90, "end_line": 91`, `"line": 190, "end_line": 191`, 1)
 	f = strings.Replace(f, `"label": "bind the note"`, `"label": "Option A — bind the note"`, 1)
-	o := writeCase(t, f, read(t, filepath.Join("testdata", "full", "coverage-ledger.json")))
-	o.Repo = poolRepo
+	o := writeCase(t, f, read(t, filepath.Join(fixture.Dir(t, "assemble"), "full", "coverage-ledger.json")))
+	o.Repo = fixture.Dir(t, "pool")
 	res, err := Assemble(o)
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +204,7 @@ func TestLocationPastEOFAndOptionPrefix(t *testing.T) {
 }
 
 func TestQuoteStaysInRepo(t *testing.T) {
-	in := &input{repo: poolRepo}
+	in := &input{repo: fixture.Dir(t, "pool")}
 	if _, _, ok := in.quote(Location{File: "../../main.go", Line: 1}); ok {
 		t.Error("quote must not read outside the repository")
 	}

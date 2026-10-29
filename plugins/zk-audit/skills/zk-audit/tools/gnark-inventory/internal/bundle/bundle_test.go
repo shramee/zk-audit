@@ -3,6 +3,7 @@ package bundle
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fixture"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +15,7 @@ import (
 )
 
 func TestBundles(t *testing.T) {
-	root, _ := filepath.Abs(filepath.Join("..", "..", "testdata", "pool"))
+	root := fixture.Dir(t, "pool")
 	prog, err := load.Load(root, load.Options{SyntaxOnly: true})
 	if err != nil {
 		t.Fatal(err)

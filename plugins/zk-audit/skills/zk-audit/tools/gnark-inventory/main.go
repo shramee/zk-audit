@@ -41,7 +41,7 @@ const Version = "0.1.0"
 const usage = `gnark-inventory ` + Version + ` — deterministic recon for zk-audit
 
 Usage:
-  gnark-inventory args      [--repo DIR] [--mode M] [--run-id ID] [--home DIR] -- WORDS...
+  gnark-inventory args      [--repo DIR] [--mode M] [--run-id ID] [--home DIR] [--save] -- WORDS...
   gnark-inventory detect    --repo DIR [--out stack.json]
   gnark-inventory preflight --repo DIR [--out DIR] [--json]
   gnark-inventory inventory --repo DIR --out DIR [--files a.go,dir/] [--syntax-only] [--allow-network]

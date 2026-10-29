@@ -208,3 +208,71 @@ func TestScopeSymlinkEscape(t *testing.T) {
 		t.Error("--out through a symlink into the repo accepted")
 	}
 }
+
+func TestBudget(t *testing.T) {
+	r := repo(t)
+	home := t.TempDir()
+	run, err := parse(t, r, "standard --budget 30", Options{Home: home})
+	if err != nil || run.BudgetUSD != 30 {
+		t.Fatalf("--budget 30: %v %+v", err, run)
+	}
+	if run, err = parse(t, r, "--budget=$12.5", Options{Home: home}); err != nil || run.BudgetUSD != 12.5 {
+		t.Errorf("--budget=$12.5: %v %v", err, run)
+	}
+	for _, in := range []string{"--budget 0", "--budget -3", "--budget lots", "recon --budget 5", "--budget"} {
+		if _, err := parse(t, r, in, Options{Home: home}); err == nil {
+			t.Errorf("%q: want an error", in)
+		}
+	}
+}
+
+func TestSaveAndResume(t *testing.T) {
+	r := repo(t)
+	home := t.TempDir()
+	at := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+	run, err := parse(t, r, "deep circuits/vote.go --budget 40 --no-poc", Options{Home: home, Now: at})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(run); err != nil {
+		t.Fatal(err)
+	}
+	// a second run with the same output directory is refused
+	again, _ := parse(t, r, "quick", Options{Home: home, Now: at})
+	if err := Save(again); err == nil || !strings.Contains(err.Error(), "resume") {
+		t.Errorf("overwriting another run's run.json: %v", err)
+	}
+	// resume by id, by directory, and the latest unfinished run
+	for _, in := range []string{"resume 20261029-100000", "resume " + run.Out, "resume"} {
+		got, err := parse(t, r, in, Options{Home: home})
+		if err != nil {
+			t.Fatalf("%q: %v", in, err)
+		}
+		if !got.Resume || got.Mode != "audit" || got.Profile != "deep" || got.PoC || got.BudgetUSD != 40 ||
+			got.Out != run.Out || got.RunID != run.RunID || !reflect.DeepEqual(got.Scope, []string{"circuits/vote.go"}) {
+			t.Errorf("%q: %+v", in, got)
+		}
+	}
+	got, err := parse(t, r, "resume --budget 60", Options{Home: home})
+	if err != nil || got.BudgetUSD != 60 {
+		t.Errorf("resume --budget 60: %v %+v", err, got)
+	}
+	if err := Save(got); err != nil {
+		t.Errorf("saving a resumed run: %v", err)
+	}
+	// a finished run (REPORT.md) is not picked by a bare resume
+	os.WriteFile(filepath.Join(run.Out, "REPORT.md"), []byte("x"), 0o644)
+	if _, err := parse(t, r, "resume", Options{Home: home}); err == nil {
+		t.Error("bare resume picked a finished run")
+	}
+	for _, in := range []string{"resume nope", "resume 20200101-000000", "resume a b", "resume --loop 2"} {
+		if _, err := parse(t, r, in, Options{Home: home}); err == nil {
+			t.Errorf("%q: want an error", in)
+		}
+	}
+	// a run of another repository
+	other := repo(t)
+	if _, err := parse(t, other, "resume "+run.Out, Options{Home: home}); err == nil {
+		t.Error("resumed a run of another repository")
+	}
+}

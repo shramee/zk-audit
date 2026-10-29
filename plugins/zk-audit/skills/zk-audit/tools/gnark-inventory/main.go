@@ -308,8 +308,8 @@ func cmdInventory(args []string, stdout io.Writer) error {
 		return err
 	}
 	s := inv.Summary
-	fmt.Fprintf(stdout, "load: %s · circuits: %d · public inputs (static): %d · hint sites: %d (unreached outputs: %d) · footgun hits: %d · verify calls: %d · ledger units: %d\n",
-		inv.LoadMode, s.Circuits, s.PublicInputs, s.HintSites, s.UnreachedHints, countHits(s.Footguns), s.VerifyCalls, len(led.Units))
+	fmt.Fprintf(stdout, "load: %s · circuits: %d · gadgets: %d · public inputs (static): %d · hint sites: %d (unreached outputs: %d) · footgun hits: %d · verify calls: %d · ledger units: %d\n",
+		inv.LoadMode, s.Circuits, s.Gadgets, s.PublicInputs, s.HintSites, s.UnreachedHints, countHits(s.Footguns), s.VerifyCalls, len(led.Units))
 	if p := inv.Provenance; p != nil {
 		fmt.Fprintf(stdout, "verifier ABI: %d mismatches · setup: %s\n", p.ABI.Mismatches(), p.Ceremony.Verdict)
 	}

@@ -28,7 +28,7 @@ func Build(prog *load.Program, opt Options) (*Inventory, error) {
 	inv := &Inventory{
 		SchemaVersion: SchemaVersion, ToolVersion: opt.ToolVersion, Repo: prog.Root,
 		LoadMode: prog.Mode, LoadErrors: []string{}, Scope: opt.Files,
-		Circuits: []*Circuit{}, Hints: []*HintSite{}, HintFuncs: []*HintFunc{}, Footguns: []*Footgun{},
+		Circuits: []*Circuit{}, Hints: []*HintSite{}, HintFuncs: []*HintFunc{}, Footguns: []*Footgun{}, Gadgets: []*Gadget{},
 	}
 	seenErr := map[string]bool{}
 	for _, e := range prog.Errors {
@@ -159,6 +159,14 @@ func Build(prog *load.Program, opt Options) (*Inventory, error) {
 			}
 		}
 	}
+
+	// exported gadgets (library mode); methods of circuit types are not
+	circuitTypes := map[string]bool{}
+	for _, c := range all {
+		circuitTypes[path.Dir(c.Decl.File)+"|"+c.Name] = true
+	}
+	inv.Gadgets = findGadgets(prog, inv, inScope, circuitTypes)
+	inv.Summary.Gadgets = len(inv.Gadgets)
 
 	// Solidity
 	sol, err := scanSolidity(prog.Root, opt.Files)

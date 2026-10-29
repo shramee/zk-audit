@@ -57,8 +57,8 @@ func Inventory(inv *inventory.Inventory) string {
 		w("Scope: %s\n\n", strings.Join(inv.Scope, ", "))
 	}
 	s := inv.Summary
-	w("| Go files | gnark files | circuits | static public inputs | hint sites | unreached hint outputs | Solidity files | verify calls |\n|---|---|---|---|---|---|---|---|\n")
-	w("| %d | %d | %d | %d | %d | %d | %d | %d |\n\n", s.GoFiles, s.GnarkFiles, s.Circuits, s.PublicInputs, s.HintSites, s.UnreachedHints, s.SolidityFiles, s.VerifyCalls)
+	w("| Go files | gnark files | circuits | exported gadgets | static public inputs | hint sites | unreached hint outputs | Solidity files | verify calls |\n|---|---|---|---|---|---|---|---|---|\n")
+	w("| %d | %d | %d | %d | %d | %d | %d | %d | %d |\n\n", s.GoFiles, s.GnarkFiles, s.Circuits, s.Gadgets, s.PublicInputs, s.HintSites, s.UnreachedHints, s.SolidityFiles, s.VerifyCalls)
 
 	w("## Circuits\n\n")
 	if len(inv.Circuits) == 0 {
@@ -80,6 +80,10 @@ func Inventory(inv *inventory.Inventory) string {
 		for _, c := range inv.Circuits {
 			writeCircuit(&b, c)
 		}
+	}
+
+	if len(inv.Gadgets) > 0 {
+		writeGadgets(&b, inv.Gadgets)
 	}
 
 	w("## Hint call sites\n\n")
@@ -664,4 +668,92 @@ func SortedIDs(m map[string]int) []string {
 	}
 	sort.Strings(ks)
 	return ks
+}
+
+// writeGadgets renders the exported-gadget inventory (library mode): one
+// summary table, then per gadget its doc, inputs, outputs and the
+// deterministic doc checks for lens L1.
+func writeGadgets(b *strings.Builder, gs []*inventory.Gadget) {
+	w := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
+	w("## Exported gadgets\n\n")
+	w("Exported functions and methods that take a `frontend.API` or an `*emulated.Field` (or belong to an exported type that holds one). Input flows come from the hint taint pass, extended into same-package callees: `constrained` means the input reaches at least one constraining call, not that every property the doc promises is enforced. Doc checks are facts for lens L1, not verdicts.\n\n")
+	w("| Id | Gadget | Defined at | Inputs (flow) | Outputs (source) | Doc promises | Doc preconditions | Doc checks |\n|---|---|---|---|---|---|---|---|\n")
+	for _, g := range gs {
+		var ins, outs, prom, pre []string
+		for _, p := range g.Params {
+			if p.Kind == "api" || p.Kind == "field" {
+				continue
+			}
+			ins = append(ins, p.Name+" ("+p.Flow+")")
+		}
+		for _, r := range g.Results {
+			if r.Source == "none" {
+				continue
+			}
+			s := fmt.Sprintf("%d %s", r.Index, r.Source)
+			if len(r.Hints) > 0 {
+				s += " " + strings.Join(r.Hints, ", ")
+			}
+			outs = append(outs, s)
+		}
+		for _, c := range g.Promises {
+			prom = append(prom, strings.Join(c.Kinds, "/"))
+		}
+		for _, c := range g.Preconds {
+			pre = append(pre, strings.Join(c.Kinds, "/"))
+		}
+		t := ""
+		if g.InTest {
+			t = " (test)"
+		}
+		w("| %s%s | %s | %s | %s | %s | %s | %s | %d |\n", g.ID, t, code(g.Name), loc(g.Pos), esc(dashIfEmpty(strings.Join(ins, ", "))), esc(dashIfEmpty(strings.Join(outs, "; "))),
+			esc(dashIfEmpty(strings.Join(uniqStrings(prom), ", "))), esc(dashIfEmpty(strings.Join(uniqStrings(pre), ", "))), len(g.Checks))
+	}
+	w("\n")
+	for _, g := range gs {
+		w("### %s %s\n\n", g.ID, code(g.Name))
+		w("%s · %s\n\n", code(g.Signature), loc(g.Pos))
+		if g.Doc != "" {
+			for _, l := range strings.Split(g.Doc, "\n") {
+				w("> %s\n", l)
+			}
+			w("\n")
+		} else {
+			w("No doc comment: the contract is undocumented.\n\n")
+		}
+		if len(g.Constraints) > 0 {
+			w("- constraining calls: %s\n", esc(strings.Join(g.Constraints, ", ")))
+		} else {
+			w("- constraining calls: none in the gadget or its same-package callees\n")
+		}
+		if len(g.Followed) > 0 {
+			w("- same-package callees read: %s\n", esc(strings.Join(g.Followed, ", ")))
+		}
+		if len(g.HintIDs) > 0 {
+			w("- hint sites: %s\n", strings.Join(g.HintIDs, ", "))
+		}
+		for _, c := range g.Checks {
+			w("- doc check `%s`: %s\n", c.Kind, esc(c.Note))
+		}
+		w("\n")
+	}
+}
+
+func dashIfEmpty(s string) string {
+	if s == "" {
+		return "–"
+	}
+	return s
+}
+
+func uniqStrings(xs []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, x := range xs {
+		if !seen[x] {
+			seen[x] = true
+			out = append(out, x)
+		}
+	}
+	return out
 }

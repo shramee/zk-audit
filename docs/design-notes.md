@@ -755,6 +755,13 @@ fixtures, so Foundry PoCs declare the cheatcodes they use.
   the external one is unreachable here, so only the verifiable gnark-version
   advisory is scored; circuit-level ground truth is left unscored rather than
   invented.
+- **Advisory records are never false positives where the table says so.** The
+  advisory table matches gnark v0.14.0 and gnark-crypto v0.19.0, which almost every
+  fixture pins, and an audit reports those from Phase 0. Every key on those pins
+  (except `pool`, which scores them as P12) carries an `other` item at the `go.mod`
+  pins that absorbs such a record, so an all-safe run is not charged a false
+  positive for it. The `adv-*` keys do the same for the other GHSAs the v2 table
+  lists for their pinned release; the planted advisory stays the scored item.
 - **Cheap CI case.** `ci-smoke` is one circuit with one bug; the `ci-smoke` CI
   job runs `evals/run-audit --runs 1 --budget 4 ci-smoke` on push to main, a
   weekly schedule and manual dispatch (not every PR), only when

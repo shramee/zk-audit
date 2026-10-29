@@ -27,6 +27,7 @@ install, write into the target repo, or use the network.
 | I2 | verifier contracts | `agents/I2-verifier-contract.md` | integration | integration | standard, deep |
 | I3 | protocol state | `agents/I3-protocol-state.md` | integration | integration | standard, deep |
 | I4 | prover service | `agents/I4-prover-service.md` | integration | prover | standard, deep |
+| S1 | contract review | `agents/S1-contract-review.md` | integration | integration | standard, deep |
 | T1 | trusted parties | `agents/T1-trusted-parties.md` | integration | all | quick, standard, deep |
 | PR1 | privacy | `agents/PR1-privacy.md` | cross | all | standard, deep |
 | V-hints | vector scan: hints | `agents/vector-scan.md` + `attack-vectors/hints.md` | vector scan | circuit | quick, standard, deep |
@@ -39,6 +40,8 @@ install, write into the target repo, or use the network.
 | V-generic | vector scan: generic ZK | `agents/vector-scan.md` + `attack-vectors/generic-zk.md` | vector scan | circuit | quick, standard, deep |
 | V-pubin | vector scan: public inputs | `agents/vector-scan.md` + `attack-vectors/public-inputs.md` | vector scan | integration | quick, standard, deep |
 | V-verifier | vector scan: verifier contracts | `agents/vector-scan.md` + `attack-vectors/verifier-contracts.md` | vector scan | integration | quick, standard, deep |
+| V-custom | vector scan: hand-written and non-gnark verifiers | `agents/vector-scan.md` + `attack-vectors/custom-verifiers.md` | vector scan | integration | quick, standard, deep (only when: non-gnark-verifier) |
+| V-contract | vector scan: contract review | `agents/vector-scan.md` + `attack-vectors/contract-review.md` | vector scan | integration | standard, deep |
 | V-state | vector scan: protocol state | `agents/vector-scan.md` + `attack-vectors/protocol-state.md` | vector scan | integration | quick, standard, deep |
 | V-privacy | vector scan: privacy | `agents/vector-scan.md` + `attack-vectors/privacy.md` | vector scan | all | standard, deep |
 | V-liveness | vector scan: gas and liveness | `agents/vector-scan.md` + `attack-vectors/gas-liveness.md` | vector scan | integration | standard, deep |
@@ -49,9 +52,9 @@ install, write into the target repo, or use the network.
 | A1 | asymmetry | `agents/A1-asymmetry.md` | cross | all | deep |
 | F1 | first principles | `agents/F1-first-principles.md` | cross | all | standard, deep |
 
-- **quick**: C1, I1, T1, G2 + 12 vector-scan shards (V-*).
-- **standard**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, T1, PR1, G2, F1 + 14 vector-scan shards (V-*).
-- **deep**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, T1, PR1, G1, G2, G3, A1, F1 + 14 vector-scan shards (V-*).
+- **quick**: C1, I1, T1, G2 + 13 vector-scan shards (V-*).
+- **standard**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, S1, T1, PR1, G2, F1 + 16 vector-scan shards (V-*).
+- **deep**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, S1, T1, PR1, G1, G2, G3, A1, F1 + 16 vector-scan shards (V-*).
 
 <!-- end generated:agent-table -->
 

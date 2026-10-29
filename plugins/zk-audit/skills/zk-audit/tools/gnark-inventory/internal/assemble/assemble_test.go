@@ -88,7 +88,7 @@ func TestGoldenFull(t *testing.T) {
 		"The privacy lens (PR1) is not part of the `quick` profile",
 		// fixed and run-specific not-covered footer
 		"- formal verification: no property is proven.",
-		"- lenses not part of the `quick` profile: C2, C3, C4, C5, C6, I2, I3, I4, PR1, V-liveness, V-privacy, G1, G3, A1, F1;",
+		"- lenses not part of the `quick` profile: C2, C3, C4, C5, C6, I2, I3, I4, S1, PR1, V-contract, V-liveness, V-privacy, G1, G3, A1, F1;",
 		"- ledger units not examined: 6 of 8 applicable (section 10);",
 		"calibration SC-",
 		"`circuit:SigCircuit|crypto-gadgets` — planned — no reason recorded",

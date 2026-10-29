@@ -260,7 +260,7 @@ func (st *Stack) routes() {
 		st.Routes = append(st.Routes, "gnark: native zk-audit engine")
 	}
 	if st.Solidity.Present {
-		st.Routes = append(st.Routes, "solidity: integration lenses I1-I3 (delegate broad Solidity review to solidity-auditor if installed)")
+		st.Routes = append(st.Routes, "solidity: integration lenses I1-I3, contract review S1 and V-contract (standard, deep), V-custom for verifiers gnark did not generate; the solidity-auditor companion runs too if installed")
 	}
 	if st.Circom.Present {
 		st.Routes = append(st.Routes, "circom: delegate to circom-auditor if installed, else generic-zk vectors")

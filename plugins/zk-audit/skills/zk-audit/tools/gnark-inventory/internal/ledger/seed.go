@@ -41,8 +41,9 @@ type Ledger struct {
 }
 
 // seeded lists, in profiles.json order, the classes a lens owns that the
-// seeder creates one unit per subject of kind for ("circuit" or
-// "contract-fn"), with the lenses listed on each unit.
+// seeder creates one unit per subject of kind for (profile.SeedKinds), with
+// the lenses listed on each unit. A vector-scan shard is listed as "V", the
+// id ledger units use for the vector scan.
 func seeded(kind string) []struct {
 	class  string
 	lenses []string
@@ -59,7 +60,21 @@ func seeded(kind string) []struct {
 			out = append(out, struct {
 				class  string
 				lenses []string
-			}{c, append([]string{l.ID}, l.Ledger.With...)})
+			}{c, lensIDs(l)})
+		}
+	}
+	return out
+}
+
+func lensIDs(l profile.Lens) []string {
+	own := l.ID
+	if l.IsVectorScan() {
+		own = "V"
+	}
+	out := []string{own}
+	for _, w := range l.Ledger.With {
+		if w != own {
+			out = append(out, w)
 		}
 	}
 	return out
@@ -133,6 +148,31 @@ func Seed(inv *inventory.Inventory, stack *detect.Stack, tool string) *Ledger {
 		for _, k := range keys {
 			for _, cc := range seeded("contract-fn") {
 				add("contract-fn", k, cc.class, cc.lenses, []string{fns[k]}, "")
+			}
+		}
+	}
+	// contract review: one unit per entry point (an external or public
+	// state-changing function of a contract that is not a verifier)
+	if inv.Contracts != nil {
+		if entry := seeded("entry"); len(entry) > 0 {
+			for _, e := range inv.Contracts.EntryPoints {
+				for _, cc := range entry {
+					add("contract-fn", e.Contract+"."+e.Function, cc.class, cc.lenses, []string{fmt.Sprintf("%s:%d", e.File, e.Line)},
+						fmt.Sprintf("gate %s; effects %s", e.Gate, strings.Join(e.Effects, ", ")))
+				}
+			}
+		}
+		// verifiers gnark did not generate: one unit each, for the
+		// custom-verifier slice
+		if cv := seeded("custom-verifier"); len(cv) > 0 {
+			for _, v := range inv.Contracts.NonGnarkVerifiers() {
+				note := v.Kind + " (" + v.Generator + ")"
+				if len(v.Precompiles) > 0 {
+					note += "; precompiles " + strings.Join(v.Precompiles, ", ")
+				}
+				for _, cc := range cv {
+					add("verifier", v.Contract, cc.class, cc.lenses, []string{fmt.Sprintf("%s:%d", v.File, v.Line)}, note)
+				}
 			}
 		}
 	}

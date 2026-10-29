@@ -10,12 +10,15 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/calibration"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/jsonschema"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/threatmodel"
 )
 
 // Schemas are copies of plugins/zk-audit/skills/zk-audit/schemas/*.json; a unit test keeps
@@ -29,6 +32,8 @@ var Kinds = map[string]string{
 	"findings": "findings.schema.json",
 	"ledger":   "ledger.schema.json",
 	"stack":    "stack.schema.json",
+	// threat-model is zk-audit.md parsed by `gnark-inventory threat-model`
+	"threat-model": "threat-model.schema.json",
 }
 
 // Report is the result of one validation.
@@ -60,7 +65,7 @@ func Document(kind string, doc []byte) (*Report, error) {
 func DocumentWith(kind string, doc []byte, opt Options) (*Report, error) {
 	name, ok := Kinds[kind]
 	if !ok {
-		return nil, fmt.Errorf("unknown kind %q (want findings, ledger or stack)", kind)
+		return nil, fmt.Errorf("unknown kind %q (want findings, ledger, stack or threat-model)", kind)
 	}
 	raw, err := Schemas.ReadFile("schemas/" + name)
 	if err != nil {
@@ -84,7 +89,7 @@ func DocumentWith(kind string, doc []byte, opt Options) (*Report, error) {
 		semanticFindings(doc, rep, opt)
 	case "ledger":
 		semanticLedger(doc, rep, opt)
-	case "stack":
+	case "stack", "threat-model":
 		rep.Items = 1
 	}
 	if len(rep.Errors) > 200 {
@@ -225,6 +230,59 @@ type findingsDoc struct {
 	NoFindings       bool     `json:"no_findings"`
 	NoFindingsReason string   `json:"no_findings_reason"`
 	Records          []record `json:"records"`
+	AcceptedRisks    []struct {
+		Party  string `json:"party"`
+		Source string `json:"source"`
+	} `json:"accepted_risks"`
+}
+
+var reSourceLine = regexp.MustCompile(`^zk-audit\.md:([0-9]+)`)
+
+// checkThreatModel checks the accepted risks against <out>/threat-model.json
+// (zk-audit.md parsed by the tool), when the run has one: a record with
+// trust.accepted, and an accepted_risks entry, must cite the line of an
+// accepted risk or of a party the file marks trusted.
+func checkThreatModel(d findingsDoc, rep *Report, opt Options) {
+	if opt.Out == "" {
+		return
+	}
+	b, err := os.ReadFile(filepath.Join(opt.Out, threatmodel.OutName))
+	if os.IsNotExist(err) {
+		for i, r := range d.Records {
+			if r.Trust != nil && r.Trust.Accepted {
+				rep.Warnings = append(rep.Warnings, fmt.Sprintf("records[%d] (%s): trust.accepted cites %s, but the run has no threat-model.json (gnark-inventory threat-model --repo <repo> --out <out>)", i, r.Fingerprint, r.Trust.Source))
+			}
+		}
+		return
+	}
+	if err != nil {
+		rep.Errors = append(rep.Errors, threatmodel.OutName+": "+err.Error())
+		return
+	}
+	var tm threatmodel.Doc
+	if err := json.Unmarshal(b, &tm); err != nil {
+		rep.Errors = append(rep.Errors, threatmodel.OutName+": "+err.Error())
+		return
+	}
+	check := func(at, src string) {
+		m := reSourceLine.FindStringSubmatch(src)
+		if m == nil {
+			rep.Errors = append(rep.Errors, at+": "+src+" names no line; cite the zk-audit.md line of the accepted risk or trusted party")
+			return
+		}
+		n, _ := strconv.Atoi(m[1])
+		if _, ok := tm.AcceptsLine(n); !ok {
+			rep.Errors = append(rep.Errors, fmt.Sprintf("%s: zk-audit.md:%d is neither an accepted risk nor a party marked trusted (threat-model.json); a bounded or untrusted party's power is not accepted", at, n))
+		}
+	}
+	for i, r := range d.Records {
+		if r.Trust != nil && r.Trust.Accepted && r.Trust.Source != "" {
+			check(fmt.Sprintf("records[%d] (%s)", i, r.Fingerprint), r.Trust.Source)
+		}
+	}
+	for i, a := range d.AcceptedRisks {
+		check(fmt.Sprintf("accepted_risks[%d] (%s)", i, a.Party), a.Source)
+	}
 }
 
 func semanticFindings(doc []byte, rep *Report, opt Options) {
@@ -234,6 +292,7 @@ func semanticFindings(doc []byte, rep *Report, opt Options) {
 		return
 	}
 	rep.Items = len(d.Records)
+	checkThreatModel(d, rep, opt)
 	if len(d.Records) == 0 {
 		if !d.NoFindings || strings.TrimSpace(d.NoFindingsReason) == "" {
 			rep.Errors = append(rep.Errors, "zero records inspected: a findings file with no records must set no_findings: true and a no_findings_reason")

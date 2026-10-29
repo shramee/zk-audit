@@ -376,3 +376,41 @@ func TestCalibrationAnchors(t *testing.T) {
 		}
 	}
 }
+
+// With threat-model.json in the output directory, an accepted risk must
+// cite the line of an accepted risk or of a party marked trusted.
+func TestAcceptedRiskAgainstThreatModel(t *testing.T) {
+	out := t.TempDir()
+	accepted := func(line string) []byte {
+		return []byte(trustDoc("needs_validation", "high", "", `, "accepted": true, "source": "zk-audit.md:`+line+`"`))
+	}
+	// no threat model: a warning only
+	rep, err := DocumentWith("findings", accepted("12"), Options{Out: out})
+	if err != nil || !rep.OK() || !strings.Contains(strings.Join(rep.Warnings, "\n"), "no threat-model.json") {
+		t.Fatalf("without threat-model.json: %v %+v", err, rep)
+	}
+	tm := `{"schema_version": "1", "source": "zk-audit.md", "sha256": "` + strings.Repeat("0", 64) + `",
+	  "scope": {"in": [], "out": []},
+	  "trusted_parties": [{"party": "owner", "trust": "trusted", "powers": "", "notes": "", "line": 12},
+	                      {"party": "tallier", "trust": "bounded", "powers": "", "notes": "x", "line": 13}],
+	  "properties": [], "accepted_risks": [{"id": "AR-1", "party": "owner", "risk": "swaps the verifier", "notes": "", "line": 20}],
+	  "prior_findings": [], "deployment": [], "warnings": []}`
+	if rep, _ := Document("threat-model", []byte(tm)); !rep.OK() {
+		t.Fatalf("threat-model.json fixture: %v", rep.Errors)
+	}
+	os.WriteFile(filepath.Join(out, "threat-model.json"), []byte(tm), 0o644)
+	for line, ok := range map[string]bool{"12": true, "20": true, "13": false, "30": false} {
+		rep, err := DocumentWith("findings", accepted(line), Options{Out: out})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rep.OK() != ok {
+			t.Errorf("zk-audit.md:%s: ok %v, errors %v", line, rep.OK(), rep.Errors)
+		}
+	}
+	// the top-level accepted_risks entries too
+	doc := strings.Replace(trustDoc("needs_validation", "high", "", ""), `"records": [`, `"accepted_risks": [{"party": "tallier", "risk": "posts a late root", "source": "zk-audit.md:13"}], "records": [`, 1)
+	if rep, _ := DocumentWith("findings", []byte(doc), Options{Out: out}); rep.OK() {
+		t.Error("accepted_risks entry citing a bounded party passed")
+	}
+}

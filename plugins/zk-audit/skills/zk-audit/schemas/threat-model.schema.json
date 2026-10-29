@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shramee/zk-audit/schemas/threat-model.schema.json",
+  "title": "zk-audit threat-model.json (zk-audit.md parsed by gnark-inventory threat-model)",
+  "type": "object",
+  "required": ["schema_version", "source", "sha256", "scope", "trusted_parties", "properties", "accepted_risks", "prior_findings", "deployment", "warnings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1" },
+    "source": { "const": "zk-audit.md" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "scope": {
+      "type": "object",
+      "required": ["in", "out"],
+      "additionalProperties": false,
+      "properties": {
+        "in": { "type": "array", "items": { "type": "object", "required": ["path", "line"], "additionalProperties": false,
+          "properties": { "path": { "$ref": "#/$defs/relPath" }, "line": { "$ref": "#/$defs/line" } } } },
+        "out": { "type": "array", "items": { "type": "object", "required": ["path", "reason", "line"], "additionalProperties": false,
+          "properties": { "path": { "$ref": "#/$defs/nonEmpty" }, "reason": { "type": "string" }, "line": { "$ref": "#/$defs/line" } } } }
+      }
+    },
+    "trusted_parties": {
+      "type": "array",
+      "description": "Who holds power and how far users trust them: trusted (its powers are accepted risks), bounded (trusted within the limit in notes), untrusted (an attacker).",
+      "items": { "type": "object", "required": ["party", "trust", "powers", "notes", "line"], "additionalProperties": false,
+        "properties": {
+          "party": { "$ref": "#/$defs/nonEmpty" },
+          "trust": { "enum": ["trusted", "bounded", "untrusted"] },
+          "powers": { "type": "string" }, "notes": { "type": "string" },
+          "line": { "$ref": "#/$defs/line" } } }
+    },
+    "properties": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "text", "line"], "additionalProperties": false,
+        "properties": { "id": { "$ref": "#/$defs/id" }, "text": { "$ref": "#/$defs/nonEmpty" }, "line": { "$ref": "#/$defs/line" } } }
+    },
+    "accepted_risks": {
+      "type": "array",
+      "description": "Risks the project accepts; a record of one carries trust.accepted with trust.source zk-audit.md:<line>.",
+      "items": { "type": "object", "required": ["id", "party", "risk", "notes", "line"], "additionalProperties": false,
+        "properties": { "id": { "$ref": "#/$defs/id" }, "party": { "$ref": "#/$defs/nonEmpty" }, "risk": { "$ref": "#/$defs/nonEmpty" },
+          "notes": { "type": "string" }, "line": { "$ref": "#/$defs/line" } } }
+    },
+    "prior_findings": {
+      "type": "array",
+      "description": "Findings of earlier reviews, by group_key; bundles list them as known and the report says whether this run raised them again.",
+      "items": { "type": "object", "required": ["id", "fingerprint", "status", "title", "line"], "additionalProperties": false,
+        "properties": { "id": { "$ref": "#/$defs/id" },
+          "fingerprint": { "type": "string", "pattern": "^[^|]+\\|[^|]+\\|[a-z0-9][a-z0-9-]*$" },
+          "status": { "enum": ["open", "fixed", "acknowledged", "wont-fix", "duplicate"] },
+          "title": { "type": "string" }, "line": { "$ref": "#/$defs/line" } } }
+    },
+    "deployment": {
+      "type": "array",
+      "items": { "type": "object", "required": ["fact", "value", "line"], "additionalProperties": false,
+        "properties": { "fact": { "$ref": "#/$defs/nonEmpty" }, "value": { "$ref": "#/$defs/nonEmpty" }, "line": { "$ref": "#/$defs/line" } } }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "line": { "type": "integer", "minimum": 1 },
+    "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*-[0-9]+$" },
+    "relPath": { "type": "string", "minLength": 1, "pattern": "^[^/]" }
+  }
+}

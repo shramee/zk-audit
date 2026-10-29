@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+# Version support matrix: runs the PoC templates of
+# plugins/zk-audit/skills/zk-audit/references/poc-templates.md, the
+# per-gadget harness and the inventory against several gnark releases.
+#
+# Usage: test/versions/run [--out DIR] [--foundry] [--check] [VERSION...]
+#   VERSION defaults to the matrix in references/gnark-versions.md.
+#   --foundry also exports the Groth16 verifier, proves the shared circuit
+#   and runs a Foundry test against the exported contract (needs forge).
+#   --check compares the statuses with test/versions/expected.json and
+#   exits 1 on a difference (CI).
+#
+# Needs the network on first use (gnark modules and, for gnark >= v0.15,
+# the Go toolchain its go directive names, via proxy.golang.org); later
+# runs reuse the module cache. Prints a Markdown table and writes
+# <out>/results.json. Never touches this repository except reading it.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo="$(cd "$here/../.." && pwd)"
+tool="$repo/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory"
+out=""
+foundry=0
+check=0
+versions=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --out) out="$2"; shift 2 ;;
+    --foundry) foundry=1; shift ;;
+    --check) check=1; shift ;;
+    -*) echo "run: unknown flag $1" >&2; exit 2 ;;
+    *) versions+=("$1"); shift ;;
+  esac
+done
+[ ${#versions[@]} -gt 0 ] || versions=(v0.8.1 v0.10.0 v0.11.0 v0.12.0 v0.13.0 v0.14.0 v0.15.0 v0.16.4)
+[ -n "$out" ] || out="$(mktemp -d)"
+mkdir -p "$out"
+out="$(cd "$out" && pwd)"
+case "$out/" in "$repo"/*) echo "run: --out must be outside the repository" >&2; exit 2 ;; esac
+
+proxy="$(go env GOPROXY)"
+gi="$out/gnark-inventory"
+GOFLAGS=-mod=vendor go -C "$tool" build -o "$gi" .
+
+templates=(hintoverride proveverify proveverifyplonk assertoverride replacementhint alias invalidassignment completeness linkage)
+results="$out/results.jsonl"
+: >"$results"
+
+record() { # version item status detail
+  python3 -c 'import json,sys; print(json.dumps({"version":sys.argv[1],"item":sys.argv[2],"status":sys.argv[3],"detail":sys.argv[4][:300]}))' "$@" >>"$results"
+}
+
+classify() { # log -> status detail
+  local log="$1"
+  if grep -q '^ok ' "$log"; then
+    echo "works"
+  elif grep -qE '\[(build|setup) failed\]|^# |cannot find package|undefined:|is not in std|no required module|finding module for package|cannot find module providing' "$log"; then
+    echo "api-differs"
+  else
+    echo "fails"
+  fi
+}
+
+firsterr() {
+  grep -m1 -E 'undefined|cannot|not enough|too many|has no field|unknown field|no required module|panic|Error|--- FAIL|error' "$1" | sed 's/^[[:space:]]*//' || true
+}
+
+for v in "${versions[@]}"; do
+  export GOPROXY="$proxy"
+  d="$out/$v"
+  rm -rf "$d"
+  mkdir -p "$d/mod/tpl" "$d/mod/cmd/export"
+  gdir="$(GOFLAGS=-mod=mod go mod download -json "github.com/consensys/gnark@$v" | python3 -c 'import json,sys; print(json.load(sys.stdin)["Dir"])')"
+  godir="$(awk '$1=="go"{print $2; exit}' "$gdir/go.mod")"
+  printf 'module example.com/vmatrix\n\ngo %s\n\nrequire github.com/consensys/gnark %s\n' "$godir" "$v" >"$d/mod/go.mod"
+  # the toolchain: the local Go when it is new enough, else exactly the
+  # release gnark's go directive names (downloaded once; never "latest")
+  need="go$godir"
+  case "$godir" in *.*.*) ;; *) need="go$godir.0" ;; esac
+  tc="$(python3 -c 'import re,sys
+def k(v): return [int(x) for x in re.findall(r"\d+", v)[:3]] + [0] * 3
+print("local" if k(sys.argv[1])[:3] >= k(sys.argv[2])[:3] else sys.argv[2])' "$(GOTOOLCHAIN=local go env GOVERSION)" "$need")"
+  export GOTOOLCHAIN="$tc" GOFLAGS=-mod=mod CGO_ENABLED=0
+  # Resolve the module graph online from a stub that imports only the
+  # packages the templates use that exist in this release: tidying the
+  # templates themselves would upgrade gnark to a release that has a
+  # package an old one lacks.
+  mkdir -p "$d/mod/tpl/deps"
+  {
+    echo "package deps"
+    echo
+    echo "import ("
+    for p in frontend frontend/cs/r1cs frontend/cs/scs backend backend/groth16 backend/plonk constraint/solver backend/hint test test/unsafekzg std/math/bits std/hash/mimc std/math/emulated std/math/emulated/emparams; do
+      [ -d "$gdir/$p" ] && echo "	_ \"github.com/consensys/gnark/$p\""
+    done
+    echo "	_ \"github.com/consensys/gnark-crypto/ecc\""
+    echo "	_ \"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc\""
+    echo ")"
+  } >"$d/mod/tpl/deps/deps.go"
+  # -e: test-only dependencies of dependencies may want a newer Go; they
+  # are not built
+  if ! go -C "$d/mod" mod tidy -e >"$d/tidy.log" 2>&1; then
+    record "$v" "setup" "fails" "$(tail -1 "$d/tidy.log")"
+    continue
+  fi
+  for t in "${templates[@]}"; do
+    mkdir -p "$d/mod/tpl/$t"
+    cp "$here/templates/$t/"*.go "$d/mod/tpl/$t/"
+    sed "s/^package PKG$/package $t/" "$here/templates/circuit.go.tmpl" >"$d/mod/tpl/$t/circuit.go"
+  done
+  mkdir -p "$d/mod/tpl/harness"
+  cp "$here/templates/harness/gadget.go" "$d/mod/tpl/harness/"
+  if [ -d "$gdir/constraint/solver" ]; then
+    cp "$here/templates/foundry/main.go.tmpl" "$d/mod/cmd/export/main.go"
+  else
+    cp "$here/templates/foundry/main_v08.go.tmpl" "$d/mod/cmd/export/main.go"
+  fi
+  sed "s/^package PKG$/package main/" "$here/templates/circuit.go.tmpl" >"$d/mod/cmd/export/circuit.go"
+  pinned="$(GOPROXY=off go -C "$d/mod" list -m -f '{{.Version}}' github.com/consensys/gnark 2>/dev/null || true)"
+  if [ "$pinned" != "$v" ]; then
+    record "$v" "setup" "fails" "gnark resolved to $pinned, not $v"
+    continue
+  fi
+  # everything below is offline: a package the pinned gnark lacks must fail
+  # to build, not pull in a newer gnark
+  export GOPROXY=off
+  gover="$(go -C "$d/mod" env GOVERSION)"
+  record "$v" "go" "info" "gnark go directive $godir; ran with $gover"
+  for t in "${templates[@]}"; do
+    log="$d/$t.log"
+    go -C "$d/mod" test -count=1 "./tpl/$t/" >"$log" 2>&1 || true
+    st="$(classify "$log")"
+    det=""
+    [ "$st" = works ] || det="$(firsterr "$log")"
+    record "$v" "$t" "$st" "$det"
+  done
+  # inventory: offline with the local toolchain (what an audit does), then
+  # with the toolchain the module needs first on PATH
+  # (on a module with the shared circuit and the gadget only, no tests:
+  # expected 1 circuit, 2 hint sites, 1 gadget)
+  unset GOTOOLCHAIN GOFLAGS
+  mkdir -p "$d/invmod/tpl/circuit" "$d/invmod/tpl/harness"
+  cp "$d/mod/go.mod" "$d/mod/go.sum" "$d/invmod/"
+  sed "s/^package PKG$/package circuit/" "$here/templates/circuit.go.tmpl" >"$d/invmod/tpl/circuit/circuit.go"
+  cp "$here/templates/harness/gadget.go" "$d/invmod/tpl/harness/"
+  "$gi" inventory --repo "$d/invmod" --out "$d/inv" --sandbox off >"$d/inv.log" 2>&1 || true
+  mode="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["load_mode"], len(d["circuits"]), len(d["hints"]), len(d["gadgets"]))' "$d/inv/inventory.json" 2>/dev/null || echo "error")"
+  record "$v" "inventory-local" "info" "$mode"
+  # the same through the skill's wrapper with ZK_AUDIT_GO set to the
+  # toolchain the module needs (preflight's use_go)
+  groot="$(GOTOOLCHAIN="$tc" go -C "$d/invmod" env GOROOT)"
+  ZK_AUDIT_BIN="$out/bin" ZK_AUDIT_GO="$groot/bin/go" "$repo/plugins/zk-audit/skills/zk-audit/scripts/gnark-inventory" \
+    inventory --repo "$d/invmod" --out "$d/inv2" --sandbox off >"$d/inv2.log" 2>&1 || true
+  mode2="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["load_mode"], len(d["circuits"]), len(d["hints"]), len(d["gadgets"]))' "$d/inv2/inventory.json" 2>/dev/null || echo "error")"
+  record "$v" "inventory-toolchain" "info" "$mode2 (ZK_AUDIT_GO $("$groot/bin/go" env GOVERSION))"
+  # per-gadget harness: generate into a copy (never into the inventoried tree), compile it
+  cp -R "$d/invmod" "$d/wt"
+  if "$gi" harness --out "$d/inv" --gadget harness.QuoRem --worktree "$d/wt" >"$d/harness.log" 2>&1 &&
+    GOTOOLCHAIN="$tc" GOFLAGS=-mod=mod go -C "$d/wt" vet ./tpl/harness/ >>"$d/harness.log" 2>&1; then
+    record "$v" "harness" "works" ""
+  else
+    record "$v" "harness" "$(grep -qE 'undefined|cannot use|not enough|no required module|cannot find' "$d/harness.log" && echo api-differs || echo fails)" "$(firsterr "$d/harness.log")"
+  fi
+  # Foundry: the exported Groth16 verifier accepts an honest proof and
+  # rejects a wrong public input
+  if [ "$foundry" = 1 ]; then
+    f="$d/foundry"
+    mkdir -p "$f/src" "$f/test"
+    printf '[profile.default]\nsrc = "src"\ntest = "test"\nout = "out"\n' >"$f/foundry.toml"
+    if ! GOTOOLCHAIN="$tc" GOFLAGS=-mod=mod go -C "$d/mod" run ./cmd/export "$f/src/Verifier.sol" "$d/proof.txt" >"$d/export.log" 2>&1; then
+      record "$v" "foundry" "api-differs" "$(firsterr "$d/export.log")"
+    elif ! python3 "$here/foundry_test.py" "$f/src/Verifier.sol" "$d/proof.txt" "$f/test/Version.t.sol" >"$d/abi.txt" 2>&1; then
+      record "$v" "foundry" "api-differs" "$(cat "$d/abi.txt")"
+    elif forge test --root "$f" >"$d/forge.log" 2>&1; then
+      record "$v" "foundry" "works" "$(cat "$d/abi.txt")"
+    else
+      record "$v" "foundry" "fails" "$(cat "$d/abi.txt"); $(grep -m1 -E 'FAIL|Error' "$d/forge.log" || true)"
+    fi
+  else
+    record "$v" "foundry" "not-run" "pass --foundry"
+  fi
+done
+
+python3 - "$results" "$out/results.json" <<'PY'
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1])]
+json.dump(rows, open(sys.argv[2], "w"), indent=1)
+versions = []
+for r in rows:
+    if r["version"] not in versions:
+        versions.append(r["version"])
+items = ["hintoverride", "proveverify", "proveverifyplonk", "assertoverride", "replacementhint", "alias", "invalidassignment", "completeness", "linkage", "harness", "foundry", "inventory-local", "inventory-toolchain", "go"]
+cell = {}
+for r in rows:
+    s = r["status"]
+    if s == "info":
+        s = r["detail"]
+    elif s != "works" and r["detail"]:
+        s = s + ": " + r["detail"].replace("|", "\\|")[:120]
+    cell[(r["version"], r["item"])] = s
+print("| Item | " + " | ".join(versions) + " |")
+print("|---|" + "---|" * len(versions))
+for it in items:
+    print("| " + it + " | " + " | ".join(cell.get((v, it), "–") for v in versions) + " |")
+PY
+echo "results: $out/results.json" >&2
+if [ "$check" = 1 ]; then
+  python3 - "$out/results.json" "$here/expected.json" "$foundry" <<'PY'
+import json, sys
+rows = json.load(open(sys.argv[1]))
+exp = json.load(open(sys.argv[2]))
+foundry = sys.argv[3] == "1"
+got = {}
+for r in rows:
+    st = r["status"]
+    if r["item"] == "inventory-toolchain":
+        st = r["detail"].split(" (")[0]
+    got[(r["version"], r["item"])] = st
+bad = []
+for v in set(r["version"] for r in rows):
+    for item in exp.get(v, {}):
+        if (v, item) not in got and not (item == "foundry" and not foundry) and (v, "setup") not in got:
+            bad.append("%s %s: not run" % (v, item))
+for (v, item), st in got.items():
+    if item == "setup":
+        bad.append("%s setup: %s" % (v, st))
+        continue
+    want = exp.get(v, {}).get(item)
+    if want is None or (item == "foundry" and not foundry):
+        continue
+    if st != want:
+        bad.append("%s %s: got %s, want %s" % (v, item, st, want))
+for b in bad:
+    print("version matrix:", b, file=sys.stderr)
+sys.exit(1 if bad else 0)
+PY
+fi

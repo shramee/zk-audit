@@ -14,14 +14,28 @@ sum="$(cd "$src" && find . -type f \( -name '*.go' -o -name '*.json' -o -name 'g
   -not -name '*_test.go' -print | LC_ALL=C sort | xargs cat | $hash_cmd | cut -c1-12)"
 bin_dir="${ZK_AUDIT_BIN:-$HOME/.zk-audit/bin}"
 bin="$bin_dir/gnark-inventory-$ver-$sum"
+gocmd=go
+# ZK_AUDIT_GO names a newer go binary (gnark-inventory preflight prints one
+# as use_go): the tool is built with it, so its type checker accepts the
+# target's go version, and it comes first on PATH, so type loading runs it.
+if [ -n "${ZK_AUDIT_GO:-}" ]; then
+  if [ ! -x "$ZK_AUDIT_GO" ]; then
+    echo "gnark-inventory: ZK_AUDIT_GO=$ZK_AUDIT_GO is not an executable go binary" >&2
+    exit 2
+  fi
+  gocmd="$ZK_AUDIT_GO"
+  bin="$bin-$(GOTOOLCHAIN=local "$gocmd" env GOVERSION)"
+  PATH="$(dirname "$ZK_AUDIT_GO"):$PATH"
+  export PATH
+fi
 if [ ! -x "$bin" ]; then
-  if ! command -v go >/dev/null 2>&1; then
+  if ! command -v "$gocmd" >/dev/null 2>&1; then
     echo "gnark-inventory: Go >= 1.24 is required to build the tool (https://go.dev/dl/)" >&2
     exit 2
   fi
   mkdir -p "$bin_dir"
   tmp="$bin.tmp.$$"
-  (cd "$src" && GOWORK=off GOFLAGS=-mod=vendor go build -trimpath -o "$tmp" .)
+  (cd "$src" && GOWORK=off GOFLAGS=-mod=vendor GOTOOLCHAIN=local "$gocmd" build -trimpath -o "$tmp" .)
   mv "$tmp" "$bin"
 fi
 exec "$bin" "$@"

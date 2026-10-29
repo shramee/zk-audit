@@ -68,6 +68,60 @@ left open, it is recorded here with the reason.
 - **Advisory table.** The canonical machine-readable table is
   `internal/advisory/advisories.json` in the tool. `references/gnark-versions.md`
   carries the same JSON in a fenced block; a unit test fails if they differ.
+- **Advisory table v2 (gnark and gnark-crypto).** Each row names its
+  `package`; `detect` matches gnark rows against the gnark version and
+  gnark-crypto rows against the gnark-crypto version of every `go.mod`. A
+  row may carry `extra_ranges` (GHSA-fj2x has a fix backported to the 0.18
+  line). `verified` now needs `verified_by`: `osv` (the OSV record matches)
+  or `source` (OSV and the Go vulnerability database do not list the
+  advisory and its GitHub page is unreachable from the build environment, so
+  the fix was located in the released gnark source in the module cache;
+  `evidence` names the file and version). The three gnark rows that were
+  `verified: false` are `source` rows: the fix versions (v0.16.4, v0.16.2,
+  v0.16.0) are confirmed in code, the advisory texts are not. The table has
+  an `as_of` date that `detect` copies into `stack.json` and the report
+  prints.
+- **`advisories --osv` (opt-in network).** Offline by default. With
+  `--osv` it posts the module name and pinned version of gnark and
+  gnark-crypto to `api.osv.dev/v1/query`, and diffs the result: OSV ids no
+  row covers (by id or alias) are `new`; a row whose own OSV record (or,
+  when that is not returned, an alias record such as `GO-…`) has other
+  ranges is `changed`; a row that affects the pin but that OSV does not
+  return is looked up by id, and is `not_in_osv` when OSV does not have it.
+  It is the only network call the tool makes, so the skill asks first
+  (hard rules 4 and 8). Tests replay OSV responses recorded on 2026-10-29
+  from `testdata/osv/` through `httptest`; no test uses the network. Known
+  difference: GO-2025-3929 lists GHSA-9fvj with no lower bound, the GHSA
+  record (and the table) start at v0.12.0.
+- **`preflight` (D16).** A deterministic check before recon: for every
+  `go.mod` that pins gnark or gnark-crypto it looks up both in the module
+  cache (extracted source for the agents, and the `cache/download` `.mod`
+  and `.zip` the go command builds from with `GOPROXY=off`), every other
+  requirement's download entry, and the go directive of the module, gnark
+  and gnark-crypto against the local `go env GOVERSION`. It prints what is
+  missing and simple commands (no `&&`) that fetch it: `go -C <out> mod
+  download gnark@v gnark-crypto@v` (outside the repository), `go -C
+  <out>/worktree mod download` (only the scratch worktree's `go.sum` can
+  change) and `GOTOOLCHAIN=goX go -C <out> version` for a toolchain. It
+  runs none of them. The sandbox keeps `GOTOOLCHAIN=local`, so a target
+  that needs a newer Go runs with a cached toolchain's own `bin/go`, which
+  preflight finds in `golang.org/toolchain@…` and prints as `use_go`.
+  `internal/modcache` holds the cache lookups for preflight and `bundle`
+  (which writes the absolute gnark std path, and now the gnark-crypto
+  path, into every bundle). Tests use a fake `GOMODCACHE`.
+- **Version matrix (D17).** `test/versions/run` (repository only, not
+  shipped) builds one throwaway module per gnark release with one package
+  per Go PoC template, so a template whose API is missing fails alone
+  ("API differs") instead of breaking the build of the others. It
+  downloads gnark's module graph and the toolchain with the network, then
+  runs everything with `GOPROXY=off`: online, `go mod tidy` and `go test
+  -mod=mod` resolved `constraint/solver` for v0.8.1 by silently upgrading
+  gnark to v0.16.4, which made the first run report v0.8.1 as working.
+  The Foundry check reads the `verifyProof` ABI from the exported contract
+  (three forms across v0.8 to v0.16). The typed-mode finding (a tool built
+  with Go 1.24 cannot type-check a `go 1.25` package) led to
+  `ZK_AUDIT_GO` in the wrapper rather than to raising the tool's own Go
+  requirement, which would break offline builds on Go 1.24 machines.
 - **Fallback loader.** If `go/packages` cannot type-check the target (missing
   dependencies, wrong toolchain), the tool falls back to `go/parser` and marks
   unresolved items (`resolved: false`). gnark ≥ v0.15 needs Go ≥ 1.25 and
@@ -168,6 +222,63 @@ left open, it is recorded here with the reason.
 
 Nothing else changes: bundles, ledger seeding and validation, the docs
 tables and `gnark-inventory profiles` all follow the entry.
+
+## Library mode (gadget libraries)
+
+- **Detection.** `detect` parses (syntax only) the non-test, non-`main`
+  Go files that import gnark's `frontend` or `std/math/emulated` and counts
+  exported functions and methods with a `frontend.API` or
+  `(*)emulated.Field[T]` parameter (gadgets) and non-test `Define` methods
+  (production circuits). `library.mode` is true when there are gadgets, no
+  production circuit and no verifier contract. It is a profile
+  (`library`), not a mode word, so `/zk-audit library` needs no parser
+  change; Phase 0 preselects it in the profile question. A repository with
+  circuits and exported helpers is a normal audit; `deep` adds L1 there
+  (`when: exported-gadgets`).
+- **Auditing gnark std in place.** A directory with no `go.mod` reads the
+  enclosing one (`gomod.Enclosing`): `detect` reports gnark itself at the
+  version in the module cache path (`gnark@vX`) and the loader type-checks
+  the packages under the directory with the enclosing module. Checked on
+  gnark v0.14.0 `std/math/bits` (7 gadgets), `std/rangecheck` (1: `New`;
+  the checkers are unexported types) and `std/math/cmp` (11), typed mode.
+  The output looked right: every `Assert*` and comparison input is
+  `constrained`, `cmp.IsEqual`'s inputs `escape` (`IsZero` of the
+  difference), and `bits.FromBase`'s doc ("its canonical representation")
+  draws a `promise-canonical` check, a real doc-versus-constraint question.
+- **Gadget inventory.** The hint taint pass is split into steps
+  (`findSites`, `propagate`, `sinks`) so the gadget pass can root one state
+  per parameter next to the hint states, and an `onCall` hook follows
+  same-package callees (memoised per callee parameter, depth 4), so
+  `ToBits → recompose → AssertIsEqual` reads as constrained. Doc comments
+  are split into sentences and classified by regular expressions:
+  preconditions (`caller must`, `assumes`, `must be`, `not checked`, …)
+  and promises by property (boolean, range, canonical, on-curve, nonzero,
+  relation). `doc_checks` are deliberately coarse facts for L1: a promised
+  property with no constraining call of a matching name in the gadget or
+  its same-package callees, a returned hint output no constraint touches,
+  a witness input that reaches no constraint and that no precondition
+  names. Constraints behind an interface or in another package are not
+  followed, so a missing check proves nothing; L1 reads the code.
+- **Lens and ledger.** L1 owns class `doc-contract`, seeded per gadget
+  (seed kind `gadget`, ledger kind `gadget`). Without a production circuit
+  the `circuit`-seeded classes get one unit per gadget package (ledger kind
+  `package`) instead of none, so C1-C6 coverage is still tracked. Gadget
+  packages join the circuit shard.
+- **Harness.** `gnark-inventory harness` generates the wrapper from the
+  inventory alone (no go command): inputs become witness fields, `int` and
+  `bool` parameters `gnark:"-"` fields, outputs `Out<i>` fields asserted
+  equal (element outputs with `Field.AssertIsEqual`, with a comment that a
+  canonical promise needs a limb-by-limb check), variadic options are
+  dropped with a note. In-package by default so unexported hints are in
+  reach; `--external` writes `<pkg>_test` for packages that `gnark/test`
+  or the builders import (gnark std: in-package tests import-cycle). It
+  refuses a destination inside the audited repository. The eval PoCs of
+  `lib-gadgets` use the generated files unchanged and a tool test fails
+  when the generator drifts from them, so the generator is compiled and
+  run in CI (`make eval-pocs`).
+- **Differential tests** are a template (T-DIFFERENTIAL), not a tool
+  command: the native reference differs per library (its own Go code,
+  gnark-crypto, `math/big`). Mutants are guidance for deep, not automated.
 
 ## Solidity scan: inheritance, imports and several verifiers
 

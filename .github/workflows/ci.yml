@@ -37,3 +37,28 @@ jobs:
           version: v1.7.1
       - name: Eval PoCs on sanitized copies of the pool and liveness-roots fixtures
         run: make eval-pocs
+
+  versions:
+    # Version support matrix (references/gnark-versions.md): the PoC
+    # templates, the per-gadget harness, a Foundry test against the exported
+    # Groth16 verifier and the inventory on three gnark releases. Downloads
+    # gnark and, for v0.16.4, Go 1.26.8 (GOTOOLCHAIN=auto); the template runs
+    # themselves are offline (GOPROXY=off).
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gnark: [v0.10.0, v0.14.0, v0.16.4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false
+      - name: Install Foundry for the exported-verifier check
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - name: Version matrix for gnark ${{ matrix.gnark }}
+        run: test/versions/run --foundry --check --out "$RUNNER_TEMP/versions" ${{ matrix.gnark }}
+

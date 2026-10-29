@@ -17,6 +17,7 @@ import (
 	"golang.org/x/tools/go/packages"
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fsutil"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/gomod"
 )
 
 // Options control loading.
@@ -80,6 +81,14 @@ func Load(root string, opt Options) (*Program, error) {
 		}
 		for _, m := range mods {
 			prog.loadTyped(filepath.Dir(m.Abs), opt, seen)
+		}
+		if len(mods) == 0 {
+			// a package directory inside a module (a gnark std package in
+			// the module cache): load the packages under root with the
+			// enclosing module
+			if abs, _ := gomod.Enclosing(root); abs != "" {
+				prog.loadTyped(root, opt, seen)
+			}
 		}
 	}
 

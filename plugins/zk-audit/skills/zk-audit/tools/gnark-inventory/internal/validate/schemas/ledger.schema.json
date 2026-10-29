@@ -22,7 +22,7 @@
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z-]+:[^|]+\\|[a-z0-9-]+$" },
-        "kind": { "enum": ["circuit", "hint", "public-input", "contract-fn", "verifier", "prover", "dependency", "role", "setup"] },
+        "kind": { "enum": ["circuit", "package", "gadget", "hint", "public-input", "contract-fn", "verifier", "prover", "dependency", "role", "setup"] },
         "subject": { "$ref": "#/$defs/nonEmpty" },
         "class": {
           "type": "string",

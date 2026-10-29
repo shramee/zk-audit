@@ -45,7 +45,8 @@
         "backends": { "type": "array", "items": { "enum": ["groth16", "plonk"] } },
         "builders": { "type": "array", "items": { "enum": ["r1cs", "scs"] } },
         "curves": { "type": "array", "items": { "type": "string" } },
-        "features": { "type": "array", "items": { "type": "string" } }
+        "features": { "type": "array", "items": { "type": "string" } },
+        "advisory_table_as_of": { "type": "string", "description": "date of the embedded advisory table (gnark-inventory advisories --osv compares it with OSV)" }
       }
     },
     "solidity": {
@@ -62,6 +63,19 @@
     "hardhat": { "$ref": "#/$defs/presence" },
     "circom": { "$ref": "#/$defs/presence" },
     "noir": { "$ref": "#/$defs/presence" },
+    "library": {
+      "type": "object",
+      "description": "exported gnark gadgets; mode is true for a gadget library (no production circuit, no verifier contract)",
+      "required": ["mode", "gadgets", "packages", "production_circuits", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "type": "boolean" },
+        "gadgets": { "type": "integer", "minimum": 0 },
+        "packages": { "type": "array", "items": { "type": "string" } },
+        "production_circuits": { "type": "integer", "minimum": 0 },
+        "reason": { "type": "string" }
+      }
+    },
     "routes": { "type": "array", "items": { "type": "string" } },
     "notes": { "type": "array", "items": { "type": "string" } },
     "languages": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }

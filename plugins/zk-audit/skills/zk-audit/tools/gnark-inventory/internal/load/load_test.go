@@ -86,3 +86,26 @@ func TestBuildDirNotSkipped(t *testing.T) {
 		t.Fatalf("a Go package named build must be loaded, got %d files", len(prog.Files))
 	}
 }
+
+// TestEnclosingModule loads a package directory that has no go.mod of its
+// own (a gnark std package in the module cache) with the enclosing module.
+func TestEnclosingModule(t *testing.T) {
+	mod := t.TempDir()
+	sub := filepath.Join(mod, "std", "widget")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mod, "go.mod"), []byte("module example.com/m\n\ngo 1.21\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "w.go"), []byte("package widget\n\nfunc Double(x int) int { return 2 * x }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prog, err := Load(sub, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prog.Mode != "types" || len(prog.Files) != 1 || prog.Files[0].Rel != "w.go" || prog.Files[0].Pkg.PkgPath != "example.com/m/std/widget" {
+		t.Fatalf("mode %s files %d errors %v", prog.Mode, len(prog.Files), prog.Errors)
+	}
+}

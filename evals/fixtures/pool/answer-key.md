@@ -27,7 +27,7 @@ ground truth; scoring uses it.
 | P9 | `circuit/transfer.go:106-113` | `decompose` returns unconstrained hint outputs | Info. Dead code. | hardening or lead |
 | P10 | `circuit/sig.go:38-39` | emulated `sq.Limbs[0]` used directly | Low/info. `Limbs[0] ≠ 0` is not `sq ≠ 0` for a non-canonical result; the check has no protocol use. | lead or low/info |
 | P11 | `cmd/setup/main.go:21-22` | single-party `groth16.Setup` outside tests | High if these keys are deployed: whoever ran it can forge proofs. Depends on deployment. | needs_validation (high) or confirmed with the trust assumption named |
-| P12 | `go.mod` | gnark v0.14.0 | GHSA-3mvx-pp85-pm65 (emulated arithmetic is used by `SigCircuit`), GHSA-7fx8 and GHSA-fwf3 (components unused). | reported from Phase 0 (needs_validation or confirmed, any severity) |
+| P12 | `go.mod` | gnark v0.14.0, gnark-crypto v0.19.0 | GHSA-3mvx-pp85-pm65 (emulated arithmetic is used by `SigCircuit`), GHSA-7fx8 and GHSA-fwf3 (components unused); gnark-crypto GHSA-fj2x-735w-74vq (proof and key deserialization, availability). | reported from Phase 0 (needs_validation or confirmed, any severity) |
 | P13 | `contracts/Pool.sol:20-23` | owner can swap the verifier | Trusted-party: the owner can accept any proof. | lead or needs_validation |
 | P14 | `contracts/Pool.sol:25-28` | roots are set by the owner, not derived from deposits | Trusted-party: the owner can add a root of a fake tree and mint. | lead or needs_validation |
 | P15 | `contracts/Pool.sol:30-53` | no chain id / contract address in the statement | Medium: a proof replays on a second deployment that shares the verifier and a root. | lead, needs_validation or confirmed medium |

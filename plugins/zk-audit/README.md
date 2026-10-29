@@ -43,7 +43,8 @@ through `skills/zk-audit/scripts/gnark-inventory`, which builds it once into
 | Subcommand | Output |
 |---|---|
 | `args [--repo DIR] [--mode M] [--run-id ID] [--home DIR] -- WORDS...` | Parses a `/zk-audit ...` invocation (mode, profile, scope files, `--local`, `--loop N`, `--no-poc`, `--file-output`, `--out DIR`, `--profile P`, setup's `--check-only`) into JSON with defaults (output `~/.zk-audit/<repo>/<run-id>`, passes from the profile); exit 1 lists every invalid word. |
-| `detect --repo DIR [--out stack.json]` | gnark / gnark-crypto versions, matching advisories, backends, curves, Solidity / Foundry / Hardhat / Circom / Noir presence. |
+| `detect --repo DIR [--out stack.json]` | gnark / gnark-crypto versions, matching gnark and gnark-crypto advisories, backends, curves, Solidity / Foundry / Hardhat / Circom / Noir presence, and `library` (exported gadgets with no production circuit or verifier contract: library mode). |
+| `preflight --repo DIR [--out DIR] [--json]` | Checks that the pinned gnark and gnark-crypto sources, the target's other requirements and a new enough Go are on this machine; prints the exact commands that fetch what is missing (never runs them) and a cached newer toolchain to use. |
 | `inventory --repo DIR --out DIR [--files a,b] [--syntax-only] [--allow-network] [--sandbox auto\|on\|off]` | `inventory.json`, `inventory.md`, `binding-table.md`, `coverage-ledger.json` (seeded), `stack.json`. |
 | `bundle --out DIR --skill SKILL_DIR [--profile P]` | One `bundles/<agent>.md` per selected agent: source shard (paths and line counts), binding table, inventory items, SOP, lens, shared rules. |
 | `profiles [--profile P] [--markdown] [--check-docs SKILL_DIR] [--sync-docs SKILL_DIR]` | Prints the lens, critic and profile definitions (the embedded `profiles.json`, the single source of truth), one profile with its lenses, or the generated Markdown tables; `--check-docs` / `--sync-docs` compare or rewrite the tables in `SKILL.md` and `references/orchestration.md`. |
@@ -59,7 +60,8 @@ through `skills/zk-audit/scripts/gnark-inventory`, which builds it once into
 | `agents save --out DIR --id ID [--from FILE] [--status done\|blocked\|failed\|refused] [--reason R]` · `agents list --out DIR` | Saves an agent's raw return to `<out>/agents/<ID>.md` and its status, FINDING / LEAD counts and attempts to `agents/index.json`; a stopped or refused agent needs a reason. |
 | `lint-kb [--gnark-src DIR] SKILL_DIR` | Lints the knowledge base: every vector has D/FP/Source/Seed/PoC, sources are real URLs on allowed hosts or `gnark/<path>` references (checked against a gnark checkout with `--gnark-src`), seeds name real detector rules, PoCs name real templates, ids are unique, slice counts match the index, and the advisory table matches the tool. |
 | `rules` | Prints the footgun detector rules as JSON. |
-| `advisories [--version vX.Y.Z]` | Prints the embedded advisory table, or only the advisories that affect a version. |
+| `advisories [--version vX.Y.Z] [--crypto-version vX.Y.Z] [--repo DIR] [--json] [--osv]` | Prints the embedded, dated advisory table, or the advisories that affect the given or pinned gnark and gnark-crypto versions; `--osv` (network, opt-in) compares the table with OSV: new ids, changed ranges, rows OSV lacks. |
+| `harness --out DIR (--gadget ID\|NAME \| --all) [--worktree DIR] [--print] [--external] [--emparams T] [--curve C]` | Library mode: writes a wrapper circuit per exported gadget into the PoC worktree (never the repository) with skipped skeletons of the honest control, the invalid assignment, hint overrides and the differential test. |
 | `version` | Prints the tool version. |
 
 Every validator fails when it inspects zero items.

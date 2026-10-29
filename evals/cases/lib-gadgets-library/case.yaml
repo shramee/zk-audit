@@ -1,0 +1,35 @@
+schema_version: "1.1"
+name: lib-gadgets-library
+description: "Blind library-mode audit of the lib-gadgets fixture (gnark v0.14.0 gadget library, no production circuit, no verifier contract). Precise scoring is evals/score against evals/fixtures/lib-gadgets/key.json; the graders below are the plugin-eval view."
+tags: [audit, library, lib-gadgets]
+plugins: ["../../../plugins/zk-audit"]
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+graders:
+  - name: findings-written
+    type: regex
+    target: {source: file, path: out/findings.json}
+    pattern: '"schema_version":\s*"1"'
+  - name: gadget-table
+    type: regex
+    target: {source: file, path: out/REPORT.md}
+    pattern: 'Gadget contracts'
+  - name: doc-contract-findings
+    type: llm
+    weight: 3
+    focus: {source: file, path: out/findings.json}
+    criteria: |
+      PASS if confirmed records show at least two of: ToBits returns values
+      that are not constrained to be boolean; DivMod does not constrain the
+      remainder below the divisor; Canonical returns a value that is not
+      reduced below the modulus. FAIL otherwise.
+  - name: no-decoy-claims
+    type: llm
+    weight: 2
+    focus: {source: file, path: out/findings.json}
+    criteria: |
+      FAIL if a record with verdict "confirmed" claims that IsLess is wrong for
+      inputs below 2^64, that AssertRange accepts out-of-range values, or that
+      Accumulator.Add is a bug although its doc asks the caller for a boolean.
+      PASS otherwise.

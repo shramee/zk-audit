@@ -72,6 +72,9 @@ only API shapes you may use without checking the pinned gnark source first.
    root's `test` directory).
 5. Run: `{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- go -C <out>/worktree test -run '^TestPoC_<finding-number>_' -count=1 -v ./<pkg>/`
    (Foundry: `{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- forge test --root <out>/worktree/<foundry root> --offline --match-contract PoC_<finding-number> -vv`).
+   When the orchestrator gives you a `use_go` path from `gnark-inventory
+   preflight` (the local Go is older than the target needs), use that
+   absolute `.../bin/go` in place of `go` in the same command.
    If `forge` is missing or the pinned solc is not in the local cache
    (`--offline` fails to compile for that reason), report `not_run` with the
    reason; never download solc.

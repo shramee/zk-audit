@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/advisory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 )
 
@@ -288,17 +289,20 @@ func (in *input) writeScope(b *strings.Builder) {
 		}
 		w("| Versions | %s |\n", cell(strings.Join(vs, " · ")))
 		if len(in.s.Gnark.Advisories) == 0 {
-			w("| Advisories | none matched the pinned gnark version |\n")
+			w("| Advisories | none matched the pinned gnark or gnark-crypto version%s |\n", asOf(in.s.Gnark.AdvisoryTableAsOf))
 		} else {
 			var as []string
 			for _, a := range in.s.Gnark.Advisories {
 				s := fmt.Sprintf("%s (%s, fixed %s", a.ID, a.Severity, a.Fixed)
+				if a.Package == advisory.GnarkCrypto {
+					s = fmt.Sprintf("%s (gnark-crypto %s, %s, affected %s", a.ID, a.Version, a.Severity, a.Affected())
+				}
 				if a.Status != "affected" {
 					s += ", " + strings.ReplaceAll(a.Status, "_", " ")
 				}
 				as = append(as, s+")")
 			}
-			w("| Advisories | %s |\n", cell(strings.Join(as, " · ")))
+			w("| Advisories | %s%s |\n", cell(strings.Join(as, " · ")), asOf(in.s.Gnark.AdvisoryTableAsOf))
 		}
 	}
 
@@ -594,7 +598,7 @@ func (in *input) quote(l Location) (string, string, bool) {
 }
 
 var statuses = []string{"planned", "in_progress", "covered", "candidate", "deferred", "blocked", "not_applicable", "out_of_scope"}
-var kinds = []string{"circuit", "hint", "public-input", "contract-fn", "verifier", "role", "setup", "prover", "dependency"}
+var kinds = []string{"circuit", "package", "gadget", "hint", "public-input", "contract-fn", "verifier", "role", "setup", "prover", "dependency"}
 
 func (in *input) writeCoverage(b *strings.Builder, rejected int) {
 	w := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
@@ -667,6 +671,7 @@ func (in *input) writeCoverage(b *strings.Builder, rejected int) {
 		}
 		w("\n")
 	}
+	in.writeGadgets(b)
 	w("Rejected candidates: %d (kept in `findings.json` so a later run does not raise them again).\n\n", rejected)
 	if c := in.f.Companions; c == nil {
 		w("Companions: not recorded.\n\n")
@@ -704,4 +709,12 @@ func pocLine(p *PoC) string {
 		res += " (" + p.Demonstrates + ")"
 	}
 	return fmt.Sprintf("%s — %s → %s.", code(p.Path), code(p.Command), res)
+}
+
+// asOf is the advisory table date suffix of the report's Advisories row.
+func asOf(date string) string {
+	if date == "" {
+		return ""
+	}
+	return " (advisory table as of " + date + ")"
 }

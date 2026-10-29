@@ -25,6 +25,7 @@ The skill folder is self-contained: everything below lives under `{skill}`
 | "is this circuit ok?", "what does `bits.OmitModulusCheck` do?", "explain this constraint", "why does my proof fail?" | **guidance** | Answer directly from `references/` and the code. No agents, no output directory, no tools beyond Read/Grep. Offer an audit at the end in one line. |
 | "audit", "review", "security review", "find bugs", "check this verifier", `/zk-audit ...` | **full audit** | Run the phases in §4. |
 | `/zk-audit setup`, `recon` or `diff` (or `/zk-audit:setup` etc.) | **setup / recon / diff** | Follow `references/modes/<mode>.md`. |
+| `/zk-audit library`, or an audit of a repository that exports gnark gadgets with no production circuit and no verifier contract (`stack.json` `library.mode`) | **library** | Full audit with the `library` profile; follow `references/modes/library.md`. |
 | "fix this test", "write a circuit", "speed up the prover" | **not this skill** | Do the task. Mention a security concern only if you see one. |
 
 If the request is ambiguous, use guidance mode. Never start a full audit that
@@ -38,6 +39,7 @@ the user did not ask for.
 /zk-audit circuits/vote.go contracts/Ballot.sol   restrict scope to these files
 /zk-audit diff origin/main                 review a commit range (also /zk-audit:diff)
 /zk-audit recon                            recon only, no hunting (also /zk-audit:recon)
+/zk-audit library                          audit a gnark gadget library (no production circuit)
 /zk-audit setup                            show companion skills and tools; install only after consent (also /zk-audit:setup)
 ```
 
@@ -71,7 +73,8 @@ to the user and stop. Use its `out`, `run_id`, `scope` and `passes` below.
 |---|---|---|---|---|---|---|
 | `quick` | C1, I1, T1, G2 + 13 vector-scan shards (V-*) | confirmed Critical/High circuit findings only | one per confirmed finding (also with --no-poc) | none | 1 | ABI check, ceremony scan |
 | `standard` (default) | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, S1, T1, PR1, G2, F1 + 16 vector-scan shards (V-*) | every confirmed circuit finding | one per confirmed finding | coverage critic + 1 targeted wave | 1 | ABI check, ceremony scan |
-| `deep` | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, S1, T1, PR1, G1, G2, G3, A1, F1 + 16 vector-scan shards (V-*) | every confirmed finding | one per confirmed finding | coverage critic + final-clean critic + 1 targeted wave | 3 with memory | ABI check, ceremony scan, regenerate and diff the verifier (sandbox) |
+| `deep` | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, S1, T1, PR1, L1, G1, G2, G3, A1, F1 + 16 vector-scan shards (V-*) | every confirmed finding | one per confirmed finding | coverage critic + final-clean critic + 1 targeted wave | 3 with memory | ABI check, ceremony scan, regenerate and diff the verifier (sandbox) |
+| `library` | C1, C2, C3, C4, C5, C6, L1, G1, G3, A1, F1 + 8 vector-scan shards (V-*) | every confirmed gadget finding, through the per-gadget harness; a differential test per gadget that has a native reference | one per confirmed finding | coverage critic + 1 targeted wave | 1 | ABI check, ceremony scan |
 
 <!-- end generated:profile-table -->
 
@@ -111,8 +114,8 @@ before recon finishes.
    the limits; say so in the report's posture. `-mod=mod` lets the go command
    add `go.sum` lines for test-only imports such as `gnark/test` from the
    module cache; it only rewrites the worktree's `go.mod`. If the module
-   cache lacks the target's dependencies, ask before running `go mod
-   download`. `--no-poc` disables PoCs. Remove the worktree at the end
+   cache lacks the target's dependencies, `gnark-inventory preflight` prints
+   the download commands; ask before running them. `--no-poc` disables PoCs. Remove the worktree at the end
    (`git -C <repo> worktree remove --force <out>/worktree`).
 4. **No silent installs.** Never install a skill, a Go module, `forge` or
    anything else without the user's explicit yes. `/zk-audit setup` prints the
@@ -183,17 +186,35 @@ The wrapper builds the tool on first use (needs Go ≥ 1.24). It reports the gna
 and gnark-crypto versions from `go.mod`, matching advisories, backend and curve
 hints, and whether Solidity, Foundry, Hardhat, Circom or Noir are present.
 
+- Pre-flight: `{skill}/scripts/gnark-inventory preflight --repo <repo> --out <out>`.
+  It checks that the pinned gnark and gnark-crypto sources, the target's
+  other requirements and a Go at least as new as the module's and gnark's
+  `go` directives are on this machine, and prints the exact commands that
+  fetch what is missing. Show them and ask before running any (hard rules 4
+  and 8); never fetch silently. When the local Go is too old but a newer
+  toolchain is cached, it prints that toolchain's `go` binary (`use_go`):
+  prefix every `gnark-inventory` command with `ZK_AUDIT_GO=<use_go>` (typed
+  loading of gnark ≥ v0.15 needs the tool built with it) and run PoCs with
+  it inside the sandbox. If the user declines, continue: std
+  is "not available" in the bundles and typed loading falls back to syntax
+  mode; say so in the report's posture.
 - Check the sandbox: `{skill}/scripts/sandbox --check`. It prints the engine
   (`bwrap`, `sandbox-exec` or `none`) and what it isolates; add it to the
   stack line.
-- Any advisory that matches the pinned gnark version is reported as a finding
-  candidate right away (see `references/gnark-versions.md` for required
-  actions, e.g. regenerate keys).
+- Any advisory that matches the pinned gnark or gnark-crypto version is
+  reported as a finding candidate right away (see
+  `references/gnark-versions.md` for required actions, e.g. regenerate
+  keys). The table is embedded and dated; to compare it with OSV, ask first,
+  then run `{skill}/scripts/gnark-inventory advisories --repo <repo> --osv`
+  (network).
 - `.circom` in scope → delegate to `circom-auditor` if installed, else apply the
   generic vectors in `references/attack-vectors/generic-zk.md`.
 - `Nargo.toml` → out of scope for v1. Say so in the report.
-- No gnark and no verifier contract → tell the user this skill does not fit and
-  stop.
+- `library.mode` in `stack.json` (exported gadgets, no production circuit,
+  no verifier contract) → library mode: preselect the `library` profile in
+  the profile question and follow `references/modes/library.md`.
+- No gnark, no exported gadget and no verifier contract → tell the user this
+  skill does not fit and stop.
 
 Print one stack line: `gnark v0.x.y (advisories: N) · groth16/plonk · bn254 ·
 solidity: yes · foundry: yes · sandbox: bwrap · companions: ✔ fp-check ✖ circom-auditor`.
@@ -269,7 +290,8 @@ For every `confirmed` circuit soundness finding (unless `--no-poc`), spawn
 the `zk-audit:poc-builder` agent (plugin install) or, where that agent type
 does not exist, a general-purpose agent briefed with `{skill}/agents/poc-builder.md`
 and the same tool limits. Give it the finding and the template named by its vector
-(`references/poc-templates.md`). It writes a Go test in the scratch worktree that
+(`references/poc-templates.md`); for a gadget no production circuit calls
+(library mode), first `gnark-inventory harness` (T-GADGET-HARNESS). It writes a Go test in the scratch worktree that
 shows a false statement verifying, plus the honest control case. Contract
 findings (deep, or where the profile's PoC policy covers them) get a Foundry
 test when `forge` exists, against the verifier gnark exports with a real
@@ -398,4 +420,4 @@ is not a refutation. The full table with the reason each fails is in
 | `references/rationalizations.md` | Phase 3 and refuter prompts |
 | `references/report-format.md` | Phase 6 |
 | `references/companions.md` | Phase 0 and setup mode |
-| `references/modes/*.md` | `/zk-audit setup`, `recon`, `diff` |
+| `references/modes/*.md` | `/zk-audit setup`, `recon`, `diff`, `library` |

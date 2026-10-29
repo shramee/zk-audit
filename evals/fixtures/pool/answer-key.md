@@ -39,7 +39,21 @@ ground truth; scoring uses it.
   are public inputs the contract never uses.
 - `Pool` has no deposit or payable function.
 - `contracts/Verifier.sol` is a placeholder that always reverts; it does not
-  match what `cmd/setup` exports (VK drift / out of scope).
+  match what `cmd/setup` exports (VK drift / out of scope). `cmd/setup` also
+  drops the proving key, so no prover holds a key for the exported verifier.
+- (O4, added after the 2026-10-29 runs.) `eddsa.Verify` on gnark v0.14.0 does
+  not assert that `Sig.R` or `PubKey.A` is on the curve, and the point
+  doubling divides with `DivUnchecked`. With `Sig.R = (0,0)` the first
+  cofactor doubling is `0/0`, so a prover with a modified solver picks the
+  output and reaches `(0,1)` after three doublings. `SigCircuit` has no
+  consumer, so the impact is conditional. This is **not** the D5 decoy
+  (signature malleability, `S < order`), which stays safe.
+- (O5, added after the same runs.) `Pool`'s `IVerifier.verifyProof(bytes,
+  uint256[7])` does not match the verifier `vk.ExportSolidity` writes on
+  gnark v0.14.0, `verifyProof(uint256[8], uint256[7])` with no fallback. A
+  Pool wired to the exported verifier reverts on every withdrawal. The
+  placeholder `Verifier.sol` claims the exported surface but has the Pool's
+  signature.
 
 ## Decoys (a confirmed item here is a false positive)
 
@@ -49,7 +63,7 @@ ground truth; scoring uses it.
 | D2 | reentrancy around `verifyProof` | the call is `view` (staticcall); the nullifier is stored before `transfer`. |
 | D3 | = P5 change wrap | see P5. |
 | D4 | front-running by changing `recipient` | see P7; `TestPoC_MerkleLeafUnbound` checks that a proof fails to verify with a swapped recipient. |
-| D5 | `eddsa.Verify` signature malleability | safe pattern on v0.14.0 (`judging.md` §7). |
+| D5 | `eddsa.Verify` signature malleability (non-canonical `S`) | safe pattern on v0.14.0 (`judging.md` §7); the `S < order` assertion is there. A record about `R` or `A` not on the curve is O4, not D5. |
 
 ## Scoring
 

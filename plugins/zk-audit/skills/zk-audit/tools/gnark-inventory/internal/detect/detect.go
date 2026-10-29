@@ -49,11 +49,11 @@ type Gnark struct {
 	Versions   []string      `json:"versions"`
 	Advisories []AdvisoryHit `json:"advisories"`
 	// AdvisoryTableAsOf is the date of the embedded advisory table.
-	AdvisoryTableAsOf string `json:"advisory_table_as_of,omitempty"`
-	Backends   []string      `json:"backends"`
-	Builders   []string      `json:"builders"`
-	Curves     []string      `json:"curves"`
-	Features   []string      `json:"features"`
+	AdvisoryTableAsOf string   `json:"advisory_table_as_of,omitempty"`
+	Backends          []string `json:"backends"`
+	Builders          []string `json:"builders"`
+	Curves            []string `json:"curves"`
+	Features          []string `json:"features"`
 }
 
 // Presence of a non-Go stack component.
@@ -65,19 +65,34 @@ type Presence struct {
 
 // Stack is the stack.json document.
 type Stack struct {
-	SchemaVersion string         `json:"schema_version"`
-	ToolVersion   string         `json:"tool_version"`
-	Repo          string         `json:"repo"`
-	GoModules     []Module       `json:"go_modules"`
-	Gnark         Gnark          `json:"gnark"`
-	Solidity      SolidityInfo   `json:"solidity"`
-	Foundry       Presence       `json:"foundry"`
-	Hardhat       Presence       `json:"hardhat"`
-	Circom        Presence       `json:"circom"`
-	Noir          Presence       `json:"noir"`
-	Routes        []string       `json:"routes"`
-	Notes         []string       `json:"notes"`
-	Languages     map[string]int `json:"languages"`
+	SchemaVersion string       `json:"schema_version"`
+	ToolVersion   string       `json:"tool_version"`
+	Repo          string       `json:"repo"`
+	GoModules     []Module     `json:"go_modules"`
+	Gnark         Gnark        `json:"gnark"`
+	Solidity      SolidityInfo `json:"solidity"`
+	Foundry       Presence     `json:"foundry"`
+	Hardhat       Presence     `json:"hardhat"`
+	Circom        Presence     `json:"circom"`
+	Noir          Presence     `json:"noir"`
+	// Library describes exported gnark gadgets; Mode is true when the
+	// repository looks like a gadget library (library mode).
+	Library   Library        `json:"library"`
+	Routes    []string       `json:"routes"`
+	Notes     []string       `json:"notes"`
+	Languages map[string]int `json:"languages"`
+}
+
+// Library summarises exported gnark gadgets: exported functions and
+// methods outside test files and package main that take a frontend.API or
+// an *emulated.Field. Mode is true when there are gadgets but no
+// production circuit (a non-test Define) and no verifier contract.
+type Library struct {
+	Mode               bool     `json:"mode"`
+	Gadgets            int      `json:"gadgets"`
+	Packages           []string `json:"packages"`
+	ProductionCircuits int      `json:"production_circuits"`
+	Reason             string   `json:"reason"`
 }
 
 // SolidityInfo describes Solidity sources and verifier contracts.
@@ -98,6 +113,7 @@ func Detect(root, toolVersion string) (*Stack, error) {
 		GoModules: []Module{}, Routes: []string{}, Notes: []string{}, Languages: map[string]int{},
 		Gnark:    Gnark{Versions: []string{}, Advisories: []AdvisoryHit{}, Backends: []string{}, Builders: []string{}, Curves: []string{}, Features: []string{}},
 		Solidity: SolidityInfo{Verifiers: []solidity.Verifier{}},
+		Library:  Library{Packages: []string{}},
 	}
 	tab, err := advisory.Load()
 	if err != nil {
@@ -111,6 +127,20 @@ func Detect(root, toolVersion string) (*Stack, error) {
 	backends, builders, curves, features := set{}, set{}, set{}, set{}
 	versions := set{}
 	var sols []fsutil.File
+	hasMod := false
+	for _, f := range files {
+		if path.Base(f.Rel) == "go.mod" {
+			hasMod = true
+		}
+	}
+	if !hasMod {
+		// a package directory inside a module (for example a gnark std
+		// package in the module cache): read the enclosing go.mod
+		if abs, rel := gomod.Enclosing(root); abs != "" {
+			files = append([]fsutil.File{{Abs: abs, Rel: rel}}, files...)
+		}
+	}
+	lib := &libScan{pkgs: set{}}
 	for _, f := range files {
 		base := path.Base(f.Rel)
 		ext := path.Ext(f.Rel)
@@ -122,6 +152,28 @@ func Detect(root, toolVersion string) (*Stack, error) {
 				continue
 			}
 			mod := Module{Path: f.Rel, Module: m.Module, Go: m.Go, Toolchain: m.Toolchain}
+			if m.Module == gnarkModule {
+				// gnark itself: the version is the module cache directory's
+				// (gnark@vX.Y.Z), else unknown
+				v := selfVersion(f.Abs)
+				mod.Gnark = v
+				st.Gnark.Present = true
+				key := v
+				if key == "" {
+					key = "(gnark itself)"
+				}
+				if !versions[key] {
+					versions[key] = true
+					st.Gnark.Versions = append(st.Gnark.Versions, key)
+				}
+				if v != "" {
+					for _, hit := range tab.Affecting(v) {
+						st.Gnark.Advisories = append(st.Gnark.Advisories, AdvisoryHit{Match: hit, Module: f.Rel, Version: v})
+					}
+				} else {
+					st.Notes = append(st.Notes, f.Rel+": this repository is gnark itself at an unknown version; advisories are not matched")
+				}
+			}
 			if v, by, ok := m.Version(gnarkModule); ok {
 				mod.Gnark, mod.GnarkLocal = v, by
 				st.Gnark.Present = true
@@ -169,9 +221,10 @@ func Detect(root, toolVersion string) (*Stack, error) {
 			sols = append(sols, f)
 		case ext == ".go":
 			st.Languages["go"]++
-			scanGo(f, backends, builders, curves, features)
+			scanGo(f, backends, builders, curves, features, lib)
 		}
 	}
+	st.Library.Gadgets, st.Library.ProductionCircuits, st.Library.Packages = lib.gadgets, lib.circuits, lib.pkgs.sorted()
 	st.Gnark.Backends = backends.sorted()
 	st.Gnark.Builders = builders.sorted()
 	st.Gnark.Curves = curves.sorted()
@@ -188,6 +241,7 @@ func Detect(root, toolVersion string) (*Stack, error) {
 	if len(st.Circom.Paths) == 0 && st.Circom.Files > 0 {
 		st.Circom.Paths = nil
 	}
+	st.library()
 	st.routes()
 	return st, nil
 }
@@ -203,7 +257,7 @@ func (s set) sorted() []string {
 	return out
 }
 
-func scanGo(f fsutil.File, backends, builders, curves, features set) {
+func scanGo(f fsutil.File, backends, builders, curves, features set, lib *libScan) {
 	src, err := os.ReadFile(f.Abs)
 	if err != nil {
 		return
@@ -212,6 +266,7 @@ func scanGo(f fsutil.File, backends, builders, curves, features set) {
 	if err != nil || af == nil {
 		return
 	}
+	lib.scan(f, src, af)
 	gnark := false
 	for _, imp := range af.Imports {
 		p := strings.Trim(imp.Path.Value, `"`)
@@ -266,6 +321,9 @@ func scanGo(f fsutil.File, backends, builders, curves, features set) {
 func (st *Stack) routes() {
 	if st.Gnark.Present {
 		st.Routes = append(st.Routes, "gnark: native zk-audit engine")
+	}
+	if st.Library.Mode {
+		st.Routes = append(st.Routes, "gnark gadget library: library mode (profile library): gadget inventory, doc-contract lens L1, per-gadget PoC harness, differential tests")
 	}
 	if st.Solidity.Present {
 		st.Routes = append(st.Routes, "solidity: integration lenses I1-I3, contract review S1 and V-contract (standard, deep), V-custom for verifiers gnark did not generate; the solidity-auditor companion runs too if installed")

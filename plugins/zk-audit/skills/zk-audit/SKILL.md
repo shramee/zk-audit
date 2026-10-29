@@ -249,10 +249,14 @@ error, `--sandbox off` loads in-process. Then the orchestrator itself (no subage
    hunters.
 3. Writes `system-map.md`: actors, trust boundaries, prover → relayer →
    contract flow, trusted parties (setup ceremony, admin, sequencer).
-4. Reads `zk-audit.md` at the repo root if present (scope, trusted parties,
-   properties, accepted risks, prior findings). Use it to understand intent,
-   never to excuse a missing constraint; a party it trusts turns that
-   party's powers into accepted risks in judging, not into dropped items.
+4. Parses the threat model, `zk-audit.md` at the repo root, if present:
+   `{skill}/scripts/gnark-inventory threat-model --repo <repo> --out <out>`
+   writes `threat-model.json` (scope, trusted parties with trust levels,
+   properties, accepted risks, prior findings, deployment facts, each with
+   its line); exit 1 lists the problems to show the user. Bundles inline it,
+   judging cites its lines, the report renders it. It states intent, never
+   excuses a missing constraint: a party it trusts turns that party's
+   powers into accepted risks, not into dropped items.
 5. Validates the ledger: `{skill}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json`.
 6. Runs the profile's verifier-provenance steps beyond the inventory's ABI
    check and ceremony scan ("Verifier provenance" in
@@ -262,7 +266,8 @@ error, `--sandbox off` loads in-process. Then the orchestrator itself (no subage
 
 `/zk-audit recon` stops here and prints the system map, the binding table, the
 hint inventory, the footgun hits, and threat-model questions for the user. It
-offers to draft `zk-audit.md`; it writes it only if the user agrees.
+offers to draft `zk-audit.md` from `{skill}/templates/zk-audit.md`; it
+writes it only if the user agrees.
 
 ### Phase 2 — Hunt (parallel agents)
 
@@ -412,9 +417,11 @@ is not a refutation. The full table with the reason each fails is in
 
 ## 7. Output contract
 
-`~/.zk-audit/<repo>/<run-id>/` contains `stack.json`, `inventory.json`,
-`inventory.md`, `binding-table.md`, `system-map.md`, `coverage-ledger.json`,
-`findings.json`, `REPORT.md`, `pocs/` (with `MANIFEST.json`), `agents/`, and `bundles/`. Every finding carries
+`~/.zk-audit/<repo>/<run-id>/` contains `run.json`, `stack.json`,
+`inventory.json`, `inventory.md`, `binding-table.md`, `system-map.md`,
+`threat-model.json` (with a `zk-audit.md`), `estimate.json`, `spend.json`,
+`coverage-ledger.json`, `critic-check.json`, `findings.json`, `REPORT.md`,
+`pocs/` (with `MANIFEST.json`), `agents/`, and `bundles/`. Every finding carries
 `verdict` (`confirmed` / `needs_validation` / `rejected`), `severity`,
 `confidence` (0–100), `evidence` (`POC` / `ANALYSIS`) and `detected_by`.
 

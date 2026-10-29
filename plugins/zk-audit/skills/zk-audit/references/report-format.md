@@ -20,15 +20,19 @@ Where each part comes from:
 | Scope: profile, run, commit, companions, out of scope | `findings.json` top-level fields |
 | Scope: files reviewed, agents | ledger `reviewed_paths` and `agent_ids` of covered or candidate units, plus `detected_by`; ids that are no lens or critic go to an "Other sources" row |
 | Scope: stack, versions, advisories | `stack.json` |
+| Scope: threat model, its scope and deployment facts; out of scope from it | `<out>/threat-model.json` (`zk-audit.md` parsed by `gnark-inventory threat-model`) |
+| Scope: spend (an estimate) | `<out>/spend.json` and the budget in `<out>/run.json` |
+| Posture: partial-report notice | the budget stop in `<out>/spend.json` |
 | Posture | `findings.json` `posture` (written by the orchestrator), then computed totals |
 | Findings, details, leads, needs validation | `records`, by verdict |
 | Constraint / code quote | the lines `location.line`–`end_line` of `<repo>/<file>`, verbatim, at most 30 |
-| Trusted parties | records with a `trust` object (accepted risks among them), `findings.json` `accepted_risks`, ledger units of class `trusted-party` |
+| Trusted parties | records with a `trust` object (accepted risks among them), `findings.json` `accepted_risks`, the accepted risks of `threat-model.json` no record cites, ledger units of class `trusted-party` |
 | Privacy | records with `property: privacy`, a `V-PR*` vector or `trust.breaks` privacy; ledger units of class `privacy` |
 | Hardening notes | `findings.json` `hardening` |
 | Coverage | ledger statuses only (examined = `covered`); load mode from `inventory.json` |
 | Coverage: gadget contracts (library mode) | `inventory.json` `gadgets` (doc promises, preconditions, doc checks) and each gadget's `doc-contract` ledger unit with the records it names |
-| Not covered | fixed text, then the lenses outside the profile (`profiles.json`), the ledger units not examined and the missing companions |
+| Coverage: prior findings | `threat-model.json` `prior_findings`, matched to records by fingerprint |
+| Not covered | fixed text, then the lenses outside the profile (`profiles.json`), library mode, lenses skipped by their condition or an empty shard (`<out>/bundles/index.json`), a budget stop, agents that did not finish (`<out>/agents/index.json`), `--no-poc` (`<out>/run.json`), the ledger units not examined and the missing companions |
 | PoC lines, `pocs/MANIFEST.json` | `poc` objects of every verdict, and the files in `<out>/pocs/` |
 
 The assembler rejects the claims listed under Language in any free-text field.
@@ -84,9 +88,12 @@ the repository; `--out` or `--report` inside it is refused (exit 2).
 | Stack | gnark v0.14.0 (advisories: 3) · groth16 · bn254 · solidity: yes · foundry: yes |
 | Versions | `go.mod`: gnark v0.14.0, gnark-crypto v0.19.0, go 1.24.0 |
 | Advisories | GHSA-7fx8-hmgc-82jp (high, fixed v0.16.4) · … |
+| Spend (estimate) | about 9.40 USD (range 8.71-10.31) for 20 agents (…), 0.76M tokens of which 0.61M reported by the runtime and 0.15M estimated; budget 30.00 USD |
 | Companions | ✔ fp-check · ✖ circom-auditor |
 | Agents | C1, I1, V-hints, V-range, …, G2 |
-| Out of scope | <what and why> |
+| Threat model | `zk-audit.md` (sha256 …): 2 trusted parties, 1 accepted risk, 3 properties, 1 prior finding |
+| Deployment (`zk-audit.md`, not checked) | chain ids: 1 · verifying key: keys/ballot.vk |
+| Out of scope | <what and why> · `contracts/mocks/` (test helpers) `zk-audit.md:14` |
 
 ## 2. Posture
 
@@ -197,8 +204,11 @@ ceremony transcripts; deployed state and infrastructure outside the
 repository; economic, governance and MEV attacks beyond the vectors; formal
 verification. (Fixed text, the same in every report.)
 
-In this run: the lenses outside the profile, the ledger units not examined
-(count), the companions not available.
+In this run: the lenses outside the profile; in library mode, what does not
+apply; lenses skipped because their condition did not hold or their shard
+was empty; the budget stop; agents that did not finish (refused twice,
+with the model when the runtime switched it); PoCs not run (`--no-poc`);
+the ledger units not examined (count); the companions not available.
 
 > This review is a time-boxed, best-effort search for bugs by an automated
 > agent. It is not a guarantee of security. Absence of a finding is not
@@ -218,7 +228,10 @@ In this run: the lenses outside the profile, the ledger units not examined
   merge` in loop mode, never by hand; the assembler prints them after the
   title: `[KNOWN · seen in 2/3 passes]`.
 - The coverage section is mandatory, even with zero findings.
-- The trusted-parties, privacy and not-covered sections are always printed.
+- The trusted-parties, privacy and not-covered sections are always printed;
+  the not-covered section and the disclaimer always close the report.
+- With a budget stop the posture opens with "**Partial report.**" and the
+  wave the run stopped before; the scope table shows the spend estimate.
   A record whose `trust.accepted` is true (`zk-audit.md` accepts the risk)
   appears under Trusted parties as an accepted risk and not in the
   needs-validation table; the posture totals count it separately. It is

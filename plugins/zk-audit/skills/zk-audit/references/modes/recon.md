@@ -23,5 +23,16 @@ Print, in this order:
    sender or chain).
 7. The output directory path.
 
-Offer to draft `zk-audit.md` for the repository root. Write it only if the
-user says yes.
+If the repository has `zk-audit.md`, parse it first
+(`{skill}/scripts/gnark-inventory threat-model --repo <repo> --out <out>`)
+and print its problems and warnings; ask the threat-model questions only
+for what it leaves open.
+
+Otherwise offer to draft `zk-audit.md` for the repository root. Write it
+only if the user says yes (hard rule 1): start from
+`{skill}/templates/zk-audit.md`, keep its headings and table headers, fill
+the rows recon can support from the code (parties from the privileged
+functions and roles, in-scope paths, deployment facts the repository
+shows), and leave the trust levels, accepted risks and properties as
+placeholders for the user to decide. Then run the `threat-model` command
+above on it and show the result.

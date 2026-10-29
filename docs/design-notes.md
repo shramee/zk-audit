@@ -109,6 +109,19 @@ left open, it is recorded here with the reason.
   `internal/modcache` holds the cache lookups for preflight and `bundle`
   (which writes the absolute gnark std path, and now the gnark-crypto
   path, into every bundle). Tests use a fake `GOMODCACHE`.
+- **Version matrix (D17).** `test/versions/run` (repository only, not
+  shipped) builds one throwaway module per gnark release with one package
+  per Go PoC template, so a template whose API is missing fails alone
+  ("API differs") instead of breaking the build of the others. It
+  downloads gnark's module graph and the toolchain with the network, then
+  runs everything with `GOPROXY=off`: online, `go mod tidy` and `go test
+  -mod=mod` resolved `constraint/solver` for v0.8.1 by silently upgrading
+  gnark to v0.16.4, which made the first run report v0.8.1 as working.
+  The Foundry check reads the `verifyProof` ABI from the exported contract
+  (three forms across v0.8 to v0.16). The typed-mode finding (a tool built
+  with Go 1.24 cannot type-check a `go 1.25` package) led to
+  `ZK_AUDIT_GO` in the wrapper rather than to raising the tool's own Go
+  requirement, which would break offline builds on Go 1.24 machines.
 - **Fallback loader.** If `go/packages` cannot type-check the target (missing
   dependencies, wrong toolchain), the tool falls back to `go/parser` and marks
   unresolved items (`resolved: false`). gnark ≥ v0.15 needs Go ≥ 1.25 and

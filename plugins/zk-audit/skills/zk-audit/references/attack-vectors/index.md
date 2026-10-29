@@ -47,8 +47,9 @@ Rules for this catalog, checked by `gnark-inventory lint-kb`:
 | `attack-vectors/prover-service.md` | Go code outside Define: setup, keys, deserialization, logs | V-PV1–V-PV6 | 6 |
 | `attack-vectors/generic-zk.md` | generic ZK shapes ported from zkSecurity's Circom catalog | V-G1–V-G6 | 6 |
 | `attack-vectors/privacy.md` | public inputs, events and calldata, linkable tags, correlation, relayers and indexers, witness exposure | V-PR1–V-PR7 | 7 |
+| `attack-vectors/gas-liveness.md` | verifier gas, unbounded loops and payloads, root windows, fillable capacity | V-LV1–V-LV5 | 5 |
 
-Total: 86 vectors.
+Total: 91 vectors.
 
 ## Mantras
 

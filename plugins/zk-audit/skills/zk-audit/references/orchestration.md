@@ -41,6 +41,7 @@ install, write into the target repo, or use the network.
 | V-verifier | vector scan: verifier contracts | `agents/vector-scan.md` + `attack-vectors/verifier-contracts.md` | vector scan | integration | quick, standard, deep |
 | V-state | vector scan: protocol state | `agents/vector-scan.md` + `attack-vectors/protocol-state.md` | vector scan | integration | quick, standard, deep |
 | V-privacy | vector scan: privacy | `agents/vector-scan.md` + `attack-vectors/privacy.md` | vector scan | all | standard, deep |
+| V-liveness | vector scan: gas and liveness | `agents/vector-scan.md` + `attack-vectors/gas-liveness.md` | vector scan | integration | standard, deep |
 | V-prover | vector scan: prover service | `agents/vector-scan.md` + `attack-vectors/prover-service.md` | vector scan | prover | quick, standard, deep |
 | G1 | numerical gaps | `agents/G1-numerical-gap.md` | gap | circuit | deep |
 | G2 | binding gaps | `agents/G2-binding-gap.md` | gap | all | quick, standard, deep |
@@ -49,8 +50,8 @@ install, write into the target repo, or use the network.
 | F1 | first principles | `agents/F1-first-principles.md` | cross | all | standard, deep |
 
 - **quick**: C1, I1, T1, G2 + 12 vector-scan shards (V-*).
-- **standard**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, T1, PR1, G2, F1 + 13 vector-scan shards (V-*).
-- **deep**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, T1, PR1, G1, G2, G3, A1, F1 + 13 vector-scan shards (V-*).
+- **standard**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, T1, PR1, G2, F1 + 14 vector-scan shards (V-*).
+- **deep**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, T1, PR1, G1, G2, G3, A1, F1 + 14 vector-scan shards (V-*).
 
 <!-- end generated:agent-table -->
 

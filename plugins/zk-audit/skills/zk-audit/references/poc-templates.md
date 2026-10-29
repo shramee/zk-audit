@@ -30,6 +30,7 @@ command takes it from the module cache and edits only the worktree's
 | an honest input that cannot be proven | an honest witness that fails | T-COMPLETENESS |
 | the contract (binding, replay, state) | a Foundry test | T-FOUNDRY-VERIFIER / T-FOUNDRY-REPLAY |
 | a public value that singles out the user (privacy) | a candidate set with one match | T-LINKAGE |
+| a root window or capacity an attacker can flush (liveness) | a front-run that makes an honest proof revert | T-FOUNDRY-STALE-ROOT |
 
 Practical rules (all learned on the eval fixtures):
 
@@ -246,6 +247,45 @@ contract PoC_<FindingID> is Test {
 
 Run it in the scratch worktree through the sandbox:
 `{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- forge test --root <out>/worktree --offline --match-contract PoC_ -vv`.
+
+## T-FOUNDRY-STALE-ROOT
+
+T-FOUNDRY-VERIFIER specialised for root windows and capacity (V-LV4,
+V-LV5): an honest proof built against a recent root, and an attacker who
+inserts enough leaves before it lands that the root leaves the window. It
+needs no forge-std: declare the two cheatcodes it uses. Replace the verifier
+with one that accepts everything only when, as here, the bug is in the
+window and not in the proof system.
+
+```solidity
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+import {NoteMixer, IMixerVerifier} from "../src/NoteMixer.sol"; // the contract under test
+
+interface Vm { function deal(address, uint256) external; function prank(address) external; }
+contract AcceptAll is IMixerVerifier { /* same signature as the target's verifier, returns true */ }
+
+contract PoC_StaleRoot {
+    Vm constant vm = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
+    NoteMixer mixer;
+    function setUp() public { mixer = new NoteMixer(new AcceptAll() /*, constructor args */); }
+
+    function test_attack_frontRunEvictsPendingRoot() public {
+        // 1. victim inserts and reads the root its proof uses
+        // 2. attacker (vm.prank) inserts WINDOW leaves, the window size read from the contract
+        // 3. the victim's withdrawal reverts with the contract's unknown-root error
+        //    (try/catch Error(string) and compare the reason)
+        // 4. the attacker withdraws its own leaves again: the cost is gas only
+    }
+    function test_control_noFrontRun() public { /* same withdrawal without step 2 succeeds */ }
+    function test_sanity_windowMinusOne() public { /* WINDOW - 1 inserts keep the root valid */ }
+}
+```
+
+The window-minus-one case pins the bound the finding states. For a
+time-based window, advance time with `vm.warp` instead of inserting. Run it
+like T-FOUNDRY-VERIFIER; with no forge-std in the worktree this file needs
+no remapping.
 
 ## T-FOUNDRY-REPLAY
 

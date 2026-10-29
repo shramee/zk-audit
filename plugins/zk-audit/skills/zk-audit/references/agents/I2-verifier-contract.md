@@ -25,6 +25,10 @@ its options, how its result is used, and who can replace it.
    leaving it out.
 6. Precompile calls in custom verifiers: is every `staticcall` success checked,
    and are point inputs validated?
+7. Gas: estimate verification gas for the production public-input count
+   (Groth16: about 6 150 gas per public input plus the pairing check) and for
+   batch or recursive paths, against the block gas limit and any relayer cap
+   (V-LV1).
 
 ## Extra output fields
 

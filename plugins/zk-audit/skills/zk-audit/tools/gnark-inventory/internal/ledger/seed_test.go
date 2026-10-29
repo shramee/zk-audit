@@ -45,10 +45,10 @@ func TestSeedValidates(t *testing.T) {
 	// 2 production circuits x 7 classes (C1-C6, PR1); 9 public-input groups (Fees is one
 	// group of 2); 3 production hint sites; 1 verifier; 4 functions that
 	// verify or write proof state (constructor, setVerifier, addRoot,
-	// withdraw) x 3 classes, plus the 2 owner-gated setters (setVerifier,
+	// withdraw) x 4 classes (I1, I2, I3 protocol-state and liveness), plus the 2 owner-gated setters (setVerifier,
 	// addRoot) x trusted-party; 1 role (Pool.owner); 1 setup site
 	// (cmd/setup); 1 prover file; 1 dependency
-	want := map[string]int{"circuit": 14, "public-input": 9, "hint": 3, "verifier": 1, "contract-fn": 14, "role": 1, "setup": 1, "prover": 1, "dependency": 1}
+	want := map[string]int{"circuit": 14, "public-input": 9, "hint": 3, "verifier": 1, "contract-fn": 18, "role": 1, "setup": 1, "prover": 1, "dependency": 1}
 	for k, v := range want {
 		if kinds[k] != v {
 			t.Errorf("kind %s: %d units, want %d (all %v)", k, kinds[k], v, kinds)

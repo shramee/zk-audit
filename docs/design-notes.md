@@ -219,6 +219,31 @@ tables and `gnark-inventory profiles` all follow the entry.
   realistic candidate set and show it singles out the user; the honest
   control is the corrected formula, for which nothing matches.
 
+## Gas and liveness
+
+- **Vectors.** `attack-vectors/gas-liveness.md`, V-LV1–V-LV5: verification
+  gas above the block or relayer limit (gnark's Groth16 template does one
+  `ECMUL` and one `ECADD` per public input, EIP-1108 prices), unbounded loops
+  (SWC-128), unbounded proof or calldata payloads (GHSA-cph5, zkSecurity
+  OpenVM #0f), root windows that expire or can be flushed (Tornado Cash's
+  30-root ring buffer, Semaphore's root duration), and fillable capacity
+  (Tornado Cash's full tree, zkSecurity zkLighter block #01). Scanned by the
+  `V-liveness` shard in standard and deep.
+- **Ledger class `liveness`**, owned by I3 and seeded per verifying or
+  state-writing contract function, like `protocol-state`: whether an honest
+  proof can always be accepted in time is a property of the function that
+  accepts it. It doubles I3's contract-function units; a separate lens was
+  not worth a hunter, since the checks read the same state I3 already reads.
+- **Stale-root PoC.** `T-FOUNDRY-STALE-ROOT` in `poc-templates.md` (no
+  forge-std: it declares the two cheatcodes it uses) and a runnable copy on
+  the `testdata/liveness-roots` fixture (`evals/fixtures/liveness-roots/`:
+  key, answer key, `pocs/StaleRoot.t.sol`). `evals/run-pocs` now runs
+  Foundry fixtures: it copies `*.t.sol` into the directory named in
+  `PACKAGE`, fetches the solc pinned in `foundry.toml` with a compile-only
+  `forge build` when network is allowed, and runs `forge test --offline` in
+  the sandbox. `make eval-pocs` runs both fixtures; CI installs Foundry
+  v1.7.1 with `foundry-rs/foundry-toolchain`.
+
 ## Sandbox (PoCs and recon)
 
 - **`gnark-inventory sandbox`** (wrapped by `scripts/sandbox`) is the one
@@ -410,11 +435,12 @@ tables and `gnark-inventory profiles` all follow the entry.
   files instead of as catalog vectors, because no source in the allowed set
   documents them for gnark.
 - **Vector count.** 79 vectors in 12 slices at first (PLAN target "about
-  80"); 86 in 13 with the privacy slice. Slice and
+  80"); 91 in 14 with the privacy and gas-liveness slices. Slice and
   id scheme: V-H (hints), V-R (range), V-F (field), V-S (selector), V-M (hash /
   Merkle), V-E (curves / signatures), V-CM (commitments / recursion), V-PI
   (public inputs), V-VC (verifier contracts), V-PS (protocol state), V-PV
-  (prover service), V-G (generic, ported from zkSecurity), V-PR (privacy).
+  (prover service), V-G (generic, ported from zkSecurity), V-PR (privacy),
+  V-LV (gas and liveness).
 - **PoC templates were executed.** T-HINT-OVERRIDE, T-PROVE-VERIFY,
   T-ASSERT-OVERRIDE and T-ALIAS were run against gnark v0.14.0 on small
   circuits (a remainder hint without `r < b`, and `OmitModulusCheck`), and

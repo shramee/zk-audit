@@ -11,4 +11,9 @@
     "match":"(?i)nullifier|signature|malleab|eddsa|S component|replay|double.?spend",
     "expect":["confirmed","needs_validation","lead"],"partial":["hardening"],"severity":["high","critical","medium"]}
  ],
- "decoys":[],"other":[]}
+ "decoys":[],"other":[
+  {"id":"O1","class":"dependency",
+   "title":"Other advisories that apply to the pinned gnark release (the advisory table lists more than the one the case plants)",
+   "ranges":[{"file":"go.mod","anchors":["github.com/consensys/gnark v0.13.0"]}],
+   "match":"(?i)GHSA-|CVE-|advisor|gnark v0\\."}
+ ]}

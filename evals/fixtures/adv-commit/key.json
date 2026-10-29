@@ -10,4 +10,9 @@
    "ranges":[{"file":"circuit/circuit.go","anchors":["committer.Commit(c.Secret)"]}],
    "match":"(?i)commit|private|zero.?knowledge|hiding|secret|witness",
    "expect":["confirmed","needs_validation","lead"],"partial":["hardening"],"severity":["high","medium","moderate"]}
- ],"decoys":[],"other":[]}
+ ],"decoys":[],"other":[
+  {"id":"O1","class":"dependency",
+   "title":"Other advisories that apply to the pinned gnark release (the advisory table lists more than the one the case plants)",
+   "ranges":[{"file":"go.mod","anchors":["github.com/consensys/gnark v0.10.0"]}],
+   "match":"(?i)GHSA-|CVE-|advisor|gnark v0\\."}
+ ]}

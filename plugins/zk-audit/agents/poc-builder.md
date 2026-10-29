@@ -58,9 +58,23 @@ only API shapes you may use without checking the pinned gnark source first.
    - **honest control**: the same false statement, or the nearest variant the
      circuit does constrain, is rejected;
    - **sanity control**: a true statement passes.
-4. Copy it into the same package directory in the worktree.
+   For a contract finding (template T-FOUNDRY-*), write
+   `<out>/pocs/PoC_<finding-number>.t.sol` instead, with contract
+   `PoC_<finding-number>` and `test_attack`, `test_control` and
+   `test_sanity`, as T-FOUNDRY-VERIFIER says: pick the verifier (the one
+   gnark exports for the production circuit, with a real proof made by a Go
+   test in the worktree and a `gnark-inventory verifier diff` structure
+   check; the committed one when its proving key is in the repository; or a
+   mock with the exact selector the target calls), declare the cheatcodes
+   you use (no forge-std), and use the target's Foundry root in the
+   worktree.
+4. Copy it into the same package directory in the worktree (Foundry: the
+   root's `test` directory).
 5. Run: `{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- go -C <out>/worktree test -run '^TestPoC_<finding-number>_' -count=1 -v ./<pkg>/`
-   (Foundry: `{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- forge test --root <out>/worktree --offline --match-contract PoC_ -vv`).
+   (Foundry: `{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- forge test --root <out>/worktree/<foundry root> --offline --match-contract PoC_<finding-number> -vv`).
+   If `forge` is missing or the pinned solc is not in the local cache
+   (`--offline` fails to compile for that reason), report `not_run` with the
+   reason; never download solc.
 6. If it fails to compile, fix the test (never the circuit) at most three
    times. If the attack is rejected, read the rejecting constraint: the
    finding may be wrong. Report that; do not weaken the test.

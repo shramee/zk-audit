@@ -225,6 +225,11 @@ error, `--sandbox off` loads in-process. Then the orchestrator itself (no subage
    never to excuse a missing constraint; a party it trusts turns that
    party's powers into accepted risks in judging, not into dropped items.
 5. Validates the ledger: `{skill}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json`.
+6. Runs the profile's verifier-provenance steps beyond the inventory's ABI
+   check and ceremony scan ("Verifier provenance" in
+   `references/orchestration.md`): deep regenerates the verifier in the
+   sandbox (`gnark-inventory verifier regen`); deployed bytecode and keys are
+   compared only when the user supplies them.
 
 `/zk-audit recon` stops here and prints the system map, the binding table, the
 hint inventory, the footgun hits, and threat-model questions for the user. It
@@ -266,7 +271,9 @@ does not exist, a general-purpose agent briefed with `{skill}/agents/poc-builder
 and the same tool limits. Give it the finding and the template named by its vector
 (`references/poc-templates.md`). It writes a Go test in the scratch worktree that
 shows a false statement verifying, plus the honest control case. Contract
-findings get a Foundry test when `forge` exists. Then a **fresh refuter** that
+findings (deep, or where the profile's PoC policy covers them) get a Foundry
+test when `forge` exists, against the verifier gnark exports with a real
+proof or a mock with the target's selector (T-FOUNDRY-VERIFIER). Then a **fresh refuter** that
 did not see the hunt starts from `refuted: true` and must re-derive the bug
 from source (`fp-check` if installed, else `zk-audit:refuter`, else a
 general-purpose agent briefed with `{skill}/agents/refuter.md`). A PoC that does not compile
@@ -335,7 +342,7 @@ not, and never install silently. Delegated results become records in our
 | Need | Companion | Fallback |
 |---|---|---|
 | `.circom` in scope | `circom-auditor` (zkSecurity) | `attack-vectors/generic-zk.md` |
-| Solidity beyond the ZK integration | `solidity-auditor`, `x-ray` (pashov) | I1–I3 only; the report says so |
+| Solidity beyond the ZK integration | `solidity-auditor`, `x-ray` (pashov); converted with `gnark-inventory convert pashov` | S1 + V-contract (standard, deep) |
 | Per-function context | `audit-context-building` (Trail of Bits) | Phase 1 recon |
 | Circuit vs spec | `spec-to-code-compliance` (Trail of Bits) | C6 lens |
 | False-positive check | `fp-check`, `vulnerability-triage-brocards` (Trail of Bits) | embedded refuter in `judging.md` |

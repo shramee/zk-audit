@@ -88,7 +88,50 @@ question (`AskUserQuestion`), or state the default, then print
 3. Complete `binding-table.md` and write `system-map.md` (see `SKILL.md`
    Phase 1).
 4. Validate the ledger: `gnark-inventory validate ledger <out>/coverage-ledger.json`.
-5. For `/zk-audit recon`, stop here (`commands/recon.md` lists the output).
+5. Verifier provenance (below).
+6. For `/zk-audit recon`, stop here (`commands/recon.md` lists the output).
+
+### Verifier provenance
+
+The profile lists its provenance steps (`gnark-inventory profiles --profile
+<profile>`, field `provenance`). The inventory already ran the two static
+ones in every profile: the ABI check (every verification call's selector,
+return value and input width against the repository's verifiers and the
+verifier the pinned gnark exports) and the ceremony scan (single-party
+`Setup`, unsafe SRS, `mpcsetup` calls, key and ceremony files). Their
+results are in `inventory.md` ("Verifier provenance"), in the bundles and on
+the ledger units. Do not rerun them.
+
+- **`regen` (deep).** Regenerate the verifier with the target's own gnark,
+  in the sandbox and offline, and diff it with the committed one:
+
+  ```bash
+  {skill}/scripts/gnark-inventory verifier regen --repo <repo> --out <out> --main <export package dir> --compare <repo>/<committed verifier .sol>
+  ```
+
+  `--main` is the target's program that calls `ExportSolidity` (find it
+  through the `FG-DEV-SETUP` hits or the ceremony scan's setup sites). With
+  none, use `--circuit <package dir>.<CircuitType>`: a fresh setup, so only
+  the structure is comparable. When the repository holds a verifying-key
+  file (the ceremony scan lists it), run it once more with `--vk <file>`:
+  equal VK constants show the committed verifier was made from that key. It
+  writes `<out>/regen/regen.json` and `<out>/regen/diff.json`; the next
+  `bundle` shows the diff to the integration lenses. If modules are missing
+  from the cache it fails: record that in `posture`, never download without
+  consent.
+- **Only with artifacts the user gives (any profile).** A deployed runtime
+  bytecode file: `verifier bytecode --deployed <file> --local <forge
+  artifact or hex> --sol <committed verifier>` (code equal after metadata
+  and immutables, and which VK constants the deployed code pushes). A
+  verifying key or ceremony output: `verifier regen --vk <file> --compare
+  <committed verifier>`. Fetching deployed code over the network
+  (`verifier bytecode --rpc <url> --address <0x...>`) runs only when the user
+  asks for it (hard rule 8); never by default.
+
+Write each result in one line under the setup ceremony in the trusted
+parties of `system-map.md`.
+What stays unknown (which VK is deployed, who ran the setup) is a
+`needs_validation` blocker, never a guess.
 
 ## Turn 3 — Build bundles
 
@@ -118,6 +161,41 @@ Peripheral files (gnark std at the pinned version in the module cache,
 vendored libraries) are listed by directory, never inlined.
 
 ## Turn 4 — Hunt (bounded pool, at most 6 running)
+
+**Companion: `solidity-auditor`.** When Phase 0 found it installed
+(`companions.md`), the scope has Solidity and the profile is standard or
+deep, run it once, in parallel with the hunters, on a copy: it writes
+`.solidity-auditor/` into the directory it audits, and the target is
+read-only (hard rule 1).
+
+1. Create the scratch worktree now (Turn 6 reuses it):
+   `git -C <repo> worktree add --detach <out>/worktree HEAD`.
+2. Spawn one general-purpose agent (it counts against the pool of six):
+
+   ```text
+   Run the solidity-auditor skill with --loop 1 on the repository copy at
+   <out>/worktree. Treat <out>/worktree as the project root: run every shell
+   command from that directory, so its .solidity-auditor/ directory is
+   created there. Never read or write <repo>. Install nothing. If it asks
+   a question, take its default.
+   Reply with the path of the runs directory it wrote
+   (<out>/worktree/.solidity-auditor/runs/<stamp>) and nothing else.
+   ```
+
+3. Convert its output; never copy findings by hand:
+
+   ```bash
+   {skill}/scripts/gnark-inventory convert pashov --in <runs directory> --out <out>/companions/solidity-auditor.json --inventory <out>/inventory.json
+   ```
+
+   Every item becomes a `lead` record with `detected_by: solidity-auditor`
+   (its run files carry no exploit proof); `items` keeps its kind,
+   confidence, run count and fix diff; `unresolved` lists items on contracts
+   outside the inventory. If the agent fails or the runs directory is
+   missing, say so in the run summary and in `companions` (`missing`) and go
+   on: S1 and V-contract cover the same ground.
+
+S1 and V-contract run whether or not the companion ran.
 
 Before spawning, print the console. Mark the first six `Running`, the rest
 `Pending`, omitted agents `Skipped` (the status words of the phase table in
@@ -187,6 +265,11 @@ runtime switched the agent to another model, say so in the reason.
 
 Follow `judging.md`: dedup, completeness line, four gates, severity and
 confidence, lead promotion. Write draft records to `<out>/findings.json`.
+The records in `<out>/companions/solidity-auditor.json` join the dedup like
+an agent's LEADs: a fingerprint an agent also raised keeps both in
+`detected_by`; a companion FINDING (its `items` entry) is promoted only when
+you re-derive the call sequence from source, with its fix as a fix option.
+List its `unresolved` items in `out_of_scope` with the contract they name.
 Then close every `candidate` unit: `ledger mark --out <out> --from candidate
 --unit <id> --status covered --reviewed <file>` (its fingerprints stay).
 A candidate unit is not counted as examined.
@@ -200,13 +283,21 @@ A candidate unit is not counted as examined.
 general-purpose agent and give it the agent file (`{skill}/agents/poc-builder.md`
 or `{skill}/agents/refuter.md`) as its brief, with the same tool limits.
 
-1. Create the scratch worktree: `git -C <repo> worktree add --detach <out>/worktree HEAD`.
-2. For each confirmed circuit finding (quick: Critical and High only), spawn
+1. Create the scratch worktree, unless Turn 4 did:
+   `git -C <repo> worktree add --detach <out>/worktree HEAD`.
+2. For each confirmed finding whose layer and severity the profile's PoC
+   policy covers (`gnark-inventory profiles --profile <profile>`, `poc`:
+   quick and standard prove circuit findings, deep every layer), spawn
    `zk-audit:poc-builder` with the record, the vector's template from
    `poc-templates.md`, the worktree path, the repository path and the exact
-   sandbox command (`{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> --
-   go -C <out>/worktree test ...`; `forge test --root <out>/worktree` for
-   contracts). It writes `pocs/<finding-number>_poc_test.go` (or `.t.sol`)
+   sandbox command:
+   - circuit: `{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- go -C <out>/worktree test -count=1 -run '^TestPoC_<n>_' ./<pkg>/`;
+   - contract (T-FOUNDRY-*): `{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- forge test --root <out>/worktree/<foundry root> --offline --match-contract PoC_ -vv`,
+     with the Foundry root (the directory holding `foundry.toml`) and whether
+     `forge` is present (Phase 0). Without `forge` the record keeps
+     `evidence: ANALYSIS` and `poc.result: not_run`.
+
+   It writes `pocs/<finding-number>_poc_test.go` (or `PoC_<n>.t.sol`)
    under `<out>/pocs/`, copies it into the worktree, runs it through the
    sandbox, and returns the result.
 3. Spawn a fresh `zk-audit:refuter` (or `fp-check`) per confirmed item, with

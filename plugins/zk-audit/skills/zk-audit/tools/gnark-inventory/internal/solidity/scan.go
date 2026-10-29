@@ -1,32 +1,101 @@
 // Package solidity is a lightweight, dependency-free scanner for the parts of
 // Solidity sources that matter to a ZK integration review: verifier
 // contracts, proof-verification call sites, public-input array construction,
-// and nullifier / root / verifier state. It is a heuristic lexer, not a parser;
-// every result carries a line number so a reviewer can check it.
+// nullifier / root / verifier state, privileged functions and the entry
+// points of every contract. It is a heuristic lexer, not a parser; every
+// result carries a line number so a reviewer can check it.
+//
+// The scan runs in two phases. The first splits every file into contracts
+// (with their bases, function headers, variables and `using` directives) and
+// follows `import` directives, with remappings, into files outside the scan
+// (a Foundry lib/), which are read as peripheral contracts. The second phase
+// resolves inheritance (modifiers and state declared in a base, a
+// verification call made in a base contract), the declared type of each
+// call's receiver (interface, contract, library, `using ... for`), low-level
+// calls built with abi.encodeWithSelector / encodeWithSignature /
+// encodeCall, and maps every call site to the verifier contracts it can
+// reach.
 package solidity
 
 import (
 	"os"
-
-	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fsutil"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fsutil"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/keccak"
 )
 
-// Verifier is a contract that looks like a generated SNARK verifier.
+// Verifier is a contract or library that looks like a SNARK verifier.
 type Verifier struct {
 	File     string `json:"file"`
 	Line     int    `json:"line"`
 	Contract string `json:"contract"`
-	// Kind: gnark-groth16, gnark-plonk, snarkjs-groth16, unknown-verifier.
+	// Kind: gnark-groth16, gnark-plonk, snarkjs-groth16, snarkjs-plonk,
+	// snarkjs-fflonk, zokrates-groth16, noir-barretenberg, halo2, sp1,
+	// risc0, custom (hand-written or unknown generator).
 	Kind string `json:"kind"`
+	// Generator: gnark, snarkjs, zokrates, barretenberg, halo2, sp1, risc0,
+	// hand-written.
+	Generator string `json:"generator"`
+	// Template names the generator template the source matches, when the
+	// tool recognises it.
+	Template string `json:"template,omitempty"`
+	// Marker is the generator's "do not edit" banner when the file has it.
+	Marker string `json:"marker,omitempty"`
 	// NbPublic is the public-input count read from the contract, -1 if unknown.
 	NbPublic int `json:"nb_public"`
 	// Commitments reports whether a gnark Groth16 verifier handles Pedersen
-	// commitments (proof longer than 256 bytes / CommitmentInvalid error).
+	// commitments (CommitmentInvalid error).
 	Commitments bool `json:"commitments,omitempty"`
+	// Precompiles lists the BN254 precompiles the source names.
+	Precompiles []string `json:"precompiles,omitempty"`
+	Library     bool     `json:"library,omitempty"`
+}
+
+// FnRef is the function a call site reaches, as declared on the receiver's
+// type (an interface, a contract or a library).
+type FnRef struct {
+	Contract  string  `json:"contract"`
+	Kind      string  `json:"kind"`
+	Function  string  `json:"function"`
+	Signature string  `json:"signature,omitempty"`
+	Selector  string  `json:"selector,omitempty"`
+	Params    []Param `json:"params"`
+	Returns   []Param `json:"returns,omitempty"`
+	File      string  `json:"file"`
+	Line      int     `json:"line"`
+	// Overloads counts other functions of the same name and arity.
+	Overloads int `json:"overloads,omitempty"`
+}
+
+// VerifierRef is a verifier contract a call site can reach.
+type VerifierRef struct {
+	Contract string `json:"contract"`
+	File     string `json:"file"`
+	Line     int    `json:"line"`
+	// Match: direct (the receiver's type is the verifier), inherits (the
+	// verifier inherits the receiver's interface), selector (same canonical
+	// signature), name-only (same function name, different parameters),
+	// inherited-call (the caller inherits the verifier).
+	Match string `json:"match"`
+}
+
+// LowLevel describes a verification made with address.staticcall/call.
+type LowLevel struct {
+	Kind string `json:"kind"`
+	// Encoding: encodeWithSelector, encodeWithSignature, encodeCall.
+	Encoding       string `json:"encoding"`
+	SelectorExpr   string `json:"selector_expr"`
+	Signature      string `json:"signature,omitempty"`
+	Selector       string `json:"selector,omitempty"`
+	SuccessVar     string `json:"success_var,omitempty"`
+	SuccessChecked bool   `json:"success_checked"`
+	ReturnVar      string `json:"return_var,omitempty"`
+	DecodesBool    bool   `json:"decodes_bool"`
 }
 
 // VerifyCall is a call site of a proof-verification function.
@@ -41,6 +110,18 @@ type VerifyCall struct {
 	InputArg   string   `json:"input_arg,omitempty"`
 	ResultUsed bool     `json:"result_used"`
 	Statement  string   `json:"statement"`
+	// Via: external (a typed receiver), cast (`IVerifier(addr).f`), library
+	// (`Lib.f`), using (`x.f` through `using Lib for T`), internal (own or
+	// inherited function), inherited (the contract inherits the verifier),
+	// staticcall, call, address (receiver typed as a bare address).
+	Via          string        `json:"via"`
+	ReceiverType string        `json:"receiver_type,omitempty"`
+	Target       *FnRef        `json:"target,omitempty"`
+	Verifiers    []VerifierRef `json:"verifiers,omitempty"`
+	// InheritedBy lists contracts that inherit the calling contract, when
+	// the call is made in a base contract.
+	InheritedBy []string  `json:"inherited_by,omitempty"`
+	LowLevel    *LowLevel `json:"low_level,omitempty"`
 }
 
 // InputAssign is one element of a public-input array built before a call.
@@ -90,283 +171,288 @@ type Result struct {
 	Privileged []Privileged `json:"privileged_functions"`
 	Roles      []Role       `json:"roles"`
 	Upgrades   []Upgrade    `json:"upgrades"`
+	// Contracts lists every contract, library and interface of the scanned
+	// files, and the peripheral ones a scanned contract refers to.
+	Contracts []Contract `json:"contracts"`
+	// EntryPoints are the external and public state-changing functions of
+	// every non-verifier contract (entry.go): the contract-review surface.
+	EntryPoints []EntryPoint `json:"entry_points"`
+	Imports     []Import     `json:"imports"`
+	Remappings  []Remapping  `json:"remappings,omitempty"`
+	// Notes are scan limitations worth showing (unresolved bases, duplicate
+	// contract names).
+	Notes []string `json:"notes,omitempty"`
 }
 
-// ScanFiles scans every file; rel names are used in the output.
-func ScanFiles(files []fsutil.File) (*Result, error) {
-	res := newResult()
+// Options for Scan.
+type Options struct {
+	// Root is the repository root. With it, imports are resolved (with
+	// Remappings) and imported files outside the scan are read as
+	// peripheral contracts.
+	Root       string
+	Remappings []Remapping
+}
+
+// maxPeripheral bounds the imported files read outside the scan.
+const maxPeripheral = 400
+
+// Scan scans files; Rel names are used in the output.
+func Scan(files []fsutil.File, opt Options) (*Result, error) {
+	s := newScanner()
+	s.res.Remappings = opt.Remappings
+	srcs := map[string]string{}
+	var order []string
 	for _, f := range files {
 		b, err := os.ReadFile(f.Abs)
 		if err != nil {
 			return nil, err
 		}
-		res.Files = append(res.Files, f.Rel)
-		scanSource(res, f.Rel, string(b))
+		srcs[f.Rel] = string(b)
+		order = append(order, f.Rel)
 	}
-	res.sort()
-	return res, nil
+	exists := func(rel string) bool { _, ok := srcs[rel]; return ok }
+	read := func(string) (string, bool) { return "", false }
+	if opt.Root != "" {
+		exists = func(rel string) bool {
+			if _, ok := srcs[rel]; ok {
+				return true
+			}
+			st, err := os.Stat(filepath.Join(opt.Root, filepath.FromSlash(rel)))
+			return err == nil && st.Mode().IsRegular()
+		}
+		read = func(rel string) (string, bool) {
+			b, err := os.ReadFile(filepath.Join(opt.Root, filepath.FromSlash(rel)))
+			return string(b), err == nil
+		}
+	}
+	s.run(order, srcs, opt.Remappings, exists, read)
+	return s.res, nil
 }
 
+// ScanFiles scans files without import resolution.
+func ScanFiles(files []fsutil.File) (*Result, error) { return Scan(files, Options{}) }
+
 // ScanSource scans one source text (used by tests).
-func ScanSource(rel, src string) *Result {
-	res := newResult()
-	res.Files = []string{rel}
-	scanSource(res, rel, src)
-	res.sort()
-	return res
+func ScanSource(rel, src string) *Result { return ScanSources(map[string]string{rel: src}) }
+
+// ScanSources scans several in-memory files; imports resolve among them.
+func ScanSources(files map[string]string) *Result {
+	var order []string
+	for k := range files {
+		order = append(order, k)
+	}
+	sort.Strings(order)
+	s := newScanner()
+	exists := func(rel string) bool { _, ok := files[rel]; return ok }
+	s.run(order, files, nil, exists, func(string) (string, bool) { return "", false })
+	return s.res
 }
 
 func newResult() *Result {
 	return &Result{Files: []string{}, Verifiers: []Verifier{}, VerifyCalls: []VerifyCall{},
 		InputAssigns: []InputAssign{}, StateVars: []StateVar{}, StateAccess: []StateAccess{},
-		Privileged: []Privileged{}, Roles: []Role{}, Upgrades: []Upgrade{}}
+		Privileged: []Privileged{}, Roles: []Role{}, Upgrades: []Upgrade{}, Contracts: []Contract{},
+		EntryPoints: []EntryPoint{}, Imports: []Import{}}
 }
 
-func (r *Result) sort() {
-	sort.SliceStable(r.VerifyCalls, func(i, j int) bool {
-		return less(r.VerifyCalls[i].File, r.VerifyCalls[i].Line, r.VerifyCalls[j].File, r.VerifyCalls[j].Line)
-	})
-	sort.SliceStable(r.InputAssigns, func(i, j int) bool {
-		a, b := r.InputAssigns[i], r.InputAssigns[j]
-		if a.File != b.File || a.Function != b.Function || a.Array != b.Array {
-			return less(a.File, a.Line, b.File, b.Line)
+type scanner struct {
+	res    *Result
+	units  []*unit
+	byName map[string]*unit
+	enums  map[string]bool
+	// referenced peripheral contracts to list
+	used map[string]bool
+}
+
+func newScanner() *scanner {
+	return &scanner{res: newResult(), byName: map[string]*unit{}, enums: map[string]bool{}, used: map[string]bool{}}
+}
+
+var reEnum = regexp.MustCompile(`\benum\s+([A-Za-z_]\w*)\s*\{`)
+
+func (s *scanner) add(rel, raw string, peripheral bool) []Import {
+	us := parseFile(rel, raw, peripheral)
+	for _, u := range us {
+		s.units = append(s.units, u)
+		if prev, ok := s.byName[u.name]; ok {
+			if !prev.peripheral && !peripheral && prev.file != u.file {
+				s.res.Notes = append(s.res.Notes, "contract "+u.name+" is declared in both "+prev.file+" and "+u.file+"; types resolve to the first")
+			}
+			if prev.peripheral && !peripheral {
+				s.byName[u.name] = u
+			}
+			continue
 		}
-		return a.Index < b.Index
-	})
-	sort.SliceStable(r.StateAccess, func(i, j int) bool {
-		return less(r.StateAccess[i].File, r.StateAccess[i].Line, r.StateAccess[j].File, r.StateAccess[j].Line)
-	})
-	sort.SliceStable(r.Privileged, func(i, j int) bool {
-		return less(r.Privileged[i].File, r.Privileged[i].Line, r.Privileged[j].File, r.Privileged[j].Line)
-	})
-	sort.SliceStable(r.Roles, func(i, j int) bool {
-		return less(r.Roles[i].File, r.Roles[i].Line, r.Roles[j].File, r.Roles[j].Line)
-	})
-	sort.SliceStable(r.Upgrades, func(i, j int) bool {
-		return less(r.Upgrades[i].File, r.Upgrades[i].Line, r.Upgrades[j].File, r.Upgrades[j].Line)
-	})
-}
-
-func less(fa string, la int, fb string, lb int) bool {
-	if fa != fb {
-		return fa < fb
+		s.byName[u.name] = u
 	}
-	return la < lb
+	src := stripComments(raw)
+	for _, m := range reEnum.FindAllStringSubmatch(src, -1) {
+		s.enums[m[1]] = true
+	}
+	return importsOf(rel, src, newLineIndex(src))
 }
 
-// ---------------------------------------------------------------- lexing
-
-// stripComments blanks out comments but keeps newlines and string contents so
-// that byte offsets and line numbers stay valid.
-func stripComments(src string) string {
-	b := []byte(src)
-	out := make([]byte, len(b))
-	copy(out, b)
-	for i := 0; i < len(b); i++ {
-		switch {
-		case b[i] == '"' || b[i] == '\'':
-			q := b[i]
-			for i++; i < len(b) && b[i] != q && b[i] != '\n'; i++ {
-				if b[i] == '\\' {
-					i++
-				}
-			}
-		case b[i] == '/' && i+1 < len(b) && b[i+1] == '/':
-			for ; i < len(b) && b[i] != '\n'; i++ {
-				out[i] = ' '
-			}
-		case b[i] == '/' && i+1 < len(b) && b[i+1] == '*':
-			out[i], out[i+1] = ' ', ' '
-			for i += 2; i < len(b); i++ {
-				if b[i] == '*' && i+1 < len(b) && b[i+1] == '/' {
-					out[i], out[i+1] = ' ', ' '
-					i++
-					break
-				}
-				if b[i] != '\n' {
-					out[i] = ' '
-				}
-			}
+func (s *scanner) run(order []string, srcs map[string]string, remaps []Remapping, exists func(string) bool, read func(string) (string, bool)) {
+	loaded := map[string]bool{}
+	var queue []Import
+	for _, rel := range order {
+		loaded[rel] = true
+		s.res.Files = append(s.res.Files, rel)
+		imps := s.add(rel, srcs[rel], false)
+		for i := range imps {
+			imps[i].Resolved, imps[i].Via = resolveImport(rel, imps[i].Path, remaps, exists)
 		}
+		s.res.Imports = append(s.res.Imports, imps...)
+		queue = append(queue, imps...)
 	}
-	return string(out)
-}
-
-type lineIndex []int
-
-func newLineIndex(s string) lineIndex {
-	idx := lineIndex{0}
-	for i, c := range s {
-		if c == '\n' {
-			idx = append(idx, i+1)
+	// follow imports into files outside the scan
+	n := 0
+	for len(queue) > 0 && n < maxPeripheral {
+		imp := queue[0]
+		queue = queue[1:]
+		if imp.Resolved == "" || loaded[imp.Resolved] {
+			continue
+		}
+		loaded[imp.Resolved] = true
+		raw, ok := read(imp.Resolved)
+		if !ok {
+			continue
+		}
+		n++
+		for _, sub := range s.add(imp.Resolved, raw, true) {
+			sub.Resolved, sub.Via = resolveImport(imp.Resolved, sub.Path, remaps, exists)
+			queue = append(queue, sub)
 		}
 	}
-	return idx
+	s.phase2()
+	s.res.sort()
 }
 
-func (l lineIndex) line(off int) int {
-	return sort.Search(len(l), func(i int) bool { return l[i] > off })
-}
-
-// matchClose returns the index of the bracket closing the one at open.
-func matchClose(s string, open int) int {
-	o := s[open]
-	var c byte
-	switch o {
-	case '{':
-		c = '}'
-	case '(':
-		c = ')'
-	case '[':
-		c = ']'
-	default:
-		return -1
-	}
-	depth := 0
-	for i := open; i < len(s); i++ {
-		switch s[i] {
-		case '"', '\'':
-			q := s[i]
-			for i++; i < len(s) && s[i] != q; i++ {
-				if s[i] == '\\' {
-					i++
-				}
-			}
-		case o:
-			depth++
-		case c:
-			depth--
-			if depth == 0 {
-				return i
-			}
+// bases returns the transitive base contracts of u, nearest first.
+func (s *scanner) bases(u *unit) []*unit {
+	var out []*unit
+	seen := map[string]bool{u.name: true}
+	q := append([]string{}, u.bases...)
+	for len(q) > 0 {
+		b := q[0]
+		q = q[1:]
+		if seen[b] {
+			continue
 		}
-	}
-	return -1
-}
-
-// splitArgs splits a call's argument text on top-level commas.
-func splitArgs(s string) []string {
-	var out []string
-	depth := 0
-	start := 0
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '(', '[', '{':
-			depth++
-		case ')', ']', '}':
-			depth--
-		case ',':
-			if depth == 0 {
-				out = append(out, strings.TrimSpace(s[start:i]))
-				start = i + 1
-			}
+		seen[b] = true
+		if bu, ok := s.byName[b]; ok {
+			out = append(out, bu)
+			q = append(q, bu.bases...)
 		}
-	}
-	if t := strings.TrimSpace(s[start:]); t != "" {
-		out = append(out, t)
 	}
 	return out
 }
 
-func squash(s string) string { return strings.Join(strings.Fields(s), " ") }
-
-// ---------------------------------------------------------------- scanning
-
-var (
-	reContract = regexp.MustCompile(`\b(?:abstract\s+)?(contract|library|interface)\s+([A-Za-z_]\w*)[^{;]*\{`)
-	reFunction = regexp.MustCompile(`\b(function\s+([A-Za-z_]\w*)|constructor|fallback|receive|modifier\s+([A-Za-z_]\w*))\s*\(`)
-	reVerify   = regexp.MustCompile(`(?:([A-Za-z_][\w]*(?:\s*\([^()]*\))?)\s*\.\s*)?\b(verifyProof|verifyCompressedProof|verifyTx|verify|Verify)\s*\(`)
-	reStateVar = regexp.MustCompile(`(?i)(nullif|spent|used|root|commitment|verifier|vkey|vk\b|vkhash|nonce)`)
-	reIdent    = regexp.MustCompile(`[A-Za-z_]\w*`)
-	reNumber   = regexp.MustCompile(`^\d+$`)
-	// a local fixed or dynamic uint array declaration
-	reArrDecl = regexp.MustCompile(`\buint(?:256)?\s*\[\s*(\d*)\s*\]\s*(?:memory|calldata|storage)?\s+([A-Za-z_]\w*)\s*(=\s*)?`)
-	reAssign  = regexp.MustCompile(`\b([A-Za-z_]\w*)\s*\[\s*(\d+)\s*\]\s*=\s*([^;=][^;]*);`)
-	reGroth   = regexp.MustCompile(`function\s+verifyProof\s*\(([^)]*)\)`)
-	reFixed   = regexp.MustCompile(`uint(?:256)?\s*\[\s*(\d+)\s*\]\s*(?:calldata|memory)\s+\w+\s*$`)
-	rePlonkN  = regexp.MustCompile(`VK_NB_PUBLIC_INPUTS\s*=\s*(\d+)`)
-)
-
-type block struct {
-	name       string
-	start, end int // body offsets (inside braces)
-	headerLine int
-}
-
-func scanSource(res *Result, rel, raw string) {
-	src := stripComments(raw)
-	li := newLineIndex(src)
-	for _, m := range reContract.FindAllStringSubmatchIndex(src, -1) {
-		open := m[1] - 1
-		close := matchClose(src, open)
-		if close < 0 {
+// derived returns the contracts that inherit u, directly or not.
+func (s *scanner) derived(u *unit) []string {
+	var out []string
+	for _, o := range s.units {
+		if o == u || o.peripheral {
 			continue
 		}
-		kind := src[m[2]:m[3]]
-		name := src[m[4]:m[5]]
-		body := block{name: name, start: open + 1, end: close, headerLine: li.line(m[0])}
-		if kind == "interface" {
-			continue
-		}
-		scanContract(res, rel, src, li, body, src[m[0]:m[1]])
-	}
-}
-
-func scanContract(res *Result, rel, src string, li lineIndex, c block, header string) {
-	body := src[c.start:c.end]
-	// classify verifier contracts
-	isVerifier := false
-	if v, ok := classifyVerifier(body); ok {
-		v.File, v.Line, v.Contract = rel, c.headerLine, c.name
-		res.Verifiers = append(res.Verifiers, v)
-		isVerifier = true
-	}
-	// collect function bodies, and blank them to find contract-level decls
-	var fns []sigFn
-	level := []byte(body)
-	for _, m := range reFunction.FindAllStringSubmatchIndex(body, -1) {
-		name := "constructor"
-		switch {
-		case m[4] >= 0:
-			name = body[m[4]:m[5]]
-		case m[6] >= 0:
-			name = "modifier " + body[m[6]:m[7]]
-		default:
-			name = strings.Fields(body[m[2]:m[3]])[0]
-		}
-		paren := m[1] - 1
-		pclose := matchClose(body, paren)
-		if pclose < 0 {
-			continue
-		}
-		// find '{' or ';' after the signature
-		j := pclose + 1
-		for j < len(body) && body[j] != '{' && body[j] != ';' {
-			j++
-		}
-		if j >= len(body) || body[j] == ';' {
-			continue
-		}
-		bclose := matchClose(body, j)
-		if bclose < 0 {
-			continue
-		}
-		fns = append(fns, sigFn{name: name, header: body[m[0]:j], headerOff: m[0], start: j + 1, end: bclose})
-		for k := m[0]; k <= bclose; k++ {
-			if level[k] != '\n' {
-				level[k] = ' '
+		for _, b := range s.bases(o) {
+			if b == u {
+				out = append(out, o.name)
+				break
 			}
 		}
 	}
-	// state variables: statements at contract level
+	sort.Strings(out)
+	return out
+}
+
+func (s *scanner) phase2() {
+	// contract infos (functions with ABI signatures)
+	for _, u := range s.units {
+		c := &Contract{File: u.file, Line: u.blk.headerLine, Name: u.name, Kind: u.kind, Bases: u.bases, Functions: []Function{}, Peripheral: u.peripheral}
+		for _, ud := range u.using {
+			c.Using = append(c.Using, ud.lib+" for "+ud.typ)
+		}
+		body := u.src[u.blk.start:u.blk.end]
+		for _, f := range u.fns {
+			if strings.HasPrefix(f.name, "modifier ") {
+				continue
+			}
+			fn := Function{Name: f.name, Line: u.li.line(u.blk.start + f.headerOff), Params: parseParams(f.params), HasBody: f.start >= 0}
+			fn.Visibility, fn.Mutability, fn.Modifiers, fn.Returns = parseAfter(f.after)
+			if u.kind == "interface" && fn.Visibility == "" {
+				fn.Visibility = "external"
+			}
+			fn.Signature = s.signature(fn)
+			if fn.Signature != "" {
+				fn.Selector = keccak.Selector(fn.Signature)
+			}
+			c.Functions = append(c.Functions, fn)
+		}
+		u.info = c
+		if u.peripheral || u.kind == "interface" {
+			continue
+		}
+		if v, ok := classifyVerifier(u.name, body, u.raw[u.blk.start:u.blk.end], u.raw); ok {
+			v.File, v.Line, v.Contract, v.Library = u.file, u.blk.headerLine, u.name, u.kind == "library"
+			s.res.Verifiers = append(s.res.Verifiers, v)
+			c.Verifier = true
+		}
+	}
+	// unresolved bases
+	for _, u := range s.units {
+		if u.peripheral {
+			continue
+		}
+		for _, b := range u.bases {
+			if bu, ok := s.byName[b]; !ok {
+				s.res.Notes = append(s.res.Notes, u.file+": "+u.name+" inherits "+b+", which is not in the scanned or imported files; its modifiers and state are unknown")
+			} else if bu.peripheral {
+				s.used[b] = true
+			}
+		}
+	}
+	for _, u := range s.units {
+		if u.peripheral || u.kind == "interface" {
+			continue
+		}
+		s.scanUnit(u)
+	}
+	s.resolveCalls()
+	for _, u := range s.units {
+		if !u.peripheral || s.used[u.name] {
+			s.res.Contracts = append(s.res.Contracts, *u.info)
+		}
+	}
+	dedupAccess(s.res)
+}
+
+// signature returns the canonical ABI signature of fn, or "".
+func (s *scanner) signature(fn Function) string {
+	var ts []string
+	for _, p := range fn.Params {
+		t := abiType(p.Type, s.byName, s.enums)
+		if t == "" {
+			return ""
+		}
+		ts = append(ts, t)
+	}
+	switch fn.Name {
+	case "constructor", "fallback", "receive":
+		return ""
+	}
+	return fn.Name + "(" + strings.Join(ts, ",") + ")"
+}
+
+func (s *scanner) scanUnit(u *unit) {
+	rel, li, c := u.file, u.li, u.blk
 	stateNames := map[string]string{}
-	for _, stmt := range splitStatements(string(level)) {
-		text := squash(stmt.text)
+	for _, st := range splitStatements(u.level) {
+		text := squash(st.text)
 		if text == "" {
 			continue
 		}
-		first := strings.Fields(text)[0]
-		switch first {
+		switch strings.Fields(text)[0] {
 		case "event", "error", "struct", "enum", "using", "pragma", "import", "}", "{":
 			continue
 		}
@@ -382,150 +468,144 @@ func scanContract(res *Result, rel, src string, li lineIndex, c block, header st
 			continue
 		}
 		stateNames[name] = kind
-		res.StateVars = append(res.StateVars, StateVar{
-			File: rel, Line: li.line(c.start + stmt.off), Contract: c.name, Name: name, Kind: kind, Decl: text,
+		s.res.StateVars = append(s.res.StateVars, StateVar{
+			File: rel, Line: li.line(c.start + st.off), Contract: c.name, Name: name, Kind: kind, Decl: text,
 		})
 	}
-	if isVerifier {
+	if u.info.Verifier {
 		// a generated verifier's own internals are not integration call sites
 		return
 	}
-	scanPrivileged(res, rel, src, li, c, header, fns, string(level))
-	for _, f := range fns {
-		scanFunction(res, rel, src, li, c.name, f.name, c.start+f.start, c.start+f.end, stateNames)
-	}
-}
-
-type stmt struct {
-	off  int
-	text string
-}
-
-func splitStatements(s string) []stmt {
-	var out []stmt
-	start := 0
-	depth := 0
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '(', '[':
-			depth++
-		case ')', ']':
-			depth--
-		case ';':
-			if depth == 0 {
-				t := s[start:i]
-				off := start + (len(t) - len(strings.TrimLeft(t, " \t\r\n")))
-				out = append(out, stmt{off: off, text: strings.TrimSpace(t)})
-				start = i + 1
+	// proof-related state declared in base contracts is accessed here too
+	for _, b := range s.bases(u) {
+		for name, typ := range b.vars {
+			if _, ok := stateNames[name]; ok {
+				continue
 			}
-		case '{', '}':
-			if depth == 0 {
-				start = i + 1
+			if k := stateKind(name, typ+" "+name); k != "" {
+				stateNames[name] = k
 			}
 		}
 	}
-	return out
-}
-
-var reDeclName = regexp.MustCompile(`([A-Za-z_]\w*)\s*$`)
-
-var reInit = regexp.MustCompile(`=[^>]`)
-
-func stateVarName(text string) string {
-	t := text + " "
-	if loc := reInit.FindStringIndex(t); loc != nil {
-		t = t[:loc[0]]
-	}
-	t = strings.TrimSpace(t)
-	m := reDeclName.FindStringSubmatch(t)
-	if m == nil {
-		return ""
-	}
-	return m[1]
-}
-
-func stateKind(name, decl string) string {
-	n := strings.ToLower(name)
-	switch {
-	case strings.Contains(n, "nullif") || strings.Contains(n, "spent") || (strings.Contains(n, "used") && strings.Contains(decl, "mapping")):
-		return "nullifier"
-	case strings.Contains(n, "root"):
-		return "root"
-	case strings.Contains(n, "commitment"):
-		return "commitment"
-	case strings.Contains(n, "verifier"):
-		return "verifier"
-	case strings.Contains(n, "vkey") || n == "vk" || strings.HasPrefix(n, "vk") || strings.HasSuffix(n, "vk") || strings.Contains(n, "vkhash"):
-		return "vk"
-	case strings.Contains(n, "nonce"):
-		return "nonce"
-	}
-	return ""
-}
-
-func classifyVerifier(body string) (Verifier, bool) {
-	v := Verifier{NbPublic: -1}
-	switch {
-	case strings.Contains(body, "PublicInputNotInField") && strings.Contains(body, "function verifyProof"):
-		v.Kind = "gnark-groth16"
-		v.Commitments = strings.Contains(body, "CommitmentInvalid")
-		if m := reGroth.FindStringSubmatch(body); m != nil {
-			args := splitArgs(m[1])
-			if len(args) > 0 {
-				if n := reFixed.FindStringSubmatch(args[len(args)-1]); n != nil {
-					v.NbPublic, _ = strconv.Atoi(n[1])
+	mods := s.modParties(u)
+	allBases := append([]string{}, u.bases...)
+	baseVars := map[string]string{}
+	for _, b := range s.bases(u) {
+		for _, n := range b.bases {
+			allBases = appendUniqStr(allBases, n)
+		}
+		for name, typ := range b.vars {
+			if _, isConst := b.consts[name]; !isConst {
+				if _, ok := baseVars[name]; !ok {
+					baseVars[name] = typ
 				}
 			}
 		}
-	case strings.Contains(body, "VK_NB_PUBLIC_INPUTS") && strings.Contains(body, "function Verify"):
-		v.Kind = "gnark-plonk"
-		if m := rePlonkN.FindStringSubmatch(body); m != nil {
-			v.NbPublic, _ = strconv.Atoi(m[1])
-		}
-	case strings.Contains(body, "function verifyProof") && strings.Contains(body, "checkField") && strings.Contains(body, "_pubSignals"):
-		v.Kind = "snarkjs-groth16"
-		if m := regexp.MustCompile(`uint\s*\[\s*(\d+)\s*\]\s*calldata\s+_pubSignals`).FindStringSubmatch(body); m != nil {
-			v.NbPublic, _ = strconv.Atoi(m[1])
-		}
-	case strings.Contains(body, "function verifyProof") && (strings.Contains(body, "pairing") || strings.Contains(body, "0x08")):
-		v.Kind = "unknown-verifier"
-	default:
-		return v, false
 	}
-	return v, true
+	scanPrivileged(s.res, u, mods, allBases, baseVars)
+	for _, f := range u.fns {
+		if f.start < 0 || strings.HasPrefix(f.name, "modifier ") {
+			continue
+		}
+		s.scanFunction(u, f, stateNames)
+	}
+	s.entryPoints(u, mods)
 }
 
-func scanFunction(res *Result, rel, src string, li lineIndex, contract, fname string, start, end int, state map[string]string) {
+// modParties maps every modifier visible in u (its own and its bases') to
+// the party its sender check names ("" when it has none).
+func (s *scanner) modParties(u *unit) map[string]string {
+	mods := map[string]string{}
+	chain := append([]*unit{u}, s.bases(u)...)
+	for _, x := range chain {
+		body := x.src[x.blk.start:x.blk.end]
+		for _, f := range x.fns {
+			if !strings.HasPrefix(f.name, "modifier ") || f.start < 0 {
+				continue
+			}
+			name := strings.TrimPrefix(f.name, "modifier ")
+			if _, ok := mods[name]; ok {
+				continue
+			}
+			mods[name] = modifierParty(body[f.start:f.end])
+		}
+	}
+	return mods
+}
+
+var (
+	reStateVar = regexp.MustCompile(`(?i)(nullif|spent|used|root|commitment|verifier|vkey|vk\b|vkhash|nonce)`)
+	reIdent    = regexp.MustCompile(`[A-Za-z_]\w*`)
+	reNumber   = regexp.MustCompile(`^\d+$`)
+	reContract = regexp.MustCompile(`\b(?:abstract\s+)?(contract|library|interface)\s+([A-Za-z_]\w*)[^{;]*\{`)
+	reFunction = regexp.MustCompile(`\b(function\s+([A-Za-z_]\w*)|constructor|fallback|receive|modifier\s+([A-Za-z_]\w*))\s*\(`)
+	reVerify   = regexp.MustCompile(`(?:([A-Za-z_][\w]*(?:\s*\[[^\[\]]*\])*(?:\s*\([^()]*\))?(?:\s*\.\s*[A-Za-z_]\w*)*)\s*\.\s*)?\b(verifyProof|verifyCompressedProof|verifyTx|verify|Verify)\s*\(`)
+	reLowCall  = regexp.MustCompile(`([A-Za-z_][\w.]*(?:\s*\([^()]*\))?(?:\s*\[[^\[\]]*\])*)\s*\.\s*(staticcall|call)\s*(?:\{[^}]*\})?\s*\(`)
+	reVerifyNm = regexp.MustCompile(`^(verifyProof|verifyCompressedProof|verifyTx|verify|Verify)$`)
+	// a local fixed or dynamic uint array declaration
+	reArrDecl = regexp.MustCompile(`\buint(?:256)?\s*\[\s*(\d*)\s*\]\s*(?:memory|calldata|storage)?\s+([A-Za-z_]\w*)\s*(=\s*)?`)
+	reAssign  = regexp.MustCompile(`\b([A-Za-z_]\w*)\s*\[\s*(\d+)\s*\]\s*=\s*([^;=][^;]*);`)
+)
+
+type block struct {
+	name       string
+	start, end int // body offsets (inside braces)
+	headerLine int
+}
+
+func (s *scanner) scanFunction(u *unit, f sigFn, state map[string]string) {
+	rel, src, li, contract, fname := u.file, u.src, u.li, u.name, f.name
+	start, end := u.blk.start+f.start, u.blk.start+f.end
 	body := src[start:end]
-	// verification calls
-	for _, m := range reVerify.FindAllStringSubmatchIndex(body, -1) {
+	code := blankStrings(body)
+	res := s.res
+	nCalls := len(res.VerifyCalls)
+	// high-level verification calls
+	for _, m := range reVerify.FindAllStringSubmatchIndex(code, -1) {
 		paren := m[1] - 1
-		pclose := matchClose(body, paren)
+		pclose := matchClose(code, paren)
 		if pclose < 0 {
 			continue
 		}
-		callee := body[m[4]:m[5]]
+		callee := code[m[4]:m[5]]
 		recv := ""
 		if m[2] >= 0 {
-			recv = squash(body[m[2]:m[3]])
+			recv = squash(code[m[2]:m[3]])
 		}
-		// skip declarations like `function verify(` (handled elsewhere) and
-		// event/emit lines
-		pre := lineBefore(body, m[0])
+		pre := lineBefore(code, m[0])
 		if strings.Contains(pre, "function") || strings.Contains(pre, "emit") || strings.Contains(pre, "event") {
 			continue
 		}
-		args := splitArgs(body[paren+1 : pclose])
-		vc := VerifyCall{
-			File: rel, Line: li.line(start + m[0]), Contract: contract, Function: fname,
-			Callee: callee, Receiver: recv, Args: args,
+		if strings.HasPrefix(recv, "abi.") || recv == "abi" {
+			continue
 		}
+		args := splitArgs(body[paren+1 : pclose])
+		vc := VerifyCall{File: rel, Line: li.line(start + m[0]), Contract: contract, Function: fname,
+			Callee: callee, Receiver: recv, Args: args}
 		if len(args) > 0 {
 			vc.InputArg = args[len(args)-1]
 		}
 		st := statementAround(body, m[0], pclose)
 		vc.Statement = squash(st)
 		vc.ResultUsed = resultUsed(st, m[0]-strings.LastIndexAny(body[:m[0]], ";{}")-1)
+		s.typeCall(u, f, body, &vc)
+		if vc.Via == "skip" {
+			continue
+		}
+		res.VerifyCalls = append(res.VerifyCalls, vc)
+	}
+	// low-level verification calls
+	for _, m := range reLowCall.FindAllStringSubmatchIndex(code, -1) {
+		paren := m[1] - 1
+		pclose := matchClose(code, paren)
+		if pclose < 0 {
+			continue
+		}
+		vc, ok := s.lowLevel(u, f, body, code, code[m[2]:m[3]], code[m[4]:m[5]], m[0], paren, pclose)
+		if !ok {
+			continue
+		}
+		vc.File, vc.Line, vc.Contract, vc.Function = rel, li.line(start+m[0]), contract, fname
 		res.VerifyCalls = append(res.VerifyCalls, vc)
 	}
 	// public-input arrays: local uint arrays and their element assignments
@@ -561,10 +641,7 @@ func scanFunction(res *Result, rel, src string, li lineIndex, contract, fname st
 		})
 	}
 	// inline array literal passed straight to a verify call
-	for _, vc := range res.VerifyCalls {
-		if vc.File != rel || vc.Function != fname || vc.Contract != contract {
-			continue
-		}
+	for _, vc := range res.VerifyCalls[nCalls:] {
 		in := vc.InputArg
 		if strings.HasPrefix(in, "[") && strings.HasSuffix(in, "]") {
 			for i, e := range splitArgs(in[1 : len(in)-1]) {
@@ -576,9 +653,14 @@ func scanFunction(res *Result, rel, src string, li lineIndex, contract, fname st
 		}
 	}
 	// state accesses
+	var names []string
 	for name := range state {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
 		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\b`)
-		for _, m := range re.FindAllStringIndex(body, -1) {
+		for _, m := range re.FindAllStringIndex(code, -1) {
 			st := squash(statementAround(body, m[0], m[1]))
 			op := accessOp(st, name)
 			if op == "" {
@@ -590,99 +672,508 @@ func scanFunction(res *Result, rel, src string, li lineIndex, contract, fname st
 			})
 		}
 	}
-	dedupAccess(res)
 }
 
-func dedupAccess(res *Result) {
-	seen := map[string]bool{}
-	out := res.StateAccess[:0]
-	for _, a := range res.StateAccess {
-		k := a.File + "|" + strconv.Itoa(a.Line) + "|" + a.Name + "|" + a.Op
-		if seen[k] {
+var reCast = regexp.MustCompile(`^([A-Za-z_]\w*)\s*\((.*)\)$`)
+
+// typeCall sets Via, ReceiverType and Target of a high-level call. It sets
+// Via to "skip" for a call that is not a verification (a non-verifier
+// library or contract function named verify, an internal helper that is
+// not a verifier).
+func (s *scanner) typeCall(u *unit, f sigFn, body string, vc *VerifyCall) {
+	recv := vc.Receiver
+	nargs := len(vc.Args)
+	if recv == "" {
+		// own or inherited function
+		for _, x := range append([]*unit{u}, s.bases(u)...) {
+			if fr := s.findFn(x, vc.Callee, nargs); fr != nil {
+				vc.Target = fr
+				if x != u && x.info != nil && x.info.Verifier {
+					vc.Via = "inherited"
+					vc.ReceiverType = x.name
+					return
+				}
+				vc.Via = "internal"
+				vc.ReceiverType = x.name
+				return
+			}
+		}
+		// unknown target (a base outside the scan): keep it, unresolved
+		vc.Via = "internal"
+		return
+	}
+	if recv == "this" {
+		vc.Via, vc.ReceiverType = "external", u.name
+		vc.Target = s.findFnChain(u, vc.Callee, nargs)
+		return
+	}
+	if m := reCast.FindStringSubmatch(recv); m != nil {
+		if m[1] == "address" || m[1] == "payable" {
+			vc.Via = "address"
+			return
+		}
+		if _, ok := s.byName[m[1]]; ok {
+			vc.Via, vc.ReceiverType = "cast", m[1]
+			vc.Target = s.findFnChain(s.byName[m[1]], vc.Callee, nargs)
+			s.markUsed(m[1])
+			return
+		}
+	}
+	if x, ok := s.byName[recv]; ok {
+		vc.ReceiverType = recv
+		s.markUsed(recv)
+		if x.kind == "library" {
+			vc.Via = "library"
+		} else {
+			vc.Via = "external"
+		}
+		vc.Target = s.findFnChain(x, vc.Callee, nargs)
+		if x.kind == "library" && (vc.Target == nil || (x.info != nil && !x.info.Verifier && !strings.Contains(strings.ToLower(recv), "verif"))) {
+			// MerkleProof.verify, a signature library's verify: not a proof verifier
+			vc.Via = "skip"
+		}
+		return
+	}
+	typ := s.varType(u, f, body, recv)
+	if typ == "" {
+		vc.Via = "external"
+		return
+	}
+	vc.ReceiverType = typ
+	if typ == "address" || typ == "addresspayable" {
+		vc.Via = "address"
+		return
+	}
+	if x, ok := s.byName[typ]; ok && x.kind != "library" {
+		vc.Via = "external"
+		s.markUsed(typ)
+		vc.Target = s.findFnChain(x, vc.Callee, nargs)
+		return
+	}
+	// using L for T
+	for _, x := range append([]*unit{u}, s.bases(u)...) {
+		for _, ud := range x.using {
+			if ud.typ == typ || ud.typ == "*" {
+				if lu, ok := s.byName[ud.lib]; ok {
+					if fr := s.findFnChain(lu, vc.Callee, nargs+1); fr != nil {
+						vc.Via, vc.ReceiverType, vc.Target = "using", ud.lib, fr
+						s.markUsed(ud.lib)
+						return
+					}
+				}
+			}
+		}
+	}
+	vc.Via = "external"
+}
+
+func (s *scanner) markUsed(name string) {
+	if x, ok := s.byName[name]; ok && x.peripheral {
+		s.used[name] = true
+	}
+}
+
+// findFnChain looks for the function in x and its bases.
+func (s *scanner) findFnChain(x *unit, name string, nargs int) *FnRef {
+	for _, y := range append([]*unit{x}, s.bases(x)...) {
+		if fr := s.findFn(y, name, nargs); fr != nil {
+			return fr
+		}
+	}
+	return nil
+}
+
+// findFn returns the function of x with that name and arity (the first of
+// several overloads, with Overloads counting the others).
+func (s *scanner) findFn(x *unit, name string, nargs int) *FnRef {
+	if x.info == nil {
+		return nil
+	}
+	var hit *FnRef
+	n := 0
+	for _, fn := range x.info.Functions {
+		if fn.Name != name || len(fn.Params) != nargs {
 			continue
 		}
-		seen[k] = true
-		out = append(out, a)
+		n++
+		if hit == nil {
+			hit = &FnRef{Contract: x.name, Kind: x.kind, Function: fn.Name, Signature: fn.Signature, Selector: fn.Selector,
+				Params: fn.Params, Returns: fn.Returns, File: x.file, Line: fn.Line}
+		}
 	}
-	res.StateAccess = out
+	if hit != nil {
+		hit.Overloads = n - 1
+	}
+	return hit
 }
 
-func accessOp(st, name string) string {
-	switch {
-	case strings.HasPrefix(st, "delete ") && strings.Contains(st, name):
-		return "delete"
-	case regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\s*\.\s*push\s*\(`).MatchString(st):
-		return "push"
-	case regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\s*(\[[^\]]*\]\s*)*(=|\+=|-=|\+\+|--)[^=]`).MatchString(st + " "):
-		return "write"
-	case strings.HasPrefix(st, "require") || strings.HasPrefix(st, "if") || strings.HasPrefix(st, "assert") || strings.Contains(st, "revert"):
-		return "check"
+var reIndexSuffix = regexp.MustCompile(`\s*\[[^\[\]]*\]\s*$`)
+
+// varType returns the declared type of a receiver expression: a parameter,
+// a local, or a state variable of u or its bases. Mapping and array
+// elements give their value type.
+func (s *scanner) varType(u *unit, f sigFn, body, expr string) string {
+	e := strings.TrimSpace(expr)
+	indexed := 0
+	for reIndexSuffix.MatchString(e) {
+		e = reIndexSuffix.ReplaceAllString(e, "")
+		indexed++
+	}
+	if strings.Contains(e, ".") || !isIdentOnly(e) {
+		return ""
+	}
+	typ := ""
+	for _, p := range parseParams(f.params) {
+		if p.Name == e {
+			typ = p.Type
+		}
+	}
+	if typ == "" {
+		re := regexp.MustCompile(`\b([A-Za-z_][\w.]*(?:\s*\[\s*\d*\s*\])*)\s+(?:memory\s+|calldata\s+|storage\s+)?` + regexp.QuoteMeta(e) + `\s*(?:=|;)`)
+		if m := re.FindStringSubmatch(body); m != nil && !headerWords[m[1]] && m[1] != "return" && m[1] != "emit" {
+			typ = strings.ReplaceAll(m[1], " ", "")
+		}
+	}
+	if typ == "" {
+		for _, x := range append([]*unit{u}, s.bases(u)...) {
+			if t, ok := x.vars[e]; ok {
+				typ = t
+				break
+			}
+		}
+	}
+	for ; indexed > 0 && typ != ""; indexed-- {
+		typ = elemType(typ)
+	}
+	return typ
+}
+
+// elemType returns the element type of an array or mapping type.
+func elemType(t string) string {
+	if strings.HasPrefix(t, "mapping") {
+		if i := strings.Index(t, "=>"); i >= 0 {
+			v := strings.TrimSpace(t[i+2:])
+			v = strings.TrimSuffix(v, ")")
+			return strings.TrimSpace(v)
+		}
+		return ""
+	}
+	if i := strings.LastIndex(t, "["); i >= 0 {
+		return t[:i]
 	}
 	return ""
 }
 
-func lineBefore(s string, off int) string {
-	i := strings.LastIndexByte(s[:off], '\n')
-	return s[i+1 : off]
-}
+var (
+	reEncSel  = regexp.MustCompile(`abi\s*\.\s*(encodeWithSelector|encodeWithSignature|encodeCall)\s*\(`)
+	reSelExpr = regexp.MustCompile(`^([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)\s*\.\s*selector$`)
+	reKeccak  = regexp.MustCompile(`keccak256\s*\(\s*(?:bytes\s*\(\s*)?"([^"]+)"`)
+	reFnSig   = regexp.MustCompile(`^([A-Za-z_]\w*)\(`)
+	reTupleOK = regexp.MustCompile(`\(\s*bool\s+([A-Za-z_]\w*)\s*(?:,\s*bytes\s+memory\s+([A-Za-z_]\w*))?\s*(?:,\s*)?\)\s*=\s*$`)
+)
 
-// statementAround returns the statement text containing [from, to).
-func statementAround(s string, from, to int) string {
-	a := strings.LastIndexAny(s[:from], ";{}") + 1
-	b := to
-	depth := 0
-	for ; b < len(s); b++ {
-		switch s[b] {
-		case '(':
-			depth++
-		case ')':
-			depth--
-		case ';', '{', '}':
-			if depth <= 0 {
-				return strings.TrimSpace(s[a:b])
+// lowLevel recognises `target.staticcall(abi.encodeWithSelector(...))` and
+// the encodeWithSignature / encodeCall forms whose function is a verify
+// function.
+func (s *scanner) lowLevel(u *unit, f sigFn, body, code, target, kind string, at, paren, pclose int) (VerifyCall, bool) {
+	inner := body[paren+1 : pclose]
+	icode := code[paren+1 : pclose]
+	em := reEncSel.FindStringSubmatchIndex(icode)
+	if em == nil {
+		return VerifyCall{}, false
+	}
+	eopen := em[1] - 1
+	eclose := matchClose(icode, eopen)
+	if eclose < 0 {
+		return VerifyCall{}, false
+	}
+	enc := icode[em[2]:em[3]]
+	eargs := splitArgs(inner[eopen+1 : eclose])
+	if len(eargs) == 0 {
+		return VerifyCall{}, false
+	}
+	ll := &LowLevel{Kind: kind, Encoding: enc, SelectorExpr: squash(eargs[0])}
+	vc := VerifyCall{Via: kind, LowLevel: ll}
+	callee := ""
+	var args []string
+	switch enc {
+	case "encodeWithSignature":
+		sig := strings.Trim(strings.TrimSpace(eargs[0]), `"`)
+		ll.Signature = strings.ReplaceAll(sig, " ", "")
+		args = eargs[1:]
+	case "encodeWithSelector":
+		args = eargs[1:]
+		if m := reSelExpr.FindStringSubmatch(ll.SelectorExpr); m != nil {
+			callee = m[2]
+			if x, ok := s.byName[m[1]]; ok {
+				vc.ReceiverType = m[1]
+				s.markUsed(m[1])
+				vc.Target = s.findFnChain(x, m[2], len(args))
+			}
+		} else if m := reKeccak.FindStringSubmatch(ll.SelectorExpr); m != nil {
+			ll.Signature = strings.ReplaceAll(m[1], " ", "")
+		}
+	case "encodeCall":
+		if len(eargs) > 1 {
+			t := strings.TrimSpace(eargs[1])
+			if strings.HasPrefix(t, "(") && strings.HasSuffix(t, ")") {
+				args = splitArgs(t[1 : len(t)-1])
+			} else {
+				args = []string{t}
+			}
+		}
+		parts := strings.Split(strings.ReplaceAll(ll.SelectorExpr, " ", ""), ".")
+		if len(parts) == 2 {
+			callee = parts[1]
+			if x, ok := s.byName[parts[0]]; ok {
+				vc.ReceiverType = parts[0]
+				s.markUsed(parts[0])
+				vc.Target = s.findFnChain(x, parts[1], len(args))
 			}
 		}
 	}
-	return strings.TrimSpace(s[a:])
-}
-
-// resultUsed reports whether the call's return value is consumed. callOff is
-// the offset of the call inside st.
-func resultUsed(st string, callOff int) bool {
-	t := squash(st)
-	for _, p := range []string{"require", "assert", "if", "return", "bool ", "while"} {
-		if strings.HasPrefix(t, p) {
-			return true
+	if ll.Signature != "" {
+		if m := reFnSig.FindStringSubmatch(ll.Signature); m != nil {
+			callee = m[1]
+		}
+		ll.Selector = keccak.Selector(ll.Signature)
+	} else if vc.Target != nil && vc.Target.Signature != "" {
+		ll.Signature, ll.Selector = vc.Target.Signature, vc.Target.Selector
+	}
+	if !reVerifyNm.MatchString(callee) {
+		return VerifyCall{}, false
+	}
+	vc.Callee = callee
+	vc.Args = args
+	if len(args) > 0 {
+		vc.InputArg = args[len(args)-1]
+	}
+	recv := squash(target)
+	if m := reCast.FindStringSubmatch(recv); m != nil && (m[1] == "address" || m[1] == "payable") {
+		recv = squash(m[2])
+	}
+	vc.Receiver = recv
+	if vc.ReceiverType == "" {
+		if t := s.varType(u, f, body, recv); t != "" {
+			vc.ReceiverType = t
 		}
 	}
-	if callOff > 0 && callOff <= len(st) {
-		pre := st[:callOff]
-		if strings.Contains(pre, "=") || strings.Contains(pre, "!") || strings.Contains(pre, "&&") || strings.Contains(pre, "||") || strings.Contains(pre, "(") {
-			return true
-		}
+	// (bool ok, bytes memory ret) = target.staticcall(...)
+	stStart := strings.LastIndexAny(body[:at], ";{}") + 1
+	if m := reTupleOK.FindStringSubmatch(body[stStart:at]); m != nil {
+		ll.SuccessVar, ll.ReturnVar = m[1], m[2]
 	}
-	return false
+	vc.Statement = squash(statementAround(body, at, pclose))
+	rest := code[pclose:]
+	if ll.SuccessVar != "" {
+		ok := regexp.QuoteMeta(ll.SuccessVar)
+		ll.SuccessChecked = regexp.MustCompile(`(require|assert)\s*\(\s*` + ok + `\b|if\s*\(\s*!\s*` + ok + `\b|\b` + ok + `\s*&&|&&\s*` + ok + `\b|if\s*\(\s*` + ok + `\s*==\s*false`).MatchString(rest)
+	} else {
+		// require(target.staticcall(...)) is not valid Solidity; a success
+		// flag that is never bound is never checked
+		ll.SuccessChecked = false
+	}
+	if ll.ReturnVar != "" {
+		ll.DecodesBool = regexp.MustCompile(`abi\s*\.\s*decode\s*\(\s*` + regexp.QuoteMeta(ll.ReturnVar) + `\s*,\s*\(\s*bool\s*\)`).MatchString(rest)
+	}
+	vc.ResultUsed = ll.SuccessChecked
+	return vc, true
 }
 
-// MentionsBinding reports which context values an expression mentions.
-func MentionsBinding(expr string) []string {
-	var out []string
-	checks := []struct{ needle, tag string }{
-		{"msg.sender", "sender"}, {"tx.origin", "origin"}, {"block.chainid", "chainid"},
-		{"address(this)", "contract"}, {"nonce", "nonce"}, {"epoch", "epoch"},
-		{"recipient", "recipient"}, {"deadline", "deadline"},
+// resolveCalls maps every call site to the verifiers it can reach and to
+// the contracts that inherit the calling one.
+func (s *scanner) resolveCalls() {
+	type vinfo struct {
+		v Verifier
+		u *unit
 	}
-	l := strings.ToLower(expr)
-	for _, c := range checks {
-		if strings.Contains(l, strings.ToLower(c.needle)) {
-			out = append(out, c.tag)
+	var vs []vinfo
+	for _, v := range s.res.Verifiers {
+		if u, ok := s.byName[v.Contract]; ok {
+			vs = append(vs, vinfo{v, u})
+		}
+	}
+	for i := range s.res.VerifyCalls {
+		vc := &s.res.VerifyCalls[i]
+		if u, ok := s.byName[vc.Contract]; ok && (u.kind == "abstract" || len(s.derived(u)) > 0) {
+			vc.InheritedBy = s.derived(u)
+		}
+		add := func(x vinfo, match string) {
+			for _, r := range vc.Verifiers {
+				if r.Contract == x.v.Contract {
+					return
+				}
+			}
+			vc.Verifiers = append(vc.Verifiers, VerifierRef{Contract: x.v.Contract, File: x.v.File, Line: x.v.Line, Match: match})
+		}
+		sig := ""
+		if vc.Target != nil {
+			sig = vc.Target.Signature
+		}
+		if vc.LowLevel != nil && vc.LowLevel.Signature != "" {
+			sig = vc.LowLevel.Signature
+		}
+		for _, x := range vs {
+			switch {
+			case vc.Via == "inherited" && vc.ReceiverType == x.v.Contract:
+				add(x, "inherited-call")
+			case vc.ReceiverType == x.v.Contract:
+				add(x, "direct")
+			}
+		}
+		for _, x := range vs {
+			if vc.ReceiverType != "" {
+				for _, b := range s.bases(x.u) {
+					if b.name == vc.ReceiverType {
+						add(x, "inherits")
+					}
+				}
+			}
+		}
+		if vc.Via == "internal" || vc.Via == "inherited" || vc.Via == "library" || vc.Via == "using" {
+			continue
+		}
+		for _, x := range vs {
+			for _, fn := range x.u.info.Functions {
+				if fn.Name == vc.Callee && sig != "" && fn.Signature == sig {
+					add(x, "selector")
+				}
+			}
+		}
+		if len(vc.Verifiers) > 0 {
+			continue
+		}
+		for _, x := range vs {
+			for _, fn := range x.u.info.Functions {
+				if fn.Name == vc.Callee {
+					add(x, "name-only")
+				}
+			}
+		}
+	}
+}
+
+func (r *Result) sort() {
+	sort.SliceStable(r.VerifyCalls, func(i, j int) bool {
+		return less(r.VerifyCalls[i].File, r.VerifyCalls[i].Line, r.VerifyCalls[j].File, r.VerifyCalls[j].Line)
+	})
+	sort.SliceStable(r.InputAssigns, func(i, j int) bool {
+		a, b := r.InputAssigns[i], r.InputAssigns[j]
+		if a.File != b.File || a.Function != b.Function || a.Array != b.Array {
+			return less(a.File, a.Line, b.File, b.Line)
+		}
+		return a.Index < b.Index
+	})
+	sort.SliceStable(r.StateAccess, func(i, j int) bool {
+		return less(r.StateAccess[i].File, r.StateAccess[i].Line, r.StateAccess[j].File, r.StateAccess[j].Line)
+	})
+	sort.SliceStable(r.Privileged, func(i, j int) bool {
+		return less(r.Privileged[i].File, r.Privileged[i].Line, r.Privileged[j].File, r.Privileged[j].Line)
+	})
+	sort.SliceStable(r.Roles, func(i, j int) bool {
+		return less(r.Roles[i].File, r.Roles[i].Line, r.Roles[j].File, r.Roles[j].Line)
+	})
+	sort.SliceStable(r.Upgrades, func(i, j int) bool {
+		return less(r.Upgrades[i].File, r.Upgrades[i].Line, r.Upgrades[j].File, r.Upgrades[j].Line)
+	})
+	sort.SliceStable(r.EntryPoints, func(i, j int) bool {
+		return less(r.EntryPoints[i].File, r.EntryPoints[i].Line, r.EntryPoints[j].File, r.EntryPoints[j].Line)
+	})
+	sort.SliceStable(r.Contracts, func(i, j int) bool {
+		return less(r.Contracts[i].File, r.Contracts[i].Line, r.Contracts[j].File, r.Contracts[j].Line)
+	})
+	sort.Strings(r.Notes)
+}
+
+func less(fa string, la int, fb string, lb int) bool {
+	if fa != fb {
+		return fa < fb
+	}
+	return la < lb
+}
+
+// NonGnarkVerifiers returns the verifiers not generated by gnark (custom,
+// snarkjs, Halo2, ...): the inventory routes the custom-verifier slice on
+// them.
+func (r *Result) NonGnarkVerifiers() []Verifier {
+	var out []Verifier
+	if r == nil {
+		return out
+	}
+	for _, v := range r.Verifiers {
+		if v.Generator != GenGnark {
+			out = append(out, v)
 		}
 	}
 	return out
 }
 
-// Idents returns identifiers in an expression (used to link inputs to state).
-func Idents(expr string) []string { return reIdent.FindAllString(expr, -1) }
+// ContractByName returns the first contract with that name.
+func (r *Result) ContractByName(name string) (Contract, bool) {
+	for _, c := range r.Contracts {
+		if c.Name == name {
+			return c, true
+		}
+	}
+	return Contract{}, false
+}
 
-// IsNumber reports whether s is a decimal literal.
-func IsNumber(s string) bool { return reNumber.MatchString(s) }
+func appendUniqStr(xs []string, x string) []string {
+	for _, y := range xs {
+		if y == x {
+			return xs
+		}
+	}
+	return append(xs, x)
+}
+
+// ScanRepo scans the .sol files under root selected by scope (repo-relative
+// files or directories; empty selects all), skipping Foundry dependency trees
+// (lib/ next to a foundry.toml) and test and script files. Imports resolve
+// with the repository's remappings, and imported files outside the scan are
+// read as peripheral contracts.
+func ScanRepo(root string, scope []string) (*Result, error) {
+	tomls, err := fsutil.Walk(root, func(rel string) bool { return pathBase(rel) == "foundry.toml" })
+	if err != nil {
+		return nil, err
+	}
+	var libs, tomlRels []string
+	for _, t := range tomls {
+		tomlRels = append(tomlRels, t.Rel)
+		d := pathDir(t.Rel)
+		if d == "." {
+			libs = append(libs, "lib/")
+		} else {
+			libs = append(libs, d+"/lib/")
+		}
+	}
+	sols, err := fsutil.Walk(root, func(rel string) bool {
+		if !strings.HasSuffix(rel, ".sol") || !fsutil.InScope(rel, scope) {
+			return false
+		}
+		for _, l := range libs {
+			if strings.HasPrefix(rel, l) {
+				return false
+			}
+		}
+		return !strings.HasSuffix(rel, ".t.sol") && !strings.HasSuffix(rel, ".s.sol")
+	})
+	if err != nil {
+		return nil, err
+	}
+	return Scan(sols, Options{Root: root, Remappings: LoadRemappings(root, tomlRels)})
+}
+
+func pathBase(rel string) string {
+	if i := strings.LastIndex(rel, "/"); i >= 0 {
+		return rel[i+1:]
+	}
+	return rel
+}
+
+func pathDir(rel string) string {
+	if i := strings.LastIndex(rel, "/"); i >= 0 {
+		return rel[:i]
+	}
+	return "."
+}

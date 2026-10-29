@@ -123,9 +123,49 @@ left open, it is recorded here with the reason.
   `BUG:` comments describe patterns that are harmless in context (one is a
   decoy), so the key records the reviewed ground truth and the accepted
   verdict range per item.
-- **Eval PoCs** (`evals/pool/pocs`) run against gnark v0.14.0 in a sanitized
-  scratch copy (`evals/run-pocs`, `make eval-pocs`, CI). They pin the
+- **Eval PoCs** (`evals/fixtures/<f>/pocs`) run against gnark v0.14.0 in a
+  sanitized scratch copy. Go PoCs run via `evals/run-pocs` and Foundry PoCs via
+  `evals/run-foundry-pocs` (`make eval-pocs`, `make eval-foundry-pocs`, CI). Both
+  take `all` to run every fixture that has a PoC of that kind. They pin the
   templates in `poc-templates.md` to working code.
+- **The corpus.** `evals/README.md` has the full table. ~18 planted fixtures
+  (12 circuit-only, 6 Foundry integration) each plant one bug across the vector
+  families (hints, field arithmetic, range/bits, selectors, hash/merkle,
+  public-inputs/integration); each soundness bug is shown real by an executed
+  PoC (a Go `test.IsSolved`/`ccs.Solve` override, or a `forge` test against a
+  mock verifier, no forge-std). Ten all-safe fixtures are the correctly
+  constrained counterparts; their keys plant no items, so recall is undefined
+  and any `confirmed`/`needs_validation` record is a false positive, and each
+  ships a test showing the counterpart attack is rejected.
+- **All-safe scoring.** `Result.Recall` is a pointer: nil when the key has no
+  items, so summaries print recall as "–" rather than 0 % for an all-safe run
+  (`TestAllSafeNoItems`).
+- **`DivUnchecked` 0/0** is kept as an info item (pool P3), not a standalone
+  confirmed-soundness fixture: on stock gnark the r1cs solver assigns the
+  internal result deterministically, so a malicious prover cannot pick it
+  without patching the solver. The inverse/zero footgun that *is* exploitable
+  (a missing `value*flag == 0` binding on a hint-provided inverse) is the
+  `zero-test` fixture.
+- **Advisory replays** (`adv-*`) pin a vulnerable gnark release and import the
+  affected std gadget, so Phase 0 reports the advisory from `go.mod` and the
+  reachable gadget is located. The defects are in gnark's std library
+  (documented by the GHSAs), so no exploit PoC is shipped. `adv-emulated`
+  (gnark v0.16.1, GHSA-3mvx) needs Go ≥ 1.25.7; `make fixtures` treats modules
+  whose go directive is ≥ 1.25 as best-effort (skip with a warning when no such
+  toolchain is reachable) so the offline pipeline is not blocked.
+- **Real repos** are fetched at a pinned commit through the Go module proxy by
+  `evals/lib/scaffold-real`, cached under `.cache/`, never vendored.
+  `real-plonky2` keys the three critical Goldilocks under-constraints from the
+  Veridise report the repo itself ships (`audits/VAR_Succinct-V1.pdf`) at the
+  pre-fix commit `89b5a01`. `real-semaphore` has no report in its snapshot and
+  the external one is unreachable here, so only the verifiable gnark-version
+  advisory is scored; circuit-level ground truth is left unscored rather than
+  invented.
+- **Cheap CI case.** `ci-smoke` is one circuit with one bug; the `ci-smoke` CI
+  job runs `evals/run-audit --runs 1 --budget 4 ci-smoke` on push to main, a
+  weekly schedule and manual dispatch (not every PR), only when
+  `ANTHROPIC_API_KEY` is set (skips otherwise), uploads `evals/results` and
+  fails if recall is 0 or a false positive appears.
 
 ## Knowledge base
 

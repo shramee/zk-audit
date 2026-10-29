@@ -1,7 +1,7 @@
 SKILL := plugins/zk-audit/skills/zk-audit
 TOOL := $(SKILL)/tools/gnark-inventory
 
-.PHONY: check vet test test-types fixtures lint-kb standalone sync-schemas sync-agents vendor eval-pocs eval-score eval-audit
+.PHONY: check vet test test-types fixtures lint-kb standalone sync-schemas sync-agents vendor eval-pocs eval-foundry-pocs eval-score eval-audit
 
 ## check: everything CI runs (offline)
 check: vet test lint-kb standalone eval-score
@@ -41,10 +41,15 @@ lint-kb:
 standalone:
 	test/standalone-skill.sh
 
-## eval-pocs: run every fixture's eval PoCs in sanitized scratch copies
+## eval-pocs: run every fixture's Go eval PoCs in sanitized scratch copies
 ## (network for the fixture modules, like test-types)
 eval-pocs: fixtures
 	EVAL_GOPROXY="$$(go env GOPROXY)" evals/run-pocs all "$$(mktemp -d)"
+
+## eval-foundry-pocs: run every integration fixture's Foundry PoCs in sanitized
+## scratch copies (needs forge; no forge-std, mock verifiers only)
+eval-foundry-pocs:
+	evals/run-foundry-pocs all "$$(mktemp -d)"
 
 ## sync-schemas: copy the canonical schemas into the tool's embed directory
 sync-schemas:

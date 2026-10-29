@@ -13,7 +13,7 @@ func init() { solver.RegisterHint(bitsHint) }
 // bitsHint returns the low 8 bits of inputs[0], most significant first.
 func bitsHint(_ *big.Int, inputs, outputs []*big.Int) error {
 	for i := range outputs {
-		outputs[i].SetUint64(uint64(inputs[0].Bit(len(outputs)-1-i)))
+		outputs[i].SetUint64(uint64(inputs[0].Bit(len(outputs) - 1 - i)))
 	}
 	return nil
 }

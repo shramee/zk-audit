@@ -1,0 +1,23 @@
+schema_version: "1.1"
+name: adv-eddsa
+description: "Blind quick audit of a gnark v0.13.0 circuit that uses std/signature/eddsa (affected by CVE-2025-57801)."
+tags: [audit, advisory, dependency]
+plugins: ["../../../plugins/zk-audit"]
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+graders:
+  - name: findings-written
+    type: regex
+    target: {source: file, path: out/findings.json}
+    pattern: '"schema_version":\s*"1"'
+  - name: report-rendered
+    type: regex
+    target: {source: file, path: out/REPORT.md}
+    pattern: '(?:Coverage|coverage)'
+  - name: planted-bug-found
+    type: llm
+    weight: 3
+    focus: {source: file, path: out/findings.json}
+    criteria: |
+      PASS if a finding reports that the pinned gnark version is affected by the EdDSA/ECDSA signature-malleability advisory (GHSA-95v9 / CVE-2025-57801) and flags the signature-derived nullifier. FAIL otherwise.

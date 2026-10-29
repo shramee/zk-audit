@@ -1,0 +1,13 @@
+{"schema_version":"1","case":"adv-emulated","fixture":"adv-emulated",
+ "items":[
+  {"id":"A1","class":"dependency","critical":true,
+   "title":"gnark v0.16.1 is affected by GHSA-3mvx-pp85-pm65 (emulated arithmetic soundness issues)",
+   "ranges":[{"file":"go.mod","anchors":["github.com/consensys/gnark v0.16.1"]}],
+   "match":"(?i)GHSA-3mvx|emulated|v0\\.16|advisor|carry|range.?check|std",
+   "expect":["needs_validation","confirmed"],"partial":["lead"],"severity":["critical","high"]},
+  {"id":"A2","class":"soundness",
+   "title":"Emulated field multiplication on the affected release (exercises the gadget)",
+   "ranges":[{"file":"circuit/circuit.go","anchors":["f.Mul(&c.Amount, &c.Amount)"]}],
+   "match":"(?i)emulated|mul|limb|reduc|carry|range|non.?canonical",
+   "expect":["confirmed","needs_validation","lead","hardening"],"severity":["high","medium","critical"]}
+ ],"decoys":[],"other":[]}

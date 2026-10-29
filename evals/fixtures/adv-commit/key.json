@@ -1,0 +1,13 @@
+{"schema_version":"1","case":"adv-commit","fixture":"adv-commit",
+ "items":[
+  {"id":"A1","class":"dependency","critical":true,
+   "title":"gnark v0.10.0 is affected by CVE-2024-45040 (commitments to private witnesses break ZK) and CVE-2024-45039 (multi-commitment unsoundness)",
+   "ranges":[{"file":"go.mod","anchors":["github.com/consensys/gnark v0.10.0"]}],
+   "match":"(?i)GHSA-9xcg|GHSA-q3hw|CVE-2024-4504|commitment|v0\\.10|advisor|private witness|zero.?knowledge",
+   "expect":["needs_validation","confirmed"],"partial":["lead"],"severity":["high","moderate","medium","critical"]},
+  {"id":"A2","class":"privacy",
+   "title":"api.Commit used on a private witness (exercises the affected gadget)",
+   "ranges":[{"file":"circuit/circuit.go","anchors":["committer.Commit(c.Secret)"]}],
+   "match":"(?i)commit|private|zero.?knowledge|hiding|secret|witness",
+   "expect":["confirmed","needs_validation","lead"],"partial":["hardening"],"severity":["high","medium","moderate"]}
+ ],"decoys":[],"other":[]}

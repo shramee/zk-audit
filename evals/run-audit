@@ -46,17 +46,21 @@ score_bin="$results/.score"
 prompt_body() { awk 'NR==1 && /^---$/ {fm=1; next} fm && /^---$/ {fm=0; next} !fm' "$1"; }
 
 settings() { # settings WS
+  # The array builders are bound with `as` before the object literal: jq's
+  # object-value grammar does not accept a piped, interpolated `map(...) + [...]`
+  # inline, so building the arrays first keeps the object values simple.
   local ws="$1"
-  jq -n --arg ws "$ws" --arg skill "$skill" --arg repo "$repo" '{permissions: {
-    defaultMode: "default",
-    allow: (["Read", "Glob", "Grep", "Agent", "Skill", "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
-      "Write(/\($ws)/**)", "Edit(/\($ws)/**)", "Bash(\($skill)/scripts/*)"] +
-      (["go", "git", "forge", "timeout", "ls", "cat", "head", "tail", "wc", "grep", "find", "sed -n", "mkdir", "cp",
-        "date", "jq", "diff", "sort", "echo", "test", "basename", "dirname", "cd"] | map("Bash(\(.):*)")) +
-      (["GOFLAGS", "GOWORK", "GOPROXY", "GOTOOLCHAIN", "CGO_ENABLED", "ZK_AUDIT_NO_UPDATE_CHECK"] | map("Bash(\(.)=*)")) +
-      ["Bash(pwd)"]),
-    deny: (["evals", "testdata", "docs", "test", ".git"] | map("Read(/\($repo)/\(.)/**)", "Grep(/\($repo)/\(.)/**)", "Glob(/\($repo)/\(.)/**)"))
-      + ["Read(/\($repo)/PLAN.md)", "WebFetch", "WebSearch"]}}'
+  jq -n --arg ws "$ws" --arg skill "$skill" --arg repo "$repo" '
+    (["go", "git", "forge", "timeout", "ls", "cat", "head", "tail", "wc", "grep", "find", "sed -n", "mkdir", "cp",
+      "date", "jq", "diff", "sort", "echo", "test", "basename", "dirname", "cd"] | map("Bash(\(.):*)")) as $bash |
+    (["GOFLAGS", "GOWORK", "GOPROXY", "GOTOOLCHAIN", "CGO_ENABLED", "ZK_AUDIT_NO_UPDATE_CHECK"] | map("Bash(\(.)=*)")) as $env |
+    (["evals", "testdata", "docs", "test", ".git"] | map("Read(/\($repo)/\(.)/**)", "Grep(/\($repo)/\(.)/**)", "Glob(/\($repo)/\(.)/**)")) as $deny |
+    {permissions: {
+      defaultMode: "default",
+      allow: (["Read", "Glob", "Grep", "Agent", "Skill", "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
+        "Write(/\($ws)/**)", "Edit(/\($ws)/**)", "Bash(\($skill)/scripts/*)"] + $bash + $env + ["Bash(pwd)"]),
+      deny: ($deny + ["Read(/\($repo)/PLAN.md)", "WebFetch", "WebSearch"])
+    }}'
 }
 
 harness_note='
@@ -83,25 +87,32 @@ for c in "${cases[@]}"; do
   [ -f "$key" ] || { echo "run-audit: $dir: no answer key $key" >&2; exit 2; }
   prompt="$(prompt_body "$dir/prompt.md")$harness_note"
   for i in $(seq 1 "$runs"); do
-    ws="$results/$name/run$i"
-    mkdir -p "$ws/home"
+    # The scored artifacts live under evals/results (rdir); the run workspace
+    # (sanitized ./target, ./out, HOME) lives outside the repository, because
+    # evals/sanitize refuses to write a sanitized copy inside the repo.
+    rdir="$results/$name/run$i"
+    ws="$(mktemp -d)/run$i"
+    mkdir -p "$rdir" "$ws/home"
     (cd "$ws" && HOME="$ws/home" bash "$dir/scaffold.sh")
     settings "$ws" >"$ws/settings.json"
-    echo "run-audit: $name run $i/$runs in $ws" >&2
+    cp "$ws/settings.json" "$rdir/settings.json"
+    echo "run-audit: $name run $i/$runs in $ws (results in $rdir)" >&2
     start=$(date +%s)
     set +e
     (cd "$ws" && GOENV="$ws/home/.config/go/env" ZK_AUDIT_BIN="$ws/home/.zk-audit/bin" ZK_AUDIT_NO_UPDATE_CHECK=1 \
       claude -p "$prompt" --plugin-dir "$plugin" --settings "$ws/settings.json" --permission-mode default \
       --max-budget-usd "$budget" ${model:+--model "$model"} --output-format stream-json --verbose \
-      >"$ws/stream.jsonl" 2>"$ws/stderr.log")
+      >"$rdir/stream.jsonl" 2>"$rdir/stderr.log")
     set -e
     dur=$(( $(date +%s) - start ))
-    cost="$(jq -s '[.[] | select(.type == "result") | .total_cost_usd] | max // -1' "$ws/stream.jsonl" 2>/dev/null || echo -1)"
+    cost="$(jq -s '[.[] | select(.type == "result") | .total_cost_usd] | max // -1' "$rdir/stream.jsonl" 2>/dev/null || echo -1)"
     [ -f "$ws/out/findings.json" ] || status=1
+    cp -R "$ws/out" "$rdir/out" 2>/dev/null || true
     "$score_bin" run --key "$key" --target "$ws/target" --findings "$ws/out/findings.json" \
-      --label "$name/run$i" --cost "$cost" --duration "$dur" --json "$ws/score.json" >/dev/null
-    scores+=("$ws/score.json")
-    jq -r '"run-audit: \(.label): recall \(.recall * 100 | floor) %, false positives \(.false_positives | length), cost \(.cost_usd // "?") USD"' "$ws/score.json" >&2
+      --label "$name/run$i" --cost "$cost" --duration "$dur" --json "$rdir/score.json" >/dev/null
+    scores+=("$rdir/score.json")
+    rm -rf "$(dirname "$ws")"
+    jq -r '"run-audit: \(.label): recall \(.recall * 100 | floor) %, false positives \(.false_positives | length), cost \(.cost_usd // "?") USD"' "$rdir/score.json" >&2
   done
 done
 "$score_bin" summarize "${scores[@]}" | tee "$results/summary.md"

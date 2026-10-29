@@ -18,6 +18,7 @@ import (
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/assemble"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/bundle"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/detect"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fsutil"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/inventory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/kblint"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/ledger"
@@ -41,7 +42,7 @@ Usage:
   gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile P]
   gnark-inventory profiles  [--profile P] [--markdown] [--check-docs SKILL_DIR] [--sync-docs SKILL_DIR]
   gnark-inventory validate  findings|ledger|stack FILE
-  gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F]
+  gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F] [--file-output]
   gnark-inventory sandbox   [--rw DIR]... [--ro DIR]... [--cwd DIR] [--timeout SEC] [--mem MB] [--allow-network] [--engine E] [--require] [--check] -- CMD [ARGS...]
   gnark-inventory lint-kb   [--gnark-src DIR] SKILL_DIR
   gnark-inventory advisories [--version vX.Y.Z]
@@ -160,6 +161,9 @@ func cmdDetect(args []string, stdout io.Writer) error {
 	if *out == "" {
 		return writeJSON(stdout, st)
 	}
+	if err := refuseInRepo("detect --out", *out, root); err != nil {
+		return err
+	}
 	if err := writeJSONFile(*out, st); err != nil {
 		return err
 	}
@@ -190,11 +194,11 @@ func cmdInventory(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(*out, 0o755); err != nil {
+	if err := refuseInRepo("inventory --out", *out, root); err != nil {
 		return err
 	}
-	if inside(*out, root) {
-		fmt.Fprintln(os.Stderr, "gnark-inventory: warning: --out is inside the target repository")
+	if err := os.MkdirAll(*out, 0o755); err != nil {
+		return err
 	}
 	if !*syntax && *sb != "off" && os.Getenv(sandbox.MarkerEnv) == "" {
 		absOut, err := filepath.Abs(*out)
@@ -312,13 +316,14 @@ func countHits(m map[string]int) int {
 	return n
 }
 
-func inside(p, root string) bool {
-	a, err := filepath.Abs(p)
-	if err != nil {
-		return false
+// refuseInRepo fails when path (resolved through symlinks) lies inside the
+// audited repository: the tool never writes there (SKILL.md hard rules 1
+// and 2). The only exception is the report copy of assemble --file-output.
+func refuseInRepo(what, path, repo string) error {
+	if repo != "" && fsutil.Inside(path, repo) {
+		return fmt.Errorf("%s %s is inside the audited repository %s; write outside it (only assemble --file-output may put the report copy there)", what, path, repo)
 	}
-	rel, err := filepath.Rel(root, a)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return nil
 }
 
 func cmdBundle(args []string, stdout io.Writer) error {
@@ -393,6 +398,7 @@ func cmdAssemble(args []string, stdout io.Writer) (int, error) {
 	inv := fs.String("inventory", "", "inventory.json (default <out>/inventory.json when present)")
 	repo := fs.String("repo", "", "audited source tree for verbatim constraint quotes (default: stack.json repo)")
 	reportPath := fs.String("report", "", "where to write the report (default <out>/REPORT.md)")
+	fileOutput := fs.Bool("file-output", false, "also write the report to <repo>/zk-audit-report-<run-id>.md (the user asked for --file-output)")
 	if err := fs.Parse(args); err != nil {
 		return 2, err
 	}
@@ -431,13 +437,28 @@ func cmdAssemble(args []string, stdout io.Writer) (int, error) {
 	for _, w := range res.Warnings {
 		fmt.Fprintln(stdout, "warning:", w)
 	}
-	if *repo != "" && inside(*reportPath, *repo) {
-		fmt.Fprintln(os.Stderr, "gnark-inventory: warning: --report is inside the audited repository")
+	for what, p := range map[string]string{"assemble --out": *out, "assemble --report": *reportPath} {
+		if err := refuseInRepo(what, p, res.Repo); err != nil {
+			return 2, err
+		}
+	}
+	var copyPath string
+	if *fileOutput {
+		if res.Repo == "" {
+			return 2, fmt.Errorf("assemble --file-output needs the audited repository (--repo or stack.json)")
+		}
+		copyPath = filepath.Join(res.Repo, "zk-audit-report-"+res.RunID+".md")
 	}
 	if err := os.WriteFile(*reportPath, []byte(res.Report), 0o644); err != nil {
 		return 2, err
 	}
 	fmt.Fprintf(stdout, "wrote %s: %s\n", *reportPath, res.Summary)
+	if copyPath != "" {
+		if err := os.WriteFile(copyPath, []byte(res.Report), 0o644); err != nil {
+			return 2, err
+		}
+		fmt.Fprintf(stdout, "wrote the report copy %s (--file-output)\n", copyPath)
+	}
 	return 0, nil
 }
 

@@ -50,7 +50,7 @@ through `skills/zk-audit/scripts/gnark-inventory`, which builds it once into
 | `validate findings FILE` | Checks `findings.json` against `skills/zk-audit/schemas/findings.schema.json` plus semantic rules. |
 | `validate ledger FILE` | Checks `coverage-ledger.json` against `skills/zk-audit/schemas/ledger.schema.json` plus semantic rules. |
 | `validate stack FILE` | Checks `stack.json` against `skills/zk-audit/schemas/stack.schema.json`. |
-| `assemble --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F]` | Validates `findings.json` and `coverage-ledger.json` (and `stack.json`), refuses invalid input and forbidden clean claims (exit 1, no report), and renders `REPORT.md` with code quoted from `--repo` and coverage counted only from the ledger. |
+| `assemble --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F] [--file-output]` | Validates `findings.json` and `coverage-ledger.json` (and `stack.json`), refuses invalid input and forbidden clean claims (exit 1, no report), and renders `REPORT.md` with code quoted from `--repo` and coverage counted only from the ledger. |
 | `sandbox [--rw DIR]... [--ro DIR]... [--cwd DIR] [--timeout SEC] [--mem MB] [--allow-network] [--gocache DIR] [--goflags F] [--env NAME]... [--engine auto\|bwrap\|sandbox-exec\|none] [--require] [--check] -- CMD [ARGS...]` | Runs a command on untrusted code (PoC `go test` / `forge test`, the inventory's type loading) in the OS sandbox and returns its status (124 time limit, 125 setup failure, 127 not found). `--check` prints the engine. |
 | `lint-kb [--gnark-src DIR] SKILL_DIR` | Lints the knowledge base: every vector has D/FP/Source/Seed/PoC, sources are real URLs on allowed hosts or `gnark/<path>` references (checked against a gnark checkout with `--gnark-src`), seeds name real detector rules, PoCs name real templates, ids are unique, slice counts match the index, and the advisory table matches the tool. |
 | `rules` | Prints the footgun detector rules as JSON. |
@@ -58,6 +58,12 @@ through `skills/zk-audit/scripts/gnark-inventory`, which builds it once into
 | `version` | Prints the tool version. |
 
 Every validator fails when it inspects zero items.
+
+**Writes.** `detect --out`, `inventory --out`, `bundle` and `assemble --out` /
+`--report` refuse (exit 2) a path inside the audited repository, after
+resolving symlinks; `assemble --file-output` is the one way to put a file
+there (the report copy). Quotes in `REPORT.md` resolve symlinks and are
+refused when the real file leaves the repository.
 
 **Network.** By default the tool sets `GOPROXY=off` when it calls the go
 command, so an audit never downloads modules. `--allow-network` lifts that for

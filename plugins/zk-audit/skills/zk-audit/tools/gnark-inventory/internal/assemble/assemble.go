@@ -37,6 +37,10 @@ type Result struct {
 	Report   string
 	Warnings []string
 	Summary  string
+	// Repo is the audited tree the quotes came from ("" when unknown).
+	Repo string
+	// RunID is findings.json's run_id.
+	RunID string
 }
 
 // InvalidError reports input that failed validation. The caller must not
@@ -132,7 +136,7 @@ func Assemble(opt Options) (*Result, error) {
 	}
 	warnings = append(warnings, crossCheck(in)...)
 	r := render(in)
-	return &Result{Report: r, Warnings: warnings, Summary: in.summary()}, nil
+	return &Result{Report: r, Warnings: warnings, Summary: in.summary(), Repo: in.repo, RunID: in.f.RunID}, nil
 }
 
 type input struct {

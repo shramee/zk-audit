@@ -63,6 +63,9 @@ func Build(opt Options) ([]Result, error) {
 	if err := json.Unmarshal(b, &inv); err != nil {
 		return nil, fmt.Errorf("bundle: inventory.json: %w", err)
 	}
+	if inv.Repo != "" && fsutil.Inside(opt.Out, inv.Repo) {
+		return nil, fmt.Errorf("bundle: --out %s is inside the audited repository %s", opt.Out, inv.Repo)
+	}
 	binding, _ := os.ReadFile(filepath.Join(opt.Out, "binding-table.md"))
 	periph := peripheral(opt.Out)
 	refs := filepath.Join(opt.Skill, "references")

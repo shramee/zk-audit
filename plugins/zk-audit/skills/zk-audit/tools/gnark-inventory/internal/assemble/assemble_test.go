@@ -216,3 +216,33 @@ func TestQuoteStaysInRepo(t *testing.T) {
 		t.Errorf("long quote not truncated: ok=%v lang=%s", ok, lang)
 	}
 }
+
+// TestQuoteSymlinkEscape: a symlink inside the repository that points
+// outside it is never quoted (x-ray G-13); one that stays inside is.
+func TestQuoteSymlinkEscape(t *testing.T) {
+	repo := t.TempDir()
+	outside := t.TempDir()
+	os.WriteFile(filepath.Join(outside, "id_rsa"), []byte("PRIVATE KEY\n"), 0o600)
+	os.MkdirAll(filepath.Join(repo, "c"), 0o755)
+	os.WriteFile(filepath.Join(repo, "c", "a.go"), []byte("package c\n"), 0o644)
+	if err := os.Symlink(filepath.Join(outside, "id_rsa"), filepath.Join(repo, "c", "key.go")); err != nil {
+		t.Skip(err)
+	}
+	os.Symlink(outside, filepath.Join(repo, "dirlink"))
+	os.Symlink(filepath.Join(repo, "c", "a.go"), filepath.Join(repo, "inner.go"))
+	in := &input{repo: repo}
+	for _, f := range []string{"c/key.go", "dirlink/id_rsa", "c"} {
+		if q, _, ok := in.quote(Location{File: f, Line: 1}); ok {
+			t.Errorf("%s quoted: %q", f, q)
+		}
+	}
+	if q, _, ok := in.quote(Location{File: "inner.go", Line: 1}); !ok || q != "package c" {
+		t.Errorf("in-repo symlink not quoted: %q %v", q, ok)
+	}
+	// a repository reached through a symlink still quotes its own files
+	alias := filepath.Join(t.TempDir(), "alias")
+	os.Symlink(repo, alias)
+	if q, _, ok := (&input{repo: alias}).quote(Location{File: "c/a.go", Line: 1}); !ok || q != "package c" {
+		t.Errorf("symlinked root: %q %v", q, ok)
+	}
+}

@@ -303,8 +303,9 @@ deep also runs a final-clean critic. Units left open stay `planned` or
 
    Read its warnings (a ledger fingerprint missing from `findings.json`, a unit
    still planned). Fix the inputs and rerun; never edit `REPORT.md` by hand.
-5. With `--file-output`, copy the result:
-   `cp <out>/REPORT.md <repo>/zk-audit-report-<run-id>.md`.
+5. With `--file-output`, add `--file-output` to the assemble command; it also
+   writes `<repo>/zk-audit-report-<run-id>.md`. The tool refuses every other
+   output path inside the repository (exit 2).
 6. Print the report path, the findings table and the coverage line.
 
 ## 5. Companions

@@ -206,6 +206,20 @@ tables and `gnark-inventory profiles` all follow the entry.
 - **Evals.** `evals/run-pocs` (and so `make eval-pocs` and CI) runs the pool
   PoCs through the sandbox, offline.
 
+## Writes into the target
+
+- **Refused, not warned** (x-ray G-16). `detect --out`, `inventory --out`,
+  `bundle`, `assemble --out` and `assemble --report` inside the audited
+  repository exit 2 before writing anything. Containment is checked on
+  resolved paths (`fsutil.Resolve` follows symlinks through the longest
+  existing ancestor), so a symlink to or from the repository does not get
+  around it. `assemble --file-output` mirrors the skill flag: it writes the
+  one allowed file, `<repo>/zk-audit-report-<run-id>.md`, next to
+  `<out>/REPORT.md`.
+- **Quotes** (x-ray G-13). The assembler resolves the repository root and
+  the quoted file with `filepath.EvalSymlinks`, requires the real file to be
+  a regular file inside the real root, and otherwise prints no quote.
+
 ## Invocation parsing
 
 - **`gnark-inventory args`** turns the words after `/zk-audit` into JSON

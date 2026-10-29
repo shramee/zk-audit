@@ -96,3 +96,53 @@ func TestInventoryInSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestRefuseWritesInRepo: inventory, detect and assemble refuse output
+// paths inside the audited repository, also through a symlink; only
+// assemble --file-output writes the report copy there.
+func TestRefuseWritesInRepo(t *testing.T) {
+	src := fixture.Dir(t, "pool")
+	repo := t.TempDir()
+	// a private copy, so the test may write the report copy into it
+	if err := os.CopyFS(repo, os.DirFS(src)); err != nil {
+		t.Fatal(err)
+	}
+	alias := t.TempDir() + "/alias"
+	os.Symlink(repo, alias)
+	var buf bytes.Buffer
+	for _, out := range []string{repo + "/audit", alias + "/audit"} {
+		err := cmdInventory([]string{"--repo", repo, "--out", out, "--syntax-only"}, &buf)
+		if err == nil || !strings.Contains(err.Error(), "inside the audited repository") {
+			t.Errorf("inventory --out %s: %v", out, err)
+		}
+		if _, err := os.Stat(repo + "/audit"); err == nil {
+			t.Fatalf("inventory created %s", out)
+		}
+	}
+	if err := cmdDetect([]string{"--repo", repo, "--out", repo + "/stack.json"}, &buf); err == nil {
+		t.Error("detect --out inside the repository accepted")
+	}
+	out := t.TempDir()
+	if err := cmdInventory([]string{"--repo", repo, "--out", out, "--syntax-only"}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(out+"/findings.json", []byte(`{"schema_version":"1","repo":"pool","run_id":"20261029-111111","profile":"quick","no_findings":true,"no_findings_reason":"refusal test","records":[]}`), 0o644)
+	buf.Reset()
+	code, err := cmdAssemble([]string{"--out", out, "--repo", repo, "--report", repo + "/REPORT.md"}, &buf)
+	if code != 2 || err == nil || !strings.Contains(err.Error(), "inside the audited repository") {
+		t.Errorf("assemble --report in repo: %d %v", code, err)
+	}
+	if _, err := os.Stat(repo + "/REPORT.md"); err == nil {
+		t.Fatal("assemble wrote into the repository")
+	}
+	buf.Reset()
+	code, err = cmdAssemble([]string{"--out", out, "--repo", repo, "--file-output"}, &buf)
+	if code != 0 || err != nil {
+		t.Fatalf("assemble --file-output: %d %v %s", code, err, buf.String())
+	}
+	for _, p := range []string{out + "/REPORT.md", repo + "/zk-audit-report-20261029-111111.md"} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("missing %s", p)
+		}
+	}
+}

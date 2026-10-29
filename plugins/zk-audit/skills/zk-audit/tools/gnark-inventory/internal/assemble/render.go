@@ -448,14 +448,31 @@ func optionName(i int) string {
 	return fmt.Sprint(i + 1)
 }
 
-// open opens a repo-relative file of the audited tree; it refuses paths that
-// leave the tree.
+// open opens a repo-relative regular file of the audited tree. It refuses
+// absolute paths and paths with "..", resolves symlinks in both the root and
+// the file, and refuses a file whose real path leaves the real root (a
+// symlink in the repository pointing at ~/.ssh/id_rsa is never quoted).
 func (in *input) open(file string) (*os.File, bool) {
-	if in.repo == "" || file == "" || filepath.IsAbs(file) || strings.HasPrefix(filepath.Clean(file), "..") {
+	if in.repo == "" || file == "" || filepath.IsAbs(file) || strings.HasPrefix(filepath.Clean(filepath.FromSlash(file)), "..") {
 		return nil, false
 	}
-	f, err := os.Open(filepath.Join(in.repo, filepath.FromSlash(file)))
+	root, err := filepath.EvalSymlinks(in.repo)
 	if err != nil {
+		return nil, false
+	}
+	real, err := filepath.EvalSymlinks(filepath.Join(root, filepath.FromSlash(file)))
+	if err != nil {
+		return nil, false
+	}
+	if rel, err := filepath.Rel(root, real); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil, false
+	}
+	f, err := os.Open(real)
+	if err != nil {
+		return nil, false
+	}
+	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() {
+		f.Close()
 		return nil, false
 	}
 	return f, true

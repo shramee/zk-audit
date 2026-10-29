@@ -28,8 +28,10 @@ Where each part comes from:
 
 The assembler rejects the claims listed under Language in any free-text field.
 
-Path: `~/.zk-audit/<repo>/<run-id>/REPORT.md`. With `--file-output`, the same
-file is also written to `<repo>/zk-audit-report-<run-id>.md`.
+Path: `~/.zk-audit/<repo>/<run-id>/REPORT.md`. With `--file-output` (pass
+`assemble --file-output`), the same file is also written to
+`<repo>/zk-audit-report-<run-id>.md`, the only file the tool ever writes into
+the repository; `--out` or `--report` inside it is refused (exit 2).
 
 ## Language
 

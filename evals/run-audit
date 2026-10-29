@@ -112,7 +112,8 @@ for c in "${cases[@]}"; do
       --label "$name/run$i" --cost "$cost" --duration "$dur" --json "$rdir/score.json" >/dev/null
     scores+=("$rdir/score.json")
     rm -rf "$(dirname "$ws")"
-    jq -r '"run-audit: \(.label): recall \(.recall * 100 | floor) %, false positives \(.false_positives | length), cost \(.cost_usd // "?") USD"' "$rdir/score.json" >&2
+    # recall is null for an all-safe key (nothing planted), so print a dash.
+    jq -r '"run-audit: \(.label): recall \(if .recall == null then "-" else "\(.recall * 100 | floor) %" end), false positives \(.false_positives | length), cost \(.cost_usd // "?") USD"' "$rdir/score.json" >&2
   done
 done
 "$score_bin" summarize "${scores[@]}" | tee "$results/summary.md"

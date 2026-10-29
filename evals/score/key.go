@@ -47,6 +47,10 @@ type Item struct {
 type Range struct {
 	File    string   `json:"file"`
 	Anchors []string `json:"anchors"`
+	// Lines is [first, last], 1-based, for keys built from a human report
+	// on an unmodified tree (pilots), where line numbers are stable. It
+	// takes precedence over Anchors.
+	Lines []int `json:"lines,omitempty"`
 }
 
 type span struct {
@@ -119,6 +123,13 @@ func (k *Key) resolve(target string) error {
 				}
 				lines = strings.Split(string(b), "\n")
 				cache[r.File] = lines
+			}
+			if len(r.Lines) > 0 {
+				if len(r.Lines) != 2 || r.Lines[0] < 1 || r.Lines[1] < r.Lines[0] || r.Lines[1] > len(lines) {
+					return fmt.Errorf("item %s: lines %v are not a range inside %s (%d lines)", it.ID, r.Lines, r.File, len(lines))
+				}
+				it.resolved = append(it.resolved, span{r.File, r.Lines[0], r.Lines[1]})
+				continue
 			}
 			if len(r.Anchors) == 0 {
 				it.resolved = append(it.resolved, span{r.File, 1, len(lines)})

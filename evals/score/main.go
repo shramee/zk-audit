@@ -2,12 +2,15 @@
 //
 //	score run --key key.json --target DIR --findings findings.json [--label L] [--cost USD] [--duration S] [--json FILE]
 //	score summarize RESULT.json...
+//	score pilot --human human.json|human.md --target DIR --findings findings.json [--key-out key.json] [--json FILE]
 //
 // run matches every record and hardening note in findings.json to the key's
 // planted items, decoys and other true observations, and prints one JSON
 // result. summarize aggregates results (three runs per case) into a markdown
 // table with mean, spread and per-item hit rates. Exit status: 0 ok, 2 usage
-// or input error.
+// or input error. pilot scores a run against a human auditor's findings
+// (docs/pilots.md): it builds the key from them, and passes when no high or
+// critical finding is missed.
 package main
 
 import (
@@ -24,7 +27,7 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: score run|summarize ...")
+		fmt.Fprintln(stderr, "usage: score run|summarize|pilot ...")
 		return 2
 	}
 	var err error
@@ -33,6 +36,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = cmdRun(args[1:], stdout)
 	case "summarize":
 		err = cmdSummarize(args[1:], stdout)
+	case "pilot":
+		err = cmdPilot(args[1:], stdout)
 	default:
 		err = fmt.Errorf("unknown subcommand %q", args[0])
 	}

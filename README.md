@@ -146,17 +146,20 @@ parties (admin, relayer, sequencer) behave.
 
 | Part | State |
 |---|---|
-| `gnark-inventory`: `args`, `detect`, `preflight`, `inventory`, `bundle`, `profiles`, `validate`, `assemble`, `ledger`, `agents`, `memory`, `diff`, `sandbox`, `harness`, `lint-kb`, `advisories`, `rules` | Implemented, unit tested, run in CI. |
+| `gnark-inventory`: `args`, `detect`, `preflight`, `threat-model`, `inventory`, `estimate`, `bundle`, `profiles`, `validate`, `assemble`, `ledger`, `agents`, `budget`, `status`, `critic-check`, `memory`, `diff`, `verifier`, `convert`, `sandbox`, `harness`, `lint-kb`, `advisories`, `rules` | Implemented, unit tested, run in CI. |
 | Safety by code | Hunters and critics are read-only plugin agent types (Read, Grep, Glob); PoCs and recon type loading run in an OS sandbox (bubblewrap on Linux: no network, writes only to the worktree; `sandbox-exec` on macOS, untested in CI); the tool refuses writes into the target and symlinked quotes; `validate` / `assemble` check PoC files and agent outputs on disk. A standalone skill install restricts agent tools by prompt only. |
 | Findings, ledger and stack schemas with validators | Implemented. |
 | Deterministic report assembler (`assemble`) | Implemented: validates its inputs, refuses forbidden clean claims, quotes code from the audited tree, counts coverage only from the ledger; golden tests. |
 | Knowledge base: 91 sourced vectors in 14 slices (privacy and gas-liveness added), advisory table, API footguns, judging, severity calibration against 60 published findings, PoC templates | Written and linted. Four PoC templates were run against gnark v0.14.0; the stale-root Foundry template runs on the `liveness-roots` fixture in `make eval-pocs`. |
-| Skill, orchestration, lens files, commands, `hunter`, `critic`, `poc-builder` and `refuter` agents | Written as prompts. One blind end-to-end run is recorded: quick profile on the pool fixture, recall 12 of 14 planted items, no false positives ([`evals/baseline/pool-quick.md`](plugins/zk-audit/evals/baseline/pool-quick.md)). |
+| Skill, orchestration, lens files, commands, `hunter`, `critic`, `poc-builder` and `refuter` agents | Written as prompts. Blind runs on the pool fixture (2026-10-29, one per profile): quick 12 of 14 planted items, standard 12 of 14, deep 13 of 14 (2 partial), no false positives ([`evals/baseline/pool-2026-10-29.md`](evals/baseline/pool-2026-10-29.md)). The lenses and tools added since (T1, PR1, S1, library mode, budget, resume, critic-check) are not measured yet. |
+| Pilots beside a human auditor | **Not run.** The bar is no high or critical miss in two consecutive pilots on real gnark codebases; protocol in [`docs/pilots.md`](docs/pilots.md), results in [`evals/pilots/results.md`](evals/pilots/results.md) (0 of 2). |
+| Cost, budget and resume | `estimate` gives a cost and time range per profile before the first spawn (calibrated on the measured runs); `--budget USD` stops before a wave that would cross it and the report says it is partial; `/zk-audit resume` continues from the output directory. Spend is counted in tokens the runtime reports, converted with the calibrated rate: an estimate. |
+| Threat-model file | `zk-audit.md` from [`templates/zk-audit.md`](plugins/zk-audit/skills/zk-audit/templates/zk-audit.md), parsed into `threat-model.json`; bundles, judging and the report use it. |
 | Install routes | Claude Code plugin, or the skill folder copied alone into `~/.claude/skills/zk-audit`; both checked in [`docs/pashov-parity.md`](docs/pashov-parity.md), the second on every CI run. |
 | Eval harness | One fixture (`pool`) with an answer key, a sanitizer that strips hint comments, and executed eval PoCs in CI. No scored LLM runs in CI, no all-safe panel, no `case.yaml` suite yet. |
 | `diff` mode, `--loop` memory | Tool support: `diff` flags the high-risk triggers, `memory` holds NEW / KNOWN tags, "seen in k/N" and the stop rule. Not yet measured in an end-to-end run. |
-| Coverage critics | Prompted (`zk-audit:critic`); the ledger records a decision per missing unit through `ledger add` / `ledger mark`. |
-| Regenerate-and-diff of `Verifier.sol` (deep profile) | Not automated. |
+| Coverage critics | `critic-check` computes the missing units; the critic (`zk-audit:critic`) reports only lens-level gaps; `critic-check --verify` requires a ledger decision for each. |
+| Regenerate-and-diff of `Verifier.sol` (deep profile) | `gnark-inventory verifier regen`, in the sandbox, offline. |
 | Semgrep rules, zkao bridge | Not started. |
 
 ## Install

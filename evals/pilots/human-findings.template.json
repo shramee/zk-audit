@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "pilot": "pilot-1",
+  "target": { "name": "<repository name>", "commit": "<full commit sha the human and zk-audit both reviewed>" },
+  "auditor": "<auditor or firm>",
+  "report": "<where the human's report lives; it may be private>",
+  "findings": [
+    {
+      "id": "H-01",
+      "title": "<short title from the human report>",
+      "severity": "critical",
+      "file": "<repository-relative path>",
+      "line": 1,
+      "end_line": 1,
+      "match": "<optional regular expression the matching zk-audit record must contain, e.g. (?i)nullifier|leaf>",
+      "class": "<soundness | completeness | integration | trusted-party | privacy | liveness | dependency | setup | hygiene>",
+      "also": ["<optional further file:line or file:line-end places>"]
+    }
+  ]
+}

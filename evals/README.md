@@ -22,6 +22,7 @@ evals/
   run-audit              headless runner for audit cases: N runs, then score
   sanitize, run-pocs     fixture copy without hints; run the fixture PoCs
   baseline/              recorded runs
+  pilots/                human-findings templates, results table, score-pilot
 ```
 
 ## Case kinds
@@ -111,3 +112,14 @@ measurement; the first run was re-scored with it.
 
 One run per row; no variance estimate. Deep ran one of its three passes (see the
 baseline file).
+
+## Pilots
+
+Real gnark codebases reviewed by a human auditor and by zk-audit, blind
+(protocol: [`docs/pilots.md`](../docs/pilots.md)). `evals/score pilot`
+builds the key from the human's findings (`evals/pilots/human-findings.template.json`
+or `.md`), with line ranges instead of anchors because the tree is not
+sanitized, and passes a pilot when no high or critical human finding is
+missed; `evals/pilots/score-pilot` wraps it and prints the row for
+[`evals/pilots/results.md`](pilots/results.md). No pilot has been run.
+

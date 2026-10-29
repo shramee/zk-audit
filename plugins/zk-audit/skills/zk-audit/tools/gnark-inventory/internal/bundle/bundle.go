@@ -6,16 +6,20 @@ package bundle
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/detect"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fsutil"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/inventory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
@@ -60,6 +64,7 @@ func Build(opt Options) ([]Result, error) {
 		return nil, fmt.Errorf("bundle: inventory.json: %w", err)
 	}
 	binding, _ := os.ReadFile(filepath.Join(opt.Out, "binding-table.md"))
+	periph := peripheral(opt.Out)
 	refs := filepath.Join(opt.Skill, "references")
 	read := func(rel string) (string, error) {
 		x, err := os.ReadFile(filepath.Join(refs, rel))
@@ -113,7 +118,7 @@ func Build(opt Options) ([]Result, error) {
 			if sh.Name != sh.Kind {
 				id = a.ID + "@" + sh.Name
 			}
-			md := render(&inv, a, id, sh, string(binding), sop, lens, slice, rules, opt.Profile)
+			md := render(&inv, a, id, sh, string(binding), periph, sop, lens, slice, rules, opt.Profile)
 			p := filepath.Join(dir, safeName(id)+".md")
 			if err := os.WriteFile(p, []byte(md), 0o644); err != nil {
 				return nil, err
@@ -269,7 +274,7 @@ func lineCount(abs string) int {
 	return n
 }
 
-func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, sop, lens, slice, rules, profile string) string {
+func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, periph, sop, lens, slice, rules, profile string) string {
 	var b strings.Builder
 	w := func(format string, x ...any) { fmt.Fprintf(&b, format, x...) }
 	w("# Bundle %s\n\n", id)
@@ -283,7 +288,7 @@ func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, sop
 		w("| `%s` | %d |\n", f, n)
 	}
 	w("| **total** | %d |\n\n", total)
-	w("Peripheral code (read on demand, never edit): gnark std at the version pinned in `go.mod`, in the Go module cache (`go env GOMODCACHE`)/github.com/consensys/gnark@<version>/std; vendored libraries under `vendor/` or Foundry `lib/`.\n\n")
+	w("%s\n\n", periph)
 	if strings.TrimSpace(binding) != "" && sh.Kind != "prover" {
 		w("## 2. Binding table\n\n%s\n\n", demote(binding))
 	}
@@ -338,4 +343,57 @@ func demote(md string) string {
 		}
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+// peripheral describes where agents find peripheral code. Hunters have no
+// shell, so the gnark std directory is resolved here, from stack.json and the
+// module cache, and stated as an absolute path or as unavailable.
+func peripheral(out string) string {
+	var b strings.Builder
+	b.WriteString("Peripheral code (read on demand, never edit): vendored libraries under `vendor/` or Foundry `lib/`")
+	var st detect.Stack
+	raw, err := os.ReadFile(filepath.Join(out, "stack.json"))
+	if err != nil || json.Unmarshal(raw, &st) != nil || len(st.Gnark.Versions) == 0 {
+		b.WriteString("; gnark std at the version pinned in `go.mod` (no stack.json: version unknown).")
+		return b.String()
+	}
+	cache := moduleCache()
+	for _, v := range st.Gnark.Versions {
+		if !strings.HasPrefix(v, "v") {
+			fmt.Fprintf(&b, "; gnark %s: std source location unknown", v)
+			continue
+		}
+		dir := filepath.Join(cache, "github.com", "consensys", "gnark@"+v, "std")
+		if st, err := os.Stat(dir); cache != "" && err == nil && st.IsDir() {
+			fmt.Fprintf(&b, "; gnark std at the pinned %s: `%s`", v, dir)
+		} else {
+			fmt.Fprintf(&b, "; gnark std at the pinned %s is **not available** (not in the module cache): do not reason about std internals from memory, write a LEAD whose `unverified:` names the std function", v)
+		}
+	}
+	b.WriteString(".")
+	return b.String()
+}
+
+// moduleCache returns GOMODCACHE: the environment, else `go env`, else
+// GOPATH/pkg/mod.
+func moduleCache() string {
+	if c := os.Getenv("GOMODCACHE"); c != "" {
+		return c
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if o, err := exec.CommandContext(ctx, "go", "env", "GOMODCACHE").Output(); err == nil {
+		if c := strings.TrimSpace(string(o)); c != "" {
+			return c
+		}
+	}
+	gp := os.Getenv("GOPATH")
+	if gp == "" {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		gp = filepath.Join(h, "go")
+	}
+	return filepath.Join(strings.Split(gp, string(os.PathListSeparator))[0], "pkg", "mod")
 }

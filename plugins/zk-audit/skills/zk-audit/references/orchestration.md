@@ -130,32 +130,25 @@ count (`2 findings, 1 lead`), or `Blocked` with the reason, then start the
 next `Pending` agent. Print the updated table after each batch. If the runtime
 returns parallel results only per batch, spawn batches of six.
 
-Prompt for every hunting agent (fill the placeholders; do not inline the
-bundle):
+Spawn every hunter as the **`zk-audit:hunter`** agent type. In a plugin
+install it has only Read, Grep and Glob, so it cannot write to the target or
+run commands whatever the prompt says. Where that type does not exist (the
+skill folder copied alone into `~/.claude/skills/`, or run from a checkout),
+spawn a general-purpose agent, put the body of `{skill}/agents/hunter.md`
+first in its prompt, and add: "Use only the Read, Grep and Glob tools." In
+that fallback read-only holds by prompt only; say so once in the run summary.
+
+Prompt (fill the placeholders; do not inline the bundle):
 
 ```text
-You are a security auditor acting as a malicious prover and a malicious caller.
-Your agent id is <ID>. Read your bundle fully before writing anything:
-  <bundle path> (<N> lines)
-It lists your source shard, the binding table, the inventory items, the
-operating procedure, your lens and the shared rules.
-
-The target repository is <repo>. It is read-only: do not create, edit or
-delete any file in it, do not run commands that write to it, and do not
-install anything or use the network.
-
-Return only FINDING / LEAD blocks as shared-rules.md specifies, each with
-detected_by: <ID> exactly (no suffix). A FINDING needs a concrete `proof:`
-field; otherwise write a LEAD. Every block carries a `code:` line copied
-verbatim from its `location`.
-<If stack.json's gnark version is not in the module cache, add:>
-gnark std source at the pinned version is not available. Do not reason about
-std internals from memory: when a path depends on them, write a LEAD whose
-`unverified:` names the std function.
+Your agent id is <ID>. Your bundle is <bundle path> (<N> lines).
+The target repository is <repo>; it is read-only.
+Return only FINDING / LEAD blocks with detected_by: <ID>.
 ```
 
-Check whether gnark is cached before the first spawn:
-`ls "$(go env GOMODCACHE)/github.com/consensys/gnark@<version>"`.
+The bundle names the gnark std directory at the pinned version, or says it is
+not in the module cache (the hunter then writes LEADs instead of reasoning
+about std from memory).
 
 After each agent returns:
 
@@ -192,19 +185,22 @@ or `{skill}/agents/refuter.md`) as its brief, with the same tool limits.
 
 ## Turn 7 — Critique
 
-Spawn one coverage critic:
+Spawn one coverage critic as the **`zk-audit:critic`** agent type (Read,
+Grep and Glob only), or, without the plugin, a general-purpose agent briefed
+with `{skill}/agents/critic.md` and told to use only Read, Grep and Glob:
 
 ```text
-You are the coverage critic. Read <out>/coverage-ledger.json, <out>/inventory.md,
-<out>/binding-table.md and the agent outputs in <out>/agents/. List the ledger
-units still `planned`, and any hint site, public input, verifier call or
-nullifier write that no agent output mentions. Return JSON:
-{"missing_units": [{"id": "...", "why": "..."}]}. Do not hunt for bugs.
+Role: coverage. The audit output directory is <out>.
 ```
+
+It returns `{"missing_units": [...]}` per its brief.
 
 Standard: run one targeted wave (agents for the missing units only, same pool
 rules), then judge and prove their output. Deep: also run a final-clean critic
-after the last wave. Every unit still open gets `deferred` with a reason.
+after the last wave (`zk-audit:critic`, prompt `Role: final-clean. The audit
+output directory is <out>.`) and fix or downgrade every claim it lists as
+unsupported. `gnark-inventory profiles --profile <profile>` lists the
+profile's critics and targeted waves. Every unit still open gets `deferred` with a reason.
 
 ## Turn 8 — Report
 

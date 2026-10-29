@@ -163,11 +163,14 @@ cp -R "$tmp/zk-audit/plugins/zk-audit/skills/zk-audit" ~/.claude/skills/zk-audit
 
 If the skill list does not show `zk-audit` yet in the running session, read
 `~/.claude/skills/zk-audit/SKILL.md` and follow it. In this route the modes
-are `/zk-audit setup|recon|diff`, and the PoC builder and refuter run as
-general-purpose agents briefed with `agents/*.md` from the skill folder.
+are `/zk-audit setup|recon|diff`, and the hunters, critics, PoC builder and
+refuter run as general-purpose agents briefed with `agents/*.md` from the
+skill folder (read-only by prompt only).
 
 **Claude Code plugin** (adds the `/zk-audit:setup|recon|diff` commands and the
-`zk-audit:poc-builder` / `zk-audit:refuter` agent types):
+`zk-audit:hunter`, `zk-audit:critic`, `zk-audit:poc-builder` and
+`zk-audit:refuter` agent types; hunter, critic and refuter have read-only
+tool allowlists, which only a plugin install enforces):
 
 ```text
 /plugin marketplace add shramee/zk-audit

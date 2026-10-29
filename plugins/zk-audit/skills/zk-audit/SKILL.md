@@ -215,7 +215,10 @@ Build one bundle per selected agent, then follow `references/orchestration.md`:
 
 A bundle lists its source shard as paths with line counts (source is never
 inlined) and inlines the binding table, the inventory items for those files,
-`senior-auditor-sop.md`, the lens file and `shared-rules.md`. Run at most **6
+`senior-auditor-sop.md`, the lens file and `shared-rules.md`. Spawn each
+hunter as the `zk-audit:hunter` agent type (plugin install: Read, Grep and
+Glob only), else a general-purpose agent briefed with `{skill}/agents/hunter.md`
+and limited to those tools by prompt. Run at most **6
 agents at a time** and keep the `Agent Progress` table current. Agents return
 FINDING / LEAD blocks only. `--local` runs the same lenses one after another in
 this context.
@@ -243,7 +246,8 @@ or does not show the bug sets `evidence: ANALYSIS` and lowers confidence.
 
 ### Phase 5 — Critique
 
-A coverage critic reads `coverage-ledger.json` and all agent outputs and returns
+A coverage critic (`zk-audit:critic`, else a general-purpose agent briefed
+with `{skill}/agents/critic.md`; read-only) reads `coverage-ledger.json` and all agent outputs and returns
 `missing_units` (a hint never analysed, a public input with no binding row, a
 verifier function never read). Standard runs one extra targeted wave on them;
 deep also runs a final-clean critic. Units left open stay `planned` or

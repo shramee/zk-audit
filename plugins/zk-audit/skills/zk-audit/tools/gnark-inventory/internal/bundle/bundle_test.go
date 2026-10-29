@@ -64,3 +64,24 @@ func TestBundles(t *testing.T) {
 		t.Errorf("integration shard: %d files, want 2 contracts + 2 circuit decl files", written["I1"].Files)
 	}
 }
+
+// TestPeripheralStdPath: hunters have no shell, so the bundle names the gnark
+// std directory as an absolute path, or says it is not available.
+func TestPeripheralStdPath(t *testing.T) {
+	out := t.TempDir()
+	cache := t.TempDir()
+	t.Setenv("GOMODCACHE", cache)
+	os.WriteFile(filepath.Join(out, "stack.json"), []byte(`{"gnark":{"versions":["v0.14.0","v0.9.9"]}}`), 0o644)
+	std := filepath.Join(cache, "github.com", "consensys", "gnark@v0.14.0", "std")
+	os.MkdirAll(std, 0o755)
+	got := peripheral(out)
+	if !strings.Contains(got, "`"+std+"`") {
+		t.Errorf("present std not named: %s", got)
+	}
+	if !strings.Contains(got, "v0.9.9 is **not available**") {
+		t.Errorf("missing std not flagged: %s", got)
+	}
+	if got := peripheral(t.TempDir()); !strings.Contains(got, "version unknown") {
+		t.Errorf("no stack.json: %s", got)
+	}
+}

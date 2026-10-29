@@ -18,6 +18,8 @@ repository README).
 | Command | `/zk-audit:setup` | Shows companions and tools, installs only after consent (`references/modes/setup.md`). |
 | Command | `/zk-audit:recon` | Phase 0 and Phase 1 only (`references/modes/recon.md`). |
 | Command | `/zk-audit:diff` | Reviews a commit range with high-risk triggers (`references/modes/diff.md`). |
+| Agent | `zk-audit:hunter` (`agents/hunter.md`) | Runs one lens bundle and returns FINDING / LEAD blocks. Tools: Read, Grep, Glob. |
+| Agent | `zk-audit:critic` (`agents/critic.md`) | Coverage and final-clean critic over the output directory. Tools: Read, Grep, Glob. |
 | Agent | `zk-audit:poc-builder` (`agents/poc-builder.md`) | Writes and runs a PoC test in the scratch worktree. |
 | Agent | `zk-audit:refuter` (`agents/refuter.md`) | Fresh-context verifier that starts from `refuted: true`. |
 | Tool | `skills/zk-audit/tools/gnark-inventory` | Deterministic detect / inventory / bundle / validate / assemble / lint-kb. |
@@ -26,8 +28,11 @@ The skill folder `skills/zk-audit/` is self-contained: it holds the tool, its
 wrapper scripts, the JSON schemas and a copy of each agent file
 (`skills/zk-audit/agents/`, the canonical copy; `make sync-agents` copies it
 to `agents/`). Copied alone into `~/.claude/skills/zk-audit` it runs the same
-audit; the commands become `/zk-audit setup|recon|diff` and the two agents run
-as general-purpose agents briefed with their file.
+audit; the commands become `/zk-audit setup|recon|diff` and the four agents run
+as general-purpose agents briefed with their file. Only the plugin install
+enforces the agents' `tools:` allowlists (hunter, critic and refuter: Read,
+Grep, Glob; a docs test fails if one lists a write-capable tool); a
+standalone install restricts them by prompt only.
 
 ## gnark-inventory
 

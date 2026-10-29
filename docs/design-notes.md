@@ -25,6 +25,19 @@ left open, it is recorded here with the reason.
   skill. `skills/zk-audit/agents/*.md` is canonical; `make sync-agents` copies
   it and `TestAgentBriefsInSync` fails on drift. Without the plugin agent
   types, Phase 4 briefs a general-purpose agent with the file.
+- **Read-only agent types.** Hunters and critics run as `zk-audit:hunter`
+  and `zk-audit:critic` (one generic hunter type; the lens comes from the
+  bundle), with `tools: Read, Grep, Glob` like the refuter, so in a plugin
+  install read-only on the target is structural (x-ray P-1). Plugin agents
+  support `name`, `description`, `tools`, `disallowedTools` and `model`
+  frontmatter; `claude plugin validate` passes any `tools:` value, so
+  `TestReadOnlyAgentsHaveNoWriteTools` checks that the three read-only
+  agents declare a `tools:` list (an agent without one inherits every tool)
+  that holds no write-capable tool. A standalone install has no agent types:
+  the orchestrator briefs a general-purpose agent with the same file and
+  limits its tools by prompt. Because hunters have no shell, `bundle`
+  resolves the gnark std directory in the module cache itself and writes
+  its absolute path (or "not available") into every bundle.
 - **Version.** `skills/zk-audit/VERSION` (semver) equals `plugin.json` and the
   tool's `Version` (tested). `scripts/check-version` is a non-blocking update
   check modelled on pashov's: one GET of the published `VERSION`, a warning

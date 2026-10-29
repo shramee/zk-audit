@@ -26,7 +26,7 @@ if grep -RnE '\{plugin\}|\{skill\}/\.\.' --include='*.md' "$skill" | grep -v '/t
   echo "standalone-skill: the skill folder refers outside itself (lines above)" >&2
   exit 1
 fi
-for f in SKILL.md VERSION agents/poc-builder.md agents/refuter.md references/modes/setup.md \
+for f in SKILL.md VERSION agents/poc-builder.md agents/refuter.md agents/hunter.md agents/critic.md references/modes/setup.md \
   references/modes/recon.md references/modes/diff.md schemas/findings.schema.json \
   scripts/check-version; do
   [ -e "$skill/$f" ] || { echo "standalone-skill: missing $f in the copy" >&2; exit 1; }

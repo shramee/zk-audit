@@ -1,0 +1,7 @@
+{"schema_version":"1","case":"input-order","fixture":"input-order",
+ "items":[{"id":"I1","class":"integration","critical":true,
+  "title":"Contract input array order differs from the public-witness order",
+  "ranges":[{"file":"contracts/Mixer.sol","anchors":["uint256[4] memory input = [root, uint256(uint160(address(recipient))), nullifier, value];"]}],
+  "match":"(?i)order|swap|public.?witness|input\\[|nullifier.{0,20}recipient|recipient.{0,20}nullifier|mismatch|position",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["high","critical","medium"]}],
+ "decoys":[],"other":[]}

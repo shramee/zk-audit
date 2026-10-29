@@ -274,6 +274,8 @@ make check     # go vet, go test, JSON parse, knowledge-base lint
 
 ## License
 
-Unlicensed for now; the license decision is deferred and there is no
-`LICENSE` file. Parts are adapted from MIT-licensed work by zkSecurity,
-pashov / AI Skills Contributors and Cloudflare; see `NOTICE`.
+Unlicensed for now; the license decision is the owner's and there is no
+`LICENSE` file. [`docs/licence-options.md`](docs/licence-options.md) lists
+the constraints, the options and a recommendation. Parts are adapted from
+MIT-licensed work by zkSecurity, pashov / AI Skills Contributors and
+Cloudflare; see `NOTICE`.

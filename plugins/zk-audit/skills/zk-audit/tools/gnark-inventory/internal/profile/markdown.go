@@ -31,13 +31,13 @@ var Regions = []Region{
 // ProfileTable is the profile table of SKILL.md §2.
 func (s *Set) ProfileTable() string {
 	var b strings.Builder
-	b.WriteString("| Profile | Agents | PoC | Refuters | Critics | Passes |\n|---|---|---|---|---|---|\n")
+	b.WriteString("| Profile | Agents | PoC | Refuters | Critics | Passes | Verifier provenance |\n|---|---|---|---|---|---|---|\n")
 	for _, p := range s.Profiles {
 		name := "`" + p.ID + "`"
 		if p.Default {
 			name += " (default)"
 		}
-		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s |\n", name, s.agentsCell(p.ID), p.PoC.Text, p.Refuters.Text, s.criticsCell(&p), passesCell(&p))
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | %s |\n", name, s.agentsCell(p.ID), p.PoC.Text, p.Refuters.Text, s.criticsCell(&p), passesCell(&p), provenanceCell(&p))
 	}
 	return b.String()
 }
@@ -81,6 +81,17 @@ func (s *Set) criticsCell(p *Profile) string {
 	return strings.Join(parts, " + ")
 }
 
+func provenanceCell(p *Profile) string {
+	var parts []string
+	for _, st := range p.Provenance {
+		parts = append(parts, ProvenanceSteps[st])
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, ", ")
+}
+
 func passesCell(p *Profile) string {
 	if p.Memory {
 		return fmt.Sprintf("%d with memory", p.Passes)
@@ -97,7 +108,11 @@ func (s *Set) AgentTable() string {
 		if l.Slice != "" {
 			file += " + `" + l.Slice + "`"
 		}
-		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s |\n", l.ID, l.Name, file, l.Group, l.Shard, strings.Join(l.Profiles, ", "))
+		profiles := strings.Join(l.Profiles, ", ")
+		if l.When != "" {
+			profiles += " (only when: " + l.When + ")"
+		}
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s |\n", l.ID, l.Name, file, l.Group, l.Shard, profiles)
 	}
 	b.WriteString("\n")
 	for _, p := range s.Profiles {

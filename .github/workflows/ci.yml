@@ -31,5 +31,9 @@ jobs:
         run: make check
       - name: Typed-mode tests against gnark v0.14.0 fixtures
         run: make test-types
-      - name: Eval PoCs on a sanitized copy of the pool fixture
+      - name: Install Foundry for the Foundry eval PoCs
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - name: Eval PoCs on sanitized copies of the pool and liveness-roots fixtures
         run: make eval-pocs

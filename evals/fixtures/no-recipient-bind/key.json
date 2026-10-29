@@ -1,0 +1,7 @@
+{"schema_version":"1","case":"no-recipient-bind","fixture":"no-recipient-bind",
+ "items":[{"id":"I1","class":"integration","critical":true,
+  "title":"Recipient not bound in the proof statement (front-running)",
+  "ranges":[{"file":"contracts/Mixer.sol","anchors":["uint256[3] memory input = [root, nullifier, value];","recipient.transfer(value);"]}],
+  "match":"(?i)recipient|front.?run|bind|msg.?sender|statement|redirect",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["high","critical","medium"]}],
+ "decoys":[],"other":[]}

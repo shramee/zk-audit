@@ -1,0 +1,7 @@
+{"schema_version":"1","case":"proof-malleable","fixture":"proof-malleable",
+ "items":[{"id":"I1","class":"integration","critical":true,
+  "title":"Replay protection keyed on malleable proof bytes",
+  "ranges":[{"file":"contracts/Mixer.sol","anchors":["bytes32 tag = keccak256(proof);","spent[tag] = true;"]}],
+  "match":"(?i)proof.?bytes|keccak256\\(proof\\)|malleab|nullifier|replay|tag|re.?randomiz",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["critical","high"]}],
+ "decoys":[],"other":[]}

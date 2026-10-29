@@ -126,14 +126,16 @@ parties (admin, relayer, sequencer) behave.
 
 | Part | State |
 |---|---|
-| `gnark-inventory`: `detect`, `inventory`, `bundle`, `validate`, `assemble`, `lint-kb`, `advisories`, `rules` | Implemented, unit tested, run in CI. |
+| `gnark-inventory`: `args`, `detect`, `inventory`, `bundle`, `profiles`, `validate`, `assemble`, `ledger`, `agents`, `memory`, `diff`, `sandbox`, `lint-kb`, `advisories`, `rules` | Implemented, unit tested, run in CI. |
+| Safety by code | Hunters and critics are read-only plugin agent types (Read, Grep, Glob); PoCs and recon type loading run in an OS sandbox (bubblewrap on Linux: no network, writes only to the worktree; `sandbox-exec` on macOS, untested in CI); the tool refuses writes into the target and symlinked quotes; `validate` / `assemble` check PoC files and agent outputs on disk. A standalone skill install restricts agent tools by prompt only. |
 | Findings, ledger and stack schemas with validators | Implemented. |
 | Deterministic report assembler (`assemble`) | Implemented: validates its inputs, refuses forbidden clean claims, quotes code from the audited tree, counts coverage only from the ledger; golden tests. |
 | Knowledge base: 79 sourced vectors in 12 slices, advisory table, API footguns, judging, PoC templates | Written and linted. Four PoC templates were run against gnark v0.14.0. |
-| Skill, orchestration, lens files, commands, `poc-builder` and `refuter` agents | Written as prompts. Blind end-to-end runs on the pool fixture, measured 2026-10-29 at `e198ed7` (one run per profile, so no variance estimate; [`evals/baseline/pool-2026-10-29.md`](evals/baseline/pool-2026-10-29.md)): quick recall **12 of 14** planted items (86 %, the same figure as on 2026-10-27), standard 12 of 14, deep 13 of 14 (two half credits); no false positives and no decoy confirmed in any run after the key was corrected. The trusted-party items (P13, P14) are still mostly missed. Deep's three-pass loop did not run: it stopped after one hunt and one targeted wave ([findings in the baseline](evals/baseline/pool-2026-10-29.md#three-pass-memory-deep)). The first run is kept as history in [`evals/baseline/pool-quick.md`](evals/baseline/pool-quick.md). |
+| Skill, orchestration, lens files, commands, `hunter`, `critic`, `poc-builder` and `refuter` agents | Written as prompts. One blind end-to-end run is recorded: quick profile on the pool fixture, recall 12 of 14 planted items, no false positives ([`evals/baseline/pool-quick.md`](plugins/zk-audit/evals/baseline/pool-quick.md)). |
 | Install routes | Claude Code plugin, or the skill folder copied alone into `~/.claude/skills/zk-audit`; both checked in [`docs/pashov-parity.md`](docs/pashov-parity.md), the second on every CI run. |
-| Eval harness | One fixture (`pool`) with a machine-readable answer key and scorer (`evals/score`), a sanitizer that strips hint comments, executed eval PoCs in CI, and `evals/cases` for headless runs; recorded runs are in `evals/baseline/`. No scored LLM runs in CI, no all-safe panel. |
-| `diff` mode, `--loop` memory, coverage critics | Described in prompts; no tool support. Coverage critic and targeted wave ran in the 2026-10-29 standard and deep runs and added no record; `--loop` wrote `memory.json` but ran one pass of three. |
+| Eval harness | One fixture (`pool`) with an answer key, a sanitizer that strips hint comments, and executed eval PoCs in CI. No scored LLM runs in CI, no all-safe panel, no `case.yaml` suite yet. |
+| `diff` mode, `--loop` memory | Tool support: `diff` flags the high-risk triggers, `memory` holds NEW / KNOWN tags, "seen in k/N" and the stop rule. Not yet measured in an end-to-end run. |
+| Coverage critics | Prompted (`zk-audit:critic`); the ledger records a decision per missing unit through `ledger add` / `ledger mark`. |
 | Regenerate-and-diff of `Verifier.sol` (deep profile) | Not automated. |
 | Semgrep rules, zkao bridge | Not started. |
 
@@ -163,11 +165,14 @@ cp -R "$tmp/zk-audit/plugins/zk-audit/skills/zk-audit" ~/.claude/skills/zk-audit
 
 If the skill list does not show `zk-audit` yet in the running session, read
 `~/.claude/skills/zk-audit/SKILL.md` and follow it. In this route the modes
-are `/zk-audit setup|recon|diff`, and the PoC builder and refuter run as
-general-purpose agents briefed with `agents/*.md` from the skill folder.
+are `/zk-audit setup|recon|diff`, and the hunters, critics, PoC builder and
+refuter run as general-purpose agents briefed with `agents/*.md` from the
+skill folder (read-only by prompt only).
 
 **Claude Code plugin** (adds the `/zk-audit:setup|recon|diff` commands and the
-`zk-audit:poc-builder` / `zk-audit:refuter` agent types):
+`zk-audit:hunter`, `zk-audit:critic`, `zk-audit:poc-builder` and
+`zk-audit:refuter` agent types; hunter, critic and refuter have read-only
+tool allowlists, which only a plugin install enforces):
 
 ```text
 /plugin marketplace add shramee/zk-audit
@@ -197,7 +202,8 @@ PoCs, and the companion skills listed by `/zk-audit setup`.
 | `/zk-audit recon` or `/zk-audit:recon` | Recon only: stack, advisories, public-input table, hint and footgun inventory. |
 | `/zk-audit setup` or `/zk-audit:setup` | Shows companions and tools; installs only after you confirm. |
 
-Flags: `--local`, `--loop N`, `--no-poc`, `--file-output`, `--out DIR`.
+Flags: `--local`, `--loop N`, `--no-poc`, `--file-output`, `--out DIR`,
+`--profile P`. The skill parses them with `gnark-inventory args`.
 
 When the plugin namespaces skills, the main entry point is `/zk-audit:zk-audit`.
 Asking a plain question ("is this circuit ok?") gets a direct answer without

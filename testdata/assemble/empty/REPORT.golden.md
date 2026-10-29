@@ -52,7 +52,7 @@ None recorded.
 | circuit | 3 | 0 | 0 | 2 | 0 | 1 | 0 | 0 | 0 |
 | **total** | 3 | 0 | 0 | 2 | 0 | 1 | 0 | 0 | 0 |
 
-Examined (covered or candidate): 2 of 3 applicable units (66%).
+Examined (covered): 2 of 3 applicable units (66%).
 
 Units not examined:
 

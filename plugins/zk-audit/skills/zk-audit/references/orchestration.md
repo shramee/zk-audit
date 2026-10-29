@@ -4,36 +4,54 @@
 
 Use this when the runtime can spawn subagents (Claude Code `Agent`). With
 `--local`, or without subagents, run the same lenses one after another in this
-context and skip the progress console.
+context and skip the progress console; save each lens's FINDING / LEAD blocks
+with `agents save --id <lens id>` and mark its units as below, exactly as for
+a subagent.
 
 Write the prompts in plain, runtime-neutral language. Never ask an agent to
 install, write into the target repo, or use the network.
 
 ## Agents
 
-| Id | Lens file | Group | Shard |
-|---|---|---|---|
-| C1 | `agents/C1-hint-soundness.md` | circuit | circuit |
-| C2 | `agents/C2-range-decomposition.md` | circuit | circuit |
-| C3 | `agents/C3-field-arithmetic.md` | circuit | circuit |
-| C4 | `agents/C4-control-selector.md` | circuit | circuit |
-| C5 | `agents/C5-crypto-gadgets.md` | circuit | circuit |
-| C6 | `agents/C6-spec-invariant.md` | circuit | all |
-| I1 | `agents/I1-public-input-binding.md` | integration | integration |
-| I2 | `agents/I2-verifier-contract.md` | integration | integration |
-| I3 | `agents/I3-protocol-state.md` | integration | integration |
-| I4 | `agents/I4-prover-service.md` | integration | prover |
-| V-hints, V-range, V-field, V-selector, V-hash, V-curves, V-commit, V-generic | `agents/vector-scan.md` + one circuit slice each | vector scan | circuit |
-| V-pubin, V-verifier, V-state, V-prover | `agents/vector-scan.md` + one integration slice each | vector scan | integration (V-prover: prover) |
-| G1 | `agents/G1-numerical-gap.md` | gap | circuit |
-| G2 | `agents/G2-binding-gap.md` | gap | all |
-| G3 | `agents/G3-composition-gap.md` | gap | circuit |
-| A1 | `agents/A1-asymmetry.md` | cross | all |
-| F1 | `agents/F1-first-principles.md` | cross | all |
+<!-- generated:agent-table from profiles.json (make sync-profiles); do not edit -->
 
-Profiles (from `SKILL.md`): **quick** = V-* shards + C1 + I1 + G2. **standard** =
-C1–C6, I1–I4, V-*, G2, F1. **deep** = all of the above plus G1, G3, A1, repeated
-for 3 passes with memory. Skip agents whose shard is empty (for example no
+| Id | Lens | Lens file | Group | Shard | Profiles |
+|---|---|---|---|---|---|
+| C1 | hint soundness | `agents/C1-hint-soundness.md` | circuit | circuit | quick, standard, deep |
+| C2 | range and decomposition | `agents/C2-range-decomposition.md` | circuit | circuit | standard, deep |
+| C3 | field arithmetic | `agents/C3-field-arithmetic.md` | circuit | circuit | standard, deep |
+| C4 | control flow and selectors | `agents/C4-control-selector.md` | circuit | circuit | standard, deep |
+| C5 | cryptographic gadgets | `agents/C5-crypto-gadgets.md` | circuit | circuit | standard, deep |
+| C6 | specification and invariants | `agents/C6-spec-invariant.md` | circuit | all | standard, deep |
+| I1 | public-input binding | `agents/I1-public-input-binding.md` | integration | integration | quick, standard, deep |
+| I2 | verifier contracts | `agents/I2-verifier-contract.md` | integration | integration | standard, deep |
+| I3 | protocol state | `agents/I3-protocol-state.md` | integration | integration | standard, deep |
+| I4 | prover service | `agents/I4-prover-service.md` | integration | prover | standard, deep |
+| V-hints | vector scan: hints | `agents/vector-scan.md` + `attack-vectors/hints.md` | vector scan | circuit | quick, standard, deep |
+| V-range | vector scan: range and bits | `agents/vector-scan.md` + `attack-vectors/range-bits.md` | vector scan | circuit | quick, standard, deep |
+| V-field | vector scan: field arithmetic | `agents/vector-scan.md` + `attack-vectors/field-arith.md` | vector scan | circuit | quick, standard, deep |
+| V-selector | vector scan: selectors and control | `agents/vector-scan.md` + `attack-vectors/selector-control.md` | vector scan | circuit | quick, standard, deep |
+| V-hash | vector scan: hashes and Merkle | `agents/vector-scan.md` + `attack-vectors/hash-merkle.md` | vector scan | circuit | quick, standard, deep |
+| V-curves | vector scan: curves and signatures | `agents/vector-scan.md` + `attack-vectors/curves-signatures.md` | vector scan | circuit | quick, standard, deep |
+| V-commit | vector scan: commitments and recursion | `agents/vector-scan.md` + `attack-vectors/commitments-recursion.md` | vector scan | circuit | quick, standard, deep |
+| V-generic | vector scan: generic ZK | `agents/vector-scan.md` + `attack-vectors/generic-zk.md` | vector scan | circuit | quick, standard, deep |
+| V-pubin | vector scan: public inputs | `agents/vector-scan.md` + `attack-vectors/public-inputs.md` | vector scan | integration | quick, standard, deep |
+| V-verifier | vector scan: verifier contracts | `agents/vector-scan.md` + `attack-vectors/verifier-contracts.md` | vector scan | integration | quick, standard, deep |
+| V-state | vector scan: protocol state | `agents/vector-scan.md` + `attack-vectors/protocol-state.md` | vector scan | integration | quick, standard, deep |
+| V-prover | vector scan: prover service | `agents/vector-scan.md` + `attack-vectors/prover-service.md` | vector scan | prover | quick, standard, deep |
+| G1 | numerical gaps | `agents/G1-numerical-gap.md` | gap | circuit | deep |
+| G2 | binding gaps | `agents/G2-binding-gap.md` | gap | all | quick, standard, deep |
+| G3 | composition gaps | `agents/G3-composition-gap.md` | gap | circuit | deep |
+| A1 | asymmetry | `agents/A1-asymmetry.md` | cross | all | deep |
+| F1 | first principles | `agents/F1-first-principles.md` | cross | all | standard, deep |
+
+- **quick**: C1, I1, G2 + 12 vector-scan shards (V-*).
+- **standard**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, G2, F1 + 12 vector-scan shards (V-*).
+- **deep**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, G1, G2, G3, A1, F1 + 12 vector-scan shards (V-*).
+
+<!-- end generated:agent-table -->
+
+Deep repeats the hunt for 3 passes with memory (Loop mode below). Skip agents whose shard is empty (for example no
 Solidity means no I1–I3 or integration V-shards); mark them `Skipped` with the
 reason, and record their ledger units as `not_applicable`.
 
@@ -43,7 +61,8 @@ Resolve `{skill}` (`SKILL.md`, first paragraph), read `{skill}/VERSION`,
 print the banner from `SKILL.md` and the phase table (all `Pending`). Then, in
 parallel:
 
-1. Create the output directory `~/.zk-audit/<repo>/<run-id>/` (or `--out`).
+1. Parse the invocation (`{skill}/scripts/gnark-inventory args --repo <repo> -- <words>`,
+   `SKILL.md` §2) and create its `out` directory.
 2. Run Phase 0: `{skill}/scripts/gnark-inventory detect --repo <repo> --out <out>/stack.json`.
 3. Detect companions (`companions.md`).
 4. Run the update check: `{skill}/scripts/check-version` (silent unless a
@@ -113,45 +132,57 @@ count (`2 findings, 1 lead`), or `Blocked` with the reason, then start the
 next `Pending` agent. Print the updated table after each batch. If the runtime
 returns parallel results only per batch, spawn batches of six.
 
-Prompt for every hunting agent (fill the placeholders; do not inline the
-bundle):
+Spawn every hunter as the **`zk-audit:hunter`** agent type. In a plugin
+install it has only Read, Grep and Glob, so it cannot write to the target or
+run commands whatever the prompt says. Where that type does not exist (the
+skill folder copied alone into `~/.claude/skills/`, or run from a checkout),
+spawn a general-purpose agent, put the body of `{skill}/agents/hunter.md`
+first in its prompt, and add: "Use only the Read, Grep and Glob tools." In
+that fallback read-only holds by prompt only; say so once in the run summary.
+
+Prompt (fill the placeholders; do not inline the bundle):
 
 ```text
-You are a security auditor acting as a malicious prover and a malicious caller.
-Your agent id is <ID>. Read your bundle fully before writing anything:
-  <bundle path> (<N> lines)
-It lists your source shard, the binding table, the inventory items, the
-operating procedure, your lens and the shared rules.
-
-The target repository is <repo>. It is read-only: do not create, edit or
-delete any file in it, do not run commands that write to it, and do not
-install anything or use the network.
-
-Return only FINDING / LEAD blocks as shared-rules.md specifies, each with
-detected_by: <ID> exactly (no suffix). A FINDING needs a concrete `proof:`
-field; otherwise write a LEAD. Every block carries a `code:` line copied
-verbatim from its `location`.
-<If stack.json's gnark version is not in the module cache, add:>
-gnark std source at the pinned version is not available. Do not reason about
-std internals from memory: when a path depends on them, write a LEAD whose
-`unverified:` names the std function.
+Your agent id is <ID>. Your bundle is <bundle path> (<N> lines).
+The target repository is <repo>; it is read-only.
+Return only FINDING / LEAD blocks with detected_by: <ID>.
 ```
 
-Check whether gnark is cached before the first spawn:
-`ls "$(go env GOMODCACHE)/github.com/consensys/gnark@<version>"`.
+The bundle names the gnark std directory at the pinned version, or says it is
+not in the module cache (the hunter then writes LEADs instead of reasoning
+about std from memory).
 
-After each agent returns:
+After each agent returns, record it with the tool; never hand-edit
+`coverage-ledger.json` or `agents/`:
 
-1. Save its raw return to `<out>/agents/<ID>.md` (the critic and the judge
-   read these).
-2. Update the ledger units it owned: `covered` (with `agent_ids` and
-   `reviewed_paths`), `candidate` (with `result_fingerprints`), or `blocked`
-   (with a reason).
+1. Save its raw return. Write it to `<out>/raw/<ID>.md`, then
+   `{skill}/scripts/gnark-inventory agents save --out <out> --id <ID> --from <out>/raw/<ID>.md`.
+   This writes `<out>/agents/<ID>.md` (the critic, the judge and the ledger
+   check read it) and `agents/index.json`, and prints the FINDING / LEAD
+   counts for the progress table.
+2. Mark the ledger units it owned:
+   `{skill}/scripts/gnark-inventory ledger mark --out <out> --lens <lens> --from planned --status covered --agent <ID> --reviewed <file>`
+   (one `--reviewed` per file it read; `--unit <id>` for single units). Units
+   it raised something on become `candidate` with `--fingerprint <group_key>`.
+   The tool refuses `covered` for an agent with no saved output, and
+   reviewed paths that miss the unit's own file.
+
+**An agent that is stopped or refused** (a safety classifier, an API error,
+a turn limit): retry it once with the same bundle and a plainly worded
+prompt. If the retry also fails, record it, and its units, instead of
+dropping them:
+`agents save --out <out> --id <ID> --status refused --reason "<what happened, retried once>"`
+and `ledger mark --out <out> --lens <lens> --from planned --status blocked --reason "<ID> refused twice"`.
+The report then lists those units as not examined, with the reason. If the
+runtime switched the agent to another model, say so in the reason.
 
 ## Turn 5 — Judge
 
 Follow `judging.md`: dedup, completeness line, four gates, severity and
 confidence, lead promotion. Write draft records to `<out>/findings.json`.
+Then close every `candidate` unit: `ledger mark --out <out> --from candidate
+--unit <id> --status covered --reviewed <file>` (its fingerprints stay).
+A candidate unit is not counted as examined.
 
 ## Turn 6 — Prove and refute
 
@@ -165,9 +196,12 @@ or `{skill}/agents/refuter.md`) as its brief, with the same tool limits.
 1. Create the scratch worktree: `git -C <repo> worktree add --detach <out>/worktree HEAD`.
 2. For each confirmed circuit finding (quick: Critical and High only), spawn
    `zk-audit:poc-builder` with the record, the vector's template from
-   `poc-templates.md`, and the worktree path. It writes `pocs/<finding-number>_poc_test.go`
-   (or `.t.sol`) under `<out>/pocs/`, copies it into the worktree, runs it with
-   a time limit and no network, and returns the result.
+   `poc-templates.md`, the worktree path, the repository path and the exact
+   sandbox command (`{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> --
+   go -C <out>/worktree test ...`; `forge test --root <out>/worktree` for
+   contracts). It writes `pocs/<finding-number>_poc_test.go` (or `.t.sol`)
+   under `<out>/pocs/`, copies it into the worktree, runs it through the
+   sandbox, and returns the result.
 3. Spawn a fresh `zk-audit:refuter` (or `fp-check`) per confirmed item, with
    the prompt in `judging.md` §6. At most six at once.
 4. Update `evidence`, `poc`, `refuter` and confidence in each record.
@@ -175,37 +209,71 @@ or `{skill}/agents/refuter.md`) as its brief, with the same tool limits.
 
 ## Turn 7 — Critique
 
-Spawn one coverage critic:
+Spawn one coverage critic as the **`zk-audit:critic`** agent type (Read,
+Grep and Glob only), or, without the plugin, a general-purpose agent briefed
+with `{skill}/agents/critic.md` and told to use only Read, Grep and Glob:
 
 ```text
-You are the coverage critic. Read <out>/coverage-ledger.json, <out>/inventory.md,
-<out>/binding-table.md and the agent outputs in <out>/agents/. List the ledger
-units still `planned`, and any hint site, public input, verifier call or
-nullifier write that no agent output mentions. Return JSON:
-{"missing_units": [{"id": "...", "why": "..."}]}. Do not hunt for bugs.
+Role: coverage. The audit output directory is <out>.
 ```
+
+It returns `{"missing_units": [...]}` per its brief. Save it like a hunter
+(`agents save --id critic`). Record a decision for **every** missing unit:
+a unit that is not in the ledger yet is added
+(`ledger add --out <out> --kind <kind> --subject <subject> --class <class> --lens <lens> --path <file:line> --notes "coverage critic"`);
+then it either goes to the targeted wave or is marked `deferred` with the
+reason it was left (`ledger mark ... --status deferred --reason "..."`).
+Wave agents use the lens id they run (`C1`, `I3`), never a wave label, and
+are saved and marked like hunters with `--wave <n>`.
 
 Standard: run one targeted wave (agents for the missing units only, same pool
 rules), then judge and prove their output. Deep: also run a final-clean critic
-after the last wave. Every unit still open gets `deferred` with a reason.
+after the last wave (`zk-audit:critic`, prompt `Role: final-clean. The audit
+output directory is <out>.`) and fix or downgrade every claim it lists as
+unsupported. `gnark-inventory profiles --profile <profile>` lists the
+profile's critics and targeted waves. Every unit still open gets `deferred` with a reason.
 
 ## Turn 8 — Report
 
 1. Fill the report-only fields of `findings.json` (`posture`,
    `out_of_scope`, `companions`, `hardening`) and close every open ledger unit
-   (`deferred` or `blocked`, with a reason).
+   with `ledger mark` (`deferred` or `blocked`, with a reason).
 2. Validate:
-   `gnark-inventory validate findings <out>/findings.json` and
-   `gnark-inventory validate ledger <out>/coverage-ledger.json`. Fix errors and
+   `gnark-inventory validate findings <out>/findings.json --out <out>` and
+   `gnark-inventory validate ledger <out>/coverage-ledger.json --out <out>`. Fix errors and
    rerun until both pass.
 3. Render: `{skill}/scripts/gnark-inventory assemble --out <out> --repo <repo>`.
    It writes `<out>/REPORT.md` per `report-format.md`, or exits 1 and writes
    nothing when an input is invalid. Never edit the report by hand.
 4. Print the findings table, the coverage line and the output path.
 
-## Loop mode (`--loop N`, deep)
+## Loop mode (`passes` > 1: deep, or `--loop N`)
 
-Run Turns 3–7 N times. Keep `<out>/memory.json`: every fingerprint seen, with
-the passes it appeared in. Tag records `NEW` or `KNOWN` and print
-`seen in k/N passes`. Stop early when a pass adds no new fingerprint and the
-critic returns no missing units.
+The args JSON gives `passes` (and `memory: true`). The tool holds the memory,
+the tags and the stop rule; do not keep them in prose.
+
+1. Before the first pass: `{skill}/scripts/gnark-inventory memory init --out <out> --passes <passes>`.
+2. A **pass** is Turns 3–7 in full: build bundles, hunt with every selected
+   lens, judge, prove and refute, run the coverage critic and its targeted
+   wave. A targeted wave alone is never a pass.
+   - From pass 2 on, `bundle` inlines the "Already known" list from
+     `<out>/memory.json` into every bundle (section 6a); hunters answer a
+     known item with one `KNOWN: <fingerprint>` line.
+   - The judge writes the pass's records to `<out>/passes/<p>/findings.json`
+     (a full findings document; a `KNOWN:` line becomes a copy of that
+     record, so it counts as seen again). Save the critic's JSON to
+     `<out>/passes/<p>/critic.json`.
+3. After each pass:
+   `{skill}/scripts/gnark-inventory memory merge --out <out> --pass <p> --critic <out>/passes/<p>/critic.json`.
+   It folds the pass into `memory.json` (rejected items stay, so they are not
+   raised again), rewrites `<out>/findings.json` as the union of all passes
+   with `run_tag` (`NEW`: first seen in the latest pass; `KNOWN`: seen
+   before) and `seen` (`k` of `N` passes), and prints
+   `{"pass", "new", "known", "missing_units", "stop", "reason"}`.
+4. If `stop` is true, end the loop and go to Turn 8; otherwise run pass
+   `p + 1`. The tool stops when the planned passes ran, or when a pass added
+   no new fingerprint and the critic reported no missing unit; it refuses to
+   merge a pass after a stop or out of order.
+5. Print `{skill}/scripts/gnark-inventory memory status --out <out>` (each
+   fingerprint with "seen in k/N passes") in the final summary. Turn 8 works
+   on the cumulative `<out>/findings.json`.

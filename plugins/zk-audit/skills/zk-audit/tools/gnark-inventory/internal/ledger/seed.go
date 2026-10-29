@@ -10,6 +10,7 @@ import (
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/detect"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/inventory"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 )
 
 // Unit is one ledger unit (see schemas/ledger.schema.json).
@@ -25,6 +26,7 @@ type Unit struct {
 	ReviewedPaths      []string `json:"reviewed_paths"`
 	ResultFingerprints []string `json:"result_fingerprints"`
 	Wave               int      `json:"wave"`
+	Reason             string   `json:"reason,omitempty"`
 	Notes              string   `json:"notes,omitempty"`
 }
 
@@ -38,20 +40,29 @@ type Ledger struct {
 	Units         []Unit `json:"units"`
 }
 
-// circuitClasses maps constraint classes to the lens that owns them.
-var circuitClasses = []struct{ class, lens string }{
-	{"hint-soundness", "C1"},
-	{"range-decomposition", "C2"},
-	{"field-arithmetic", "C3"},
-	{"control-selector", "C4"},
-	{"crypto-gadgets", "C5"},
-	{"spec-invariant", "C6"},
-}
-
-var contractClasses = []struct{ class, lens string }{
-	{"public-input-binding", "I1"},
-	{"verifier-contract", "I2"},
-	{"protocol-state", "I3"},
+// seeded lists, in profiles.json order, the classes a lens owns that the
+// seeder creates one unit per subject of kind for ("circuit" or
+// "contract-fn"), with the lenses listed on each unit.
+func seeded(kind string) []struct {
+	class  string
+	lenses []string
+} {
+	var out []struct {
+		class  string
+		lenses []string
+	}
+	for _, l := range profile.Load().Lenses {
+		if l.Ledger == nil || l.Ledger.Seed != kind {
+			continue
+		}
+		for _, c := range l.Ledger.Classes {
+			out = append(out, struct {
+				class  string
+				lenses []string
+			}{c, append([]string{l.ID}, l.Ledger.With...)})
+		}
+	}
+	return out
 }
 
 func safe(s string) string {
@@ -83,8 +94,8 @@ func Seed(inv *inventory.Inventory, stack *detect.Stack, tool string) *Ledger {
 		if c.InTest {
 			continue
 		}
-		for _, cc := range circuitClasses {
-			add("circuit", c.Name, cc.class, []string{cc.lens, "V"}, []string{pos(c.Define)}, "")
+		for _, cc := range seeded("circuit") {
+			add("circuit", c.Name, cc.class, cc.lenses, []string{pos(c.Define)}, "")
 		}
 		for _, g := range c.Witness.Public {
 			add("public-input", c.Name+"."+g.Name, "public-input-binding", []string{"I1", "G2"}, []string{pos(g.Decl)},
@@ -120,8 +131,8 @@ func Seed(inv *inventory.Inventory, stack *detect.Stack, tool string) *Ledger {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			for _, cc := range contractClasses {
-				add("contract-fn", k, cc.class, []string{cc.lens, "G2"}, []string{fns[k]}, "")
+			for _, cc := range seeded("contract-fn") {
+				add("contract-fn", k, cc.class, cc.lenses, []string{fns[k]}, "")
 			}
 		}
 	}

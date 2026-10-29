@@ -3,11 +3,14 @@
 The `PoC:` field of every attack vector names one of these templates. The
 `poc-builder` agent copies the template into the **scratch worktree** (never the
 user's checkout), fills in the circuit, the false statement and the malicious
-values, and runs it with a time limit and no network:
+values, and runs it in the skill's sandbox (no network, worktree the only
+writable tree, cgo off, time and memory limits; `SKILL.md` hard rule 3):
 
 ```bash
-cd <out>/worktree && GOFLAGS=-mod=mod GOPROXY=off timeout 600 go test -run 'PoC_' -count=1 ./<pkg>/
+{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- go -C <out>/worktree test -count=1 -run 'PoC_' ./<pkg>/
 ```
+
+The sandbox sets `GOFLAGS=-mod=mod` and `GOPROXY=off`.
 
 `-mod=mod` is needed because `gnark/test` imports `testify`, which a target
 that never imported `gnark/test` lacks in `go.mod`; with `GOPROXY=off` the go
@@ -196,7 +199,7 @@ Use when the free value comes from the solver, not a hint, so no hook exists.
 `api.DivUnchecked(0, 0)` is an example. Copy the gadget's constraints into a
 small model circuit in the scratch worktree and expose the free wire through a
 hint, then apply T-HINT-OVERRIDE to the model. Record `evidence: ANALYSIS`
-unless you also show that the model and the original emit the same constraints
+and `poc.result: demonstrated_on_model` unless you also show that the model and the original emit the same constraints
 (same `ccs.GetNbConstraints()` for the gadget in isolation). Say in the finding
 that the PoC is a model.
 
@@ -240,7 +243,8 @@ contract PoC_<FindingID> is Test {
 }
 ```
 
-Run it inside the scratch worktree: `forge test --match-contract PoC_ -vv`.
+Run it in the scratch worktree through the sandbox:
+`{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- forge test --root <out>/worktree --offline --match-contract PoC_ -vv`.
 
 ## T-FOUNDRY-REPLAY
 

@@ -216,7 +216,7 @@ func TestAssembleCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Examined (covered or candidate): 0 of", "| Files reviewed | none recorded in the ledger |", "Inventory load mode: `syntax`", "gnark v0.14.0 (advisories: 3)"} {
+	for _, want := range []string{"Examined (covered): 0 of", "| Files reviewed | none recorded in the ledger |", "Inventory load mode: `syntax`", "gnark v0.14.0 (advisories: 3)"} {
 		if !strings.Contains(string(rep), want) {
 			t.Errorf("REPORT.md lacks %q", want)
 		}

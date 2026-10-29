@@ -45,19 +45,38 @@ The `/zk-audit:<mode>` commands exist only in a plugin install; the
 `/zk-audit <mode>` form works in every install.
 
 Flags: `--local` (single agent, no subagents) · `--loop N` (N passes with a
-memory ledger; deep default 3) · `--no-poc` (skip PoC generation and
+memory ledger; default: the profile's passes) · `--no-poc` (skip PoC generation and
 execution; the refuter still runs) · `--file-output` (also write `REPORT.md` into the target repo) ·
-`--out DIR` (override the output directory).
+`--out DIR` (override the output directory) · `--profile P` (same as the bare
+profile word).
+
+Never parse the invocation by hand. Pass the words after `/zk-audit` to the
+tool (`--mode <mode>` when a `/zk-audit:<mode>` command started the run):
+
+```bash
+{skill}/scripts/gnark-inventory args --repo <repo> -- <words>
+```
+
+It prints JSON: `mode`, `profile` and `profile_explicit`, `scope`, `local`,
+`passes` and `memory`, `poc`, `file_output` and `report_copy`, `out`,
+`run_id`, `diff` (`base`, `head`) and `warnings`. Exit 1 lists every problem
+(unknown flag, missing scope file, `--out` inside the repository): show them
+to the user and stop. Use its `out`, `run_id`, `scope` and `passes` below.
 
 **Profiles**
 
-| Profile | Agents | PoC | Critics | Passes |
-|---|---|---|---|---|
-| `quick` | vector-scan shards + C1 + I1 + G2 | confirmed Critical/High only | none | 1 |
-| `standard` (default) | C1–C6, I1–I4, vector-scan shards, G2, F1 | every confirmed circuit finding | coverage critic + 1 targeted wave | 1 |
-| `deep` | everything incl. G1, G3, A1 | every confirmed finding | coverage + final-clean critic | 3 with memory |
+<!-- generated:profile-table from profiles.json (make sync-profiles); do not edit -->
 
-Lens ids and their files are listed in `references/orchestration.md`.
+| Profile | Agents | PoC | Refuters | Critics | Passes |
+|---|---|---|---|---|---|
+| `quick` | C1, I1, G2 + 12 vector-scan shards (V-*) | confirmed Critical/High circuit findings only | one per confirmed finding (also with --no-poc) | none | 1 |
+| `standard` (default) | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, G2, F1 + 12 vector-scan shards (V-*) | every confirmed circuit finding | one per confirmed finding | coverage critic + 1 targeted wave | 1 |
+| `deep` | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, G1, G2, G3, A1, F1 + 12 vector-scan shards (V-*) | every confirmed finding | one per confirmed finding | coverage critic + final-clean critic + 1 targeted wave | 3 with memory |
+
+<!-- end generated:profile-table -->
+
+Lens ids and their files are listed in `references/orchestration.md`. The tool
+prints the same definitions as JSON: `{skill}/scripts/gnark-inventory profiles [--profile P]`.
 
 Before the first agent spawn, ask **one** question with `AskUserQuestion`
 (profile and model, recommended default preselected). If the runtime has no
@@ -73,14 +92,27 @@ before recon finishes.
 2. **Output outside the repo.** Write everything to
    `~/.zk-audit/<repo-name>/<run-id>/` (run-id = `YYYYMMDD-HHMMSS`), or to
    `--out`.
-3. **PoCs run in a scratch git worktree** under the output directory, never in
-   the user's checkout: `git -C <repo> worktree add --detach <out>/worktree HEAD`.
-   Run them with a time limit and without network
-   (`GOFLAGS=-mod=mod GOPROXY=off timeout 600 go test -run PoC_ ./<pkg>/`).
-   `-mod=mod` lets the go command add `go.sum` lines for test-only imports
-   such as `gnark/test` from the module cache; it only rewrites the
-   worktree's `go.mod`, never the user's. If the module cache lacks the
-   target's dependencies, ask before running `go mod download`. `--no-poc` disables PoCs. Remove the worktree at the end
+3. **PoCs run in a scratch git worktree, inside the sandbox.** Never in the
+   user's checkout: `git -C <repo> worktree add --detach <out>/worktree HEAD`.
+   Every command that executes target code (PoC `go test`, `forge test`) goes
+   through `{skill}/scripts/sandbox`, with the worktree the only writable
+   tree:
+
+   ```bash
+   {skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- go -C <out>/worktree test -count=1 -run PoC_ ./<pkg>/
+   {skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- forge test --root <out>/worktree --offline --match-contract PoC_
+   ```
+
+   On Linux it uses bubblewrap: no network, read-only file system except the
+   `--rw` directories, home directory hidden, cgo off, local toolchain only,
+   `GOFLAGS=-mod=mod`, `GOPROXY=off`, a memory limit and a 600 s time limit
+   (exit 124). On macOS it uses `sandbox-exec` (network and writes denied;
+   reads not restricted). Without either it prints a warning and applies only
+   the limits; say so in the report's posture. `-mod=mod` lets the go command
+   add `go.sum` lines for test-only imports such as `gnark/test` from the
+   module cache; it only rewrites the worktree's `go.mod`. If the module
+   cache lacks the target's dependencies, ask before running `go mod
+   download`. `--no-poc` disables PoCs. Remove the worktree at the end
    (`git -C <repo> worktree remove --force <out>/worktree`).
 4. **No silent installs.** Never install a skill, a Go module, `forge` or
    anything else without the user's explicit yes. `/zk-audit setup` prints the
@@ -108,6 +140,11 @@ Before anything else, print this banner once (`<version>` from
 zk-audit v<version> · gnark circuits × verifiers × protocol state
 scope: <scope> · out: <out-dir>
 ```
+
+Run every command as one simple command: no `cd … &&`, `;`, pipes or
+`$(...)` (permission allowlists refuse compound commands); use `go -C <dir>`,
+`git -C <dir>` and `forge --root <dir>` instead of `cd`, and Read instead of
+`cat`.
 
 In the same turn run `{skill}/scripts/check-version` alongside Phase 0. It is
 silent unless a newer release exists; print its one line if it prints one,
@@ -146,6 +183,9 @@ The wrapper builds the tool on first use (needs Go ≥ 1.24). It reports the gna
 and gnark-crypto versions from `go.mod`, matching advisories, backend and curve
 hints, and whether Solidity, Foundry, Hardhat, Circom or Noir are present.
 
+- Check the sandbox: `{skill}/scripts/sandbox --check`. It prints the engine
+  (`bwrap`, `sandbox-exec` or `none`) and what it isolates; add it to the
+  stack line.
 - Any advisory that matches the pinned gnark version is reported as a finding
   candidate right away (see `references/gnark-versions.md` for required
   actions, e.g. regenerate keys).
@@ -156,7 +196,7 @@ hints, and whether Solidity, Foundry, Hardhat, Circom or Noir are present.
   stop.
 
 Print one stack line: `gnark v0.x.y (advisories: N) · groth16/plonk · bn254 ·
-solidity: yes · foundry: yes · companions: ✔ fp-check ✖ circom-auditor`.
+solidity: yes · foundry: yes · sandbox: bwrap · companions: ✔ fp-check ✖ circom-auditor`.
 Companion detection rules are in `references/companions.md`.
 
 ### Phase 1 — Recon (deterministic tool + one recon pass)
@@ -166,7 +206,10 @@ Companion detection rules are in `references/companions.md`.
 ```
 
 This writes `inventory.json`, `inventory.md`, `binding-table.md` (draft) and a
-seeded `coverage-ledger.json`. Then the orchestrator itself (no subagent):
+seeded `coverage-ledger.json`. Type loading runs the go command on the target,
+so the tool runs it inside the same sandbox as PoCs (repository read-only,
+only `<out>` writable, no network); `--sandbox on` makes a missing sandbox an
+error, `--sandbox off` loads in-process. Then the orchestrator itself (no subagent):
 
 1. Reads `inventory.md` and every circuit's `Define`.
 2. Completes `binding-table.md`: one row per public input in public-witness
@@ -196,10 +239,15 @@ Build one bundle per selected agent, then follow `references/orchestration.md`:
 
 A bundle lists its source shard as paths with line counts (source is never
 inlined) and inlines the binding table, the inventory items for those files,
-`senior-auditor-sop.md`, the lens file and `shared-rules.md`. Run at most **6
+`senior-auditor-sop.md`, the lens file and `shared-rules.md`. Spawn each
+hunter as the `zk-audit:hunter` agent type (plugin install: Read, Grep and
+Glob only), else a general-purpose agent briefed with `{skill}/agents/hunter.md`
+and limited to those tools by prompt. Run at most **6
 agents at a time** and keep the `Agent Progress` table current. Agents return
 FINDING / LEAD blocks only. `--local` runs the same lenses one after another in
-this context.
+this context. With more than one pass (deep, `--loop N`), follow "Loop mode" in
+`references/orchestration.md`: `gnark-inventory memory` holds the
+fingerprints, NEW / KNOWN tags and the stop rule.
 
 ### Phase 3 — Judge
 
@@ -220,11 +268,15 @@ findings get a Foundry test when `forge` exists. Then a **fresh refuter** that
 did not see the hunt starts from `refuted: true` and must re-derive the bug
 from source (`fp-check` if installed, else `zk-audit:refuter`, else a
 general-purpose agent briefed with `{skill}/agents/refuter.md`). A PoC that does not compile
-or does not show the bug sets `evidence: ANALYSIS` and lowers confidence.
+or does not show the bug sets `evidence: ANALYSIS` and lowers confidence; a
+PoC on a model circuit is `poc.result: demonstrated_on_model` with
+`ANALYSIS`. Every PoC stays in `<out>/pocs/` and on its record, also when the
+record is later demoted.
 
 ### Phase 5 — Critique
 
-A coverage critic reads `coverage-ledger.json` and all agent outputs and returns
+A coverage critic (`zk-audit:critic`, else a general-purpose agent briefed
+with `{skill}/agents/critic.md`; read-only) reads `coverage-ledger.json` and all agent outputs and returns
 `missing_units` (a hint never analysed, a public input with no binding row, a
 verifier function never read). Standard runs one extra targeted wave on them;
 deep also runs a final-clean critic. Units left open stay `planned` or
@@ -237,13 +289,18 @@ deep also runs a final-clean critic. Units left open stay `planned` or
    derive: `posture` (three to six sentences), `out_of_scope`, `companions`
    (`present` / `missing`) and `hardening`. With zero records, set
    `no_findings: true` and a `no_findings_reason` that says what was examined.
-2. Close the ledger: every unit still `planned` or `in_progress` becomes
-   `deferred` or `blocked` with a `reason`.
-3. Validate both files and fix every error:
+2. Close the ledger with the tool, never by rewriting the file: every unit
+   still `planned` or `in_progress` becomes `deferred` or `blocked` with a
+   `reason`, and every `candidate` unit is judged and becomes `covered`
+   (`{skill}/scripts/gnark-inventory ledger mark --out <out> --from planned --status deferred --reason "<why>"`;
+   `ledger show --out <out>` prints the counts).
+3. Validate both files and fix every error. `--out` checks the evidence on
+   disk: every `poc.path` under `<out>/pocs/`, and an output in
+   `<out>/agents/` for every agent of a `covered` unit:
 
    ```bash
-   {skill}/scripts/gnark-inventory validate findings <out>/findings.json
-   {skill}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json
+   {skill}/scripts/gnark-inventory validate findings <out>/findings.json --out <out>
+   {skill}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json --out <out>
    ```
 
 4. Render the report with the deterministic assembler. It validates again,
@@ -255,9 +312,13 @@ deep also runs a final-clean critic. Units left open stay `planned` or
    ```
 
    Read its warnings (a ledger fingerprint missing from `findings.json`, a unit
-   still planned). Fix the inputs and rerun; never edit `REPORT.md` by hand.
-5. With `--file-output`, copy the result:
-   `cp <out>/REPORT.md <repo>/zk-audit-report-<run-id>.md`.
+   still planned or candidate, a PoC file no record names). Fix the inputs and
+   rerun; never edit `REPORT.md` by hand. It also writes
+   `<out>/pocs/MANIFEST.json` (each PoC file, its hash, record, package and
+   command) so a PoC can be re-run after the worktree is removed.
+5. With `--file-output`, add `--file-output` to the assemble command; it also
+   writes `<repo>/zk-audit-report-<run-id>.md`. The tool refuses every other
+   output path inside the repository (exit 2).
 6. Print the report path, the findings table and the coverage line.
 
 ## 5. Companions
@@ -303,7 +364,7 @@ is not a refutation. The full table with the reason each fails is in
 
 `~/.zk-audit/<repo>/<run-id>/` contains `stack.json`, `inventory.json`,
 `inventory.md`, `binding-table.md`, `system-map.md`, `coverage-ledger.json`,
-`findings.json`, `REPORT.md`, `pocs/`, and `bundles/`. Every finding carries
+`findings.json`, `REPORT.md`, `pocs/` (with `MANIFEST.json`), `agents/`, and `bundles/`. Every finding carries
 `verdict` (`confirmed` / `needs_validation` / `rejected`), `severity`,
 `confidence` (0–100), `evidence` (`POC` / `ANALYSIS`) and `detected_by`.
 

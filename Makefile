@@ -1,7 +1,7 @@
 SKILL := plugins/zk-audit/skills/zk-audit
 TOOL := $(SKILL)/tools/gnark-inventory
 
-.PHONY: check vet test test-types fixtures lint-kb standalone sync-schemas sync-agents vendor eval-pocs eval-score eval-audit
+.PHONY: check vet test test-types fixtures lint-kb standalone sync-schemas sync-agents sync-profiles vendor eval-pocs eval-score eval-audit
 
 ## check: everything CI runs (offline)
 check: vet test lint-kb standalone eval-score
@@ -31,8 +31,9 @@ lint-kb:
 standalone:
 	test/standalone-skill.sh
 
-## eval-pocs: run the pool fixture's eval PoCs in a sanitized scratch copy
-## (network for the fixture modules, like test-types)
+## eval-pocs: run the pool fixture's eval PoCs in a sanitized scratch copy,
+## inside the skill's sandbox and offline; missing modules (testify for
+## gnark/test) are fetched first, outside the sandbox, with `go list`
 eval-pocs: fixtures
 	EVAL_GOPROXY="$$(go env GOPROXY)" evals/run-pocs pool "$$(mktemp -d)"
 
@@ -43,6 +44,11 @@ sync-schemas:
 ## sync-agents: copy the skill's agent briefs (canonical) to the plugin's agents/
 sync-agents:
 	cp $(SKILL)/agents/*.md plugins/zk-audit/agents/
+
+## sync-profiles: regenerate the profile and agent tables in SKILL.md and
+## references/orchestration.md from the tool's profiles.json
+sync-profiles:
+	cd $(TOOL) && go run . profiles --sync-docs ../..
 
 vendor:
 	cd $(TOOL) && go mod tidy && go mod vendor

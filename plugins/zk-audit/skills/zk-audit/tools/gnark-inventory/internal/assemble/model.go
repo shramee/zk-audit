@@ -29,6 +29,8 @@ type PoC struct {
 	Path          string `json:"path"`
 	Command       string `json:"command"`
 	Result        string `json:"result"`
+	Demonstrates  string `json:"demonstrates"`
+	Package       string `json:"package"`
 	OutputExcerpt string `json:"output_excerpt"`
 }
 
@@ -44,6 +46,8 @@ type Gates struct {
 type Refuter struct {
 	Verdict   string `json:"verdict"`
 	Reasoning string `json:"reasoning"`
+	Mechanism string `json:"mechanism"`
+	Impact    string `json:"impact"`
 	By        string `json:"by"`
 }
 
@@ -60,6 +64,7 @@ type Record struct {
 	VectorIDs        []string   `json:"vector_ids"`
 	Description      string     `json:"description"`
 	RunTag           string     `json:"run_tag"`
+	Seen             *Seen      `json:"seen"`
 
 	Severity   string   `json:"severity"`
 	Confidence *int     `json:"confidence"`
@@ -80,6 +85,12 @@ type Record struct {
 
 	CodeSmells []string `json:"code_smells"`
 	Unverified string   `json:"unverified"`
+}
+
+// Seen is loop mode's "seen in k of N passes".
+type Seen struct {
+	Passes int `json:"passes"`
+	Of     int `json:"of"`
 }
 
 // Hardening is one hygiene note.

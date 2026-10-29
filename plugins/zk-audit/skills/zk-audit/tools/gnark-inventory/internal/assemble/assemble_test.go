@@ -75,7 +75,7 @@ func TestGoldenFull(t *testing.T) {
 		"Rejected candidates: 1",
 		"Inventory load mode: `syntax` (1 load error)",
 		"GHSA-7fx8-hmgc-82jp (high, fixed v0.16.4)",
-		"Examined (covered or candidate): 3 of 6 applicable units (50%)",
+		"Examined (covered): 1 of 6 applicable units (16%)",
 		"`circuit:SigCircuit|crypto-gadgets` — planned — no reason recorded",
 		"Smells: api.IsZero(c.Recipient) result dropped; Recipient | appears in no AssertIsEqual.",
 		"Companions not available: circom-auditor, solidity-auditor",
@@ -110,7 +110,7 @@ func TestGoldenEmpty(t *testing.T) {
 		"The absence of confirmed findings does not mean the code is free of bugs.",
 		"The run recorded no findings: no candidate survived judging in the 2 covered units.",
 		"| Stack | not recorded (no stack.json) |",
-		"Examined (covered or candidate): 2 of 3 applicable units (66%)",
+		"Examined (covered): 2 of 3 applicable units (66%)",
 		"`circuit:Edge|field-arithmetic` — deferred — C3 is not in the quick profile",
 		"Absence of a finding is not\n> evidence of absence of bugs.",
 	} {
@@ -214,5 +214,35 @@ func TestQuoteStaysInRepo(t *testing.T) {
 	q, lang, ok := in.quote(Location{File: "circuit/transfer.go", Line: 1, EndLine: 200})
 	if !ok || lang != "go" || !strings.Contains(q, "truncated after 30 lines") {
 		t.Errorf("long quote not truncated: ok=%v lang=%s", ok, lang)
+	}
+}
+
+// TestQuoteSymlinkEscape: a symlink inside the repository that points
+// outside it is never quoted (x-ray G-13); one that stays inside is.
+func TestQuoteSymlinkEscape(t *testing.T) {
+	repo := t.TempDir()
+	outside := t.TempDir()
+	os.WriteFile(filepath.Join(outside, "id_rsa"), []byte("PRIVATE KEY\n"), 0o600)
+	os.MkdirAll(filepath.Join(repo, "c"), 0o755)
+	os.WriteFile(filepath.Join(repo, "c", "a.go"), []byte("package c\n"), 0o644)
+	if err := os.Symlink(filepath.Join(outside, "id_rsa"), filepath.Join(repo, "c", "key.go")); err != nil {
+		t.Skip(err)
+	}
+	os.Symlink(outside, filepath.Join(repo, "dirlink"))
+	os.Symlink(filepath.Join(repo, "c", "a.go"), filepath.Join(repo, "inner.go"))
+	in := &input{repo: repo}
+	for _, f := range []string{"c/key.go", "dirlink/id_rsa", "c"} {
+		if q, _, ok := in.quote(Location{File: f, Line: 1}); ok {
+			t.Errorf("%s quoted: %q", f, q)
+		}
+	}
+	if q, _, ok := in.quote(Location{File: "inner.go", Line: 1}); !ok || q != "package c" {
+		t.Errorf("in-repo symlink not quoted: %q %v", q, ok)
+	}
+	// a repository reached through a symlink still quotes its own files
+	alias := filepath.Join(t.TempDir(), "alias")
+	os.Symlink(repo, alias)
+	if q, _, ok := (&input{repo: alias}).quote(Location{File: "c/a.go", Line: 1}); !ok || q != "package c" {
+		t.Errorf("symlinked root: %q %v", q, ok)
 	}
 }

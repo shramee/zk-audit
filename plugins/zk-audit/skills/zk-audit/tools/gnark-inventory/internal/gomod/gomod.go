@@ -4,6 +4,7 @@ package gomod
 
 import (
 	"bufio"
+	"io"
 	"os"
 	"strings"
 )
@@ -39,8 +40,13 @@ func ParseFile(path string) (*File, error) {
 		return nil, err
 	}
 	defer f.Close()
+	return Parse(f)
+}
+
+// Parse parses go.mod content.
+func Parse(r io.Reader) (*File, error) {
 	out := &File{}
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 1024*1024), 1024*1024)
 	block := ""
 	for sc.Scan() {

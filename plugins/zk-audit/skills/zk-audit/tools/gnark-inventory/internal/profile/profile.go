@@ -1,0 +1,359 @@
+// Package profile holds the single definition of zk-audit's lenses, critics
+// and profiles (profiles.json, embedded). The bundle builder, the ledger
+// seeder and validator, the args parser and `gnark-inventory profiles` read
+// it, and the profile and agent tables in SKILL.md and
+// references/orchestration.md are rendered from it (Markdown, SyncDocs).
+package profile
+
+import (
+	_ "embed"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+)
+
+//go:embed profiles.json
+var raw []byte
+
+// Raw returns the embedded profiles.json.
+func Raw() []byte { return raw }
+
+// Lens is one hunting agent definition.
+type Lens struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	File  string `json:"file"`            // lens file under references/
+	Slice string `json:"slice,omitempty"` // attack-vectors slice for vector-scan shards
+	Group string `json:"group"`
+	// Shard is the source shard the lens reads: circuit, integration, prover or all.
+	Shard    string   `json:"shard"`
+	Profiles []string `json:"profiles"`
+	Ledger   *Ledger  `json:"ledger,omitempty"`
+}
+
+// Ledger says which coverage-ledger classes a lens owns and how the seeder
+// creates units for them.
+type Ledger struct {
+	// Classes are the ledger unit classes this lens owns.
+	Classes []string `json:"classes"`
+	// Seed is the subject kind the seeder creates one unit per class for:
+	// "circuit" (each production circuit) or "contract-fn" (each verifying or
+	// state-writing contract function). Empty: units are seeded by
+	// kind-specific code in the ledger package, or not at all.
+	Seed string `json:"seed,omitempty"`
+	// With are further lenses listed on seeded units ("V" is the vector scan).
+	With []string `json:"with,omitempty"`
+}
+
+// Critic is a coverage or final-clean critic.
+type Critic struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Agent string `json:"agent"`
+	When  string `json:"when"`
+}
+
+// PoC is a profile's PoC policy.
+type PoC struct {
+	Layers     []string `json:"layers"`
+	Severities []string `json:"severities"`
+	Text       string   `json:"text"`
+}
+
+// Refuters is a profile's refuter policy: one fresh refuter per record of
+// these verdicts, never one for several records.
+type Refuters struct {
+	Verdicts []string `json:"verdicts"`
+	Text     string   `json:"text"`
+}
+
+// Profile is one audit profile.
+type Profile struct {
+	ID            string   `json:"id"`
+	Default       bool     `json:"default,omitempty"`
+	Summary       string   `json:"summary"`
+	PoC           PoC      `json:"poc"`
+	Refuters      Refuters `json:"refuters"`
+	Critics       []string `json:"critics"`
+	TargetedWaves int      `json:"targeted_waves"`
+	Passes        int      `json:"passes"`
+	Memory        bool     `json:"memory,omitempty"`
+}
+
+// Set is the whole document.
+type Set struct {
+	SchemaVersion string    `json:"schema_version"`
+	Lenses        []Lens    `json:"lenses"`
+	Critics       []Critic  `json:"critics"`
+	Profiles      []Profile `json:"profiles"`
+}
+
+var loaded *Set
+
+// Load parses and checks the embedded document. It panics on a malformed
+// document: the file ships inside the binary and a test checks it.
+func Load() *Set {
+	if loaded != nil {
+		return loaded
+	}
+	s, err := Parse(raw)
+	if err != nil {
+		panic("profiles.json: " + err.Error())
+	}
+	loaded = s
+	return s
+}
+
+// Shards a lens may read.
+var Shards = map[string]bool{"circuit": true, "integration": true, "prover": true, "all": true}
+
+// SeedKinds the ledger seeder understands.
+var SeedKinds = map[string]bool{"circuit": true, "contract-fn": true}
+
+var (
+	reLensID  = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*(-[a-z0-9]+)?$`)
+	reClassID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+)
+
+// Parse decodes and checks a profiles document.
+func Parse(b []byte) (*Set, error) {
+	var s Set
+	dec := json.NewDecoder(strings.NewReader(string(b)))
+	dec.DisallowUnknownFields()
+	var withComment struct {
+		Comment string `json:"$comment"`
+		Set
+	}
+	if err := dec.Decode(&withComment); err != nil {
+		return nil, err
+	}
+	s = withComment.Set
+	if s.SchemaVersion != "1" {
+		return nil, fmt.Errorf("schema_version %q, want 1", s.SchemaVersion)
+	}
+	var problems []string
+	bad := func(f string, a ...any) { problems = append(problems, fmt.Sprintf(f, a...)) }
+	profiles := map[string]bool{}
+	defaults := 0
+	critics := map[string]bool{}
+	for _, c := range s.Critics {
+		if c.ID == "" || c.Name == "" || c.Agent == "" || critics[c.ID] {
+			bad("critic %q: id, name and agent are required and ids unique", c.ID)
+		}
+		critics[c.ID] = true
+	}
+	for _, p := range s.Profiles {
+		if p.ID == "" || profiles[p.ID] {
+			bad("profile %q: empty or duplicate id", p.ID)
+		}
+		profiles[p.ID] = true
+		if p.Default {
+			defaults++
+		}
+		if p.Passes < 1 {
+			bad("profile %s: passes must be at least 1", p.ID)
+		}
+		if p.Passes > 1 && !p.Memory {
+			bad("profile %s: more than one pass needs memory", p.ID)
+		}
+		if p.PoC.Text == "" || len(p.PoC.Layers) == 0 {
+			bad("profile %s: poc needs layers and text (use layers [] for none)", p.ID)
+		}
+		if len(p.Refuters.Verdicts) == 0 || p.Refuters.Text == "" {
+			bad("profile %s: refuters need verdicts and text", p.ID)
+		}
+		for _, c := range p.Critics {
+			if !critics[c] {
+				bad("profile %s: unknown critic %q", p.ID, c)
+			}
+		}
+	}
+	if defaults != 1 {
+		bad("exactly one profile must be the default (got %d)", defaults)
+	}
+	lenses := map[string]bool{}
+	classes := map[string]string{}
+	for _, l := range s.Lenses {
+		at := "lens " + l.ID
+		if !reLensID.MatchString(l.ID) || lenses[l.ID] {
+			bad("%s: id must match %s and be unique", at, reLensID)
+		}
+		lenses[l.ID] = true
+		if l.Name == "" || l.File == "" || l.Group == "" {
+			bad("%s: name, file and group are required", at)
+		}
+		if !Shards[l.Shard] {
+			bad("%s: unknown shard %q", at, l.Shard)
+		}
+		if len(l.Profiles) == 0 {
+			bad("%s: no profile selects it", at)
+		}
+		for _, p := range l.Profiles {
+			if !profiles[p] {
+				bad("%s: unknown profile %q", at, p)
+			}
+		}
+		if l.Ledger != nil {
+			if len(l.Ledger.Classes) == 0 {
+				bad("%s: ledger without classes", at)
+			}
+			for _, c := range l.Ledger.Classes {
+				if !reClassID.MatchString(c) {
+					bad("%s: ledger class %q must match %s", at, c, reClassID)
+				}
+				if o, ok := classes[c]; ok {
+					bad("%s: ledger class %q already owned by %s", at, c, o)
+				}
+				classes[c] = l.ID
+			}
+			if l.Ledger.Seed != "" && !SeedKinds[l.Ledger.Seed] {
+				bad("%s: unknown ledger seed kind %q", at, l.Ledger.Seed)
+			}
+		}
+	}
+	for _, l := range s.Lenses {
+		if l.Ledger == nil {
+			continue
+		}
+		for _, w := range l.Ledger.With {
+			if w != "V" && !lenses[w] {
+				bad("lens %s: ledger.with names unknown lens %q", l.ID, w)
+			}
+		}
+	}
+	if len(problems) > 0 {
+		return nil, fmt.Errorf("%s", strings.Join(problems, "; "))
+	}
+	return &s, nil
+}
+
+// Profile returns the profile with this id.
+func (s *Set) Profile(id string) (*Profile, bool) {
+	for i := range s.Profiles {
+		if s.Profiles[i].ID == id {
+			return &s.Profiles[i], true
+		}
+	}
+	return nil, false
+}
+
+// Default returns the default profile.
+func (s *Set) Default() *Profile {
+	for i := range s.Profiles {
+		if s.Profiles[i].Default {
+			return &s.Profiles[i]
+		}
+	}
+	return &s.Profiles[0]
+}
+
+// ProfileIDs lists the profile ids in file order.
+func (s *Set) ProfileIDs() []string {
+	var out []string
+	for _, p := range s.Profiles {
+		out = append(out, p.ID)
+	}
+	return out
+}
+
+// Lens returns the lens with this id.
+func (s *Set) Lens(id string) (*Lens, bool) {
+	for i := range s.Lenses {
+		if s.Lenses[i].ID == id {
+			return &s.Lenses[i], true
+		}
+	}
+	return nil, false
+}
+
+// LensesFor lists the lenses a profile selects, in file order.
+func (s *Set) LensesFor(profile string) []Lens {
+	var out []Lens
+	for _, l := range s.Lenses {
+		if l.In(profile) {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// In reports whether profile selects the lens.
+func (l Lens) In(profile string) bool {
+	for _, p := range l.Profiles {
+		if p == profile {
+			return true
+		}
+	}
+	return false
+}
+
+// IsVectorScan reports whether the lens is a vector-scan shard.
+func (l Lens) IsVectorScan() bool { return l.Slice != "" }
+
+// LedgerLenses is the set of ids a ledger unit may list under `lenses`:
+// every non-vector-scan lens id plus "V" for the vector scan as a whole.
+func (s *Set) LedgerLenses() map[string]bool {
+	m := map[string]bool{"V": true}
+	for _, l := range s.Lenses {
+		if !l.IsVectorScan() {
+			m[l.ID] = true
+		}
+	}
+	return m
+}
+
+// LedgerClasses maps every ledger class to the lens that owns it.
+func (s *Set) LedgerClasses() map[string]string {
+	m := map[string]string{}
+	for _, l := range s.Lenses {
+		if l.Ledger != nil {
+			for _, c := range l.Ledger.Classes {
+				m[c] = l.ID
+			}
+		}
+	}
+	return m
+}
+
+// AgentKnown reports whether an agent id names a lens: an exact lens id, a
+// lens id with an @<shard> suffix (one bundle per circuit package), or a
+// critic agent.
+func (s *Set) AgentKnown(id string) bool {
+	base := id
+	if i := strings.IndexByte(id, '@'); i > 0 {
+		base = id[:i]
+	}
+	if _, ok := s.Lens(base); ok {
+		return true
+	}
+	for _, c := range s.Critics {
+		if base == c.ID || base == c.Agent {
+			return true
+		}
+	}
+	return false
+}
+
+// CheckFiles reports lens and slice files that do not exist under the
+// skill's references/ directory.
+func (s *Set) CheckFiles(skill string) []string {
+	var missing []string
+	seen := map[string]bool{}
+	for _, l := range s.Lenses {
+		for _, f := range []string{l.File, l.Slice} {
+			if f == "" || seen[f] {
+				continue
+			}
+			seen[f] = true
+			if _, err := os.Stat(filepath.Join(skill, "references", filepath.FromSlash(f))); err != nil {
+				missing = append(missing, fmt.Sprintf("lens %s: references/%s does not exist", l.ID, f))
+			}
+		}
+	}
+	sort.Strings(missing)
+	return missing
+}

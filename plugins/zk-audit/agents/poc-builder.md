@@ -22,11 +22,19 @@ only API shapes you may use without checking the pinned gnark source first.
 
 - Write only under `<out>/pocs/` and `<out>/worktree/`. Never touch the user's
   repository path. If `<out>/worktree` does not exist, stop and say so.
-- No network: `GOPROXY=off`. Use `GOFLAGS=-mod=mod` inside the worktree so the
-  go command can add `go.sum` lines for `gnark/test` from the module cache. If
-  modules are missing, stop and report `not_run` with the reason; do not
+- Run every test through the sandbox command your prompt gives
+  (`{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- ...`). It
+  denies the network, makes everything but the worktree read-only, hides the
+  home directory, turns cgo off, sets `GOFLAGS=-mod=mod` and `GOPROXY=off`,
+  and applies a memory limit and a 600 s time limit (exit 124). Never run
+  `go test` or `forge test` outside it. If it prints that no OS sandbox is
+  available, still use it (the limits apply) and put that in `notes`.
+- Use simple commands only: `go -C <out>/worktree test ...`,
+  `forge test --root <out>/worktree ...`; no `cd … &&`, `;`, pipes or
+  `$(...)`, which permission allowlists refuse. Read files with Read, not
+  `cat`.
+- If modules are missing, stop and report `not_run` with the reason; do not
   download them.
-- Always use a time limit: `timeout 600`.
 - Do not change the circuit under test. A model circuit (T-CONSTRAINT-MODEL)
   goes in its own file and the finding says it is a model.
 - Before you use an API that is not in the template, find it in the pinned
@@ -51,20 +59,27 @@ only API shapes you may use without checking the pinned gnark source first.
      circuit does constrain, is rejected;
    - **sanity control**: a true statement passes.
 4. Copy it into the same package directory in the worktree.
-5. Run: `cd <out>/worktree && GOFLAGS=-mod=mod GOPROXY=off timeout 600 go test -run '^TestPoC_<finding-number>_' -count=1 -v ./<pkg>/`
-   (Foundry: `forge test --match-contract PoC_ -vv`).
+5. Run: `{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- go -C <out>/worktree test -run '^TestPoC_<finding-number>_' -count=1 -v ./<pkg>/`
+   (Foundry: `{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- forge test --root <out>/worktree --offline --match-contract PoC_ -vv`).
 6. If it fails to compile, fix the test (never the circuit) at most three
    times. If the attack is rejected, read the rejecting constraint: the
    finding may be wrong. Report that; do not weaken the test.
 7. The result is `demonstrated` only if the attack passes **and** the honest
-   control fails as expected **and** the sanity case passes.
+   control fails as expected **and** the sanity case passes, against the
+   production circuit or contract. A PoC on a model circuit
+   (T-CONSTRAINT-MODEL) is `demonstrated_on_model`. Say which property it
+   breaks: `soundness` (a false statement is accepted) or `completeness` (an
+   honest statement is rejected); a PoC that shows only one side of a finding
+   that claims both says so.
 
 ## Return
 
 ```text
 poc_path: pocs/<file>
+package: <repository-relative package directory or Foundry root the file was copied into>
 command: <exact command>
-result: demonstrated | not_demonstrated | does_not_compile | not_run
+result: demonstrated | demonstrated_on_model | not_demonstrated | does_not_compile | not_run
+demonstrates: soundness | completeness
 output_excerpt: <the last 30 lines>
 notes: <template used and why; model circuit? assumptions? the rejecting constraint if not demonstrated>
 ```

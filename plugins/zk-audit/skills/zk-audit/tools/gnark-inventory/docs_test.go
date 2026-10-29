@@ -57,6 +57,9 @@ func pluginDocs(t *testing.T) map[string]string {
 	return docs
 }
 
+// actionSubcommands take an action word before their flags.
+var actionSubcommands = map[string]bool{"ledger": true, "agents": true, "memory": true}
+
 // TestDocumentedCommandsExist fails when the skill, a command or an agent
 // tells the model to run a script, subcommand, flag, validate kind, reference
 // file or plugin agent that does not exist.
@@ -94,11 +97,17 @@ func TestDocumentedCommandsExist(t *testing.T) {
 				}
 				continue
 			}
+			probe := []string{sub}
+			if actionSubcommands[sub] {
+				if fields := strings.Fields(rest); len(fields) > 0 && !strings.HasPrefix(fields[0], "-") && !strings.HasPrefix(fields[0], "<") {
+					probe = append(probe, fields[0])
+				}
+			}
 			for _, f := range reFlag.FindAllStringSubmatch(rest, -1) {
 				// Probe: set the flag, then -h stops before any work is done.
 				stdout.Reset()
 				stderr.Reset()
-				run([]string{sub, "--" + f[1] + "=x", "-h"}, &stdout, &stderr)
+				run(append(append([]string{}, probe...), "--"+f[1]+"=x", "-h"), &stdout, &stderr)
 				if strings.Contains(stderr.String(), "flag provided but not defined") {
 					t.Errorf("%s runs `gnark-inventory %s --%s`: no such flag", name, sub, f[1])
 				}
@@ -316,5 +325,93 @@ func TestInstallShipsNoFixtures(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// agentTools returns the `tools:` allowlist of an agent file's frontmatter
+// (YAML list or comma-separated string) and whether the key is present.
+func agentTools(t *testing.T, doc string) ([]string, bool) {
+	t.Helper()
+	if !strings.HasPrefix(doc, "---\n") {
+		t.Fatal("agent file has no frontmatter")
+	}
+	end := strings.Index(doc[4:], "\n---")
+	if end < 0 {
+		t.Fatal("unterminated frontmatter")
+	}
+	lines := strings.Split(doc[4:4+end], "\n")
+	for i, l := range lines {
+		v, ok := strings.CutPrefix(l, "tools:")
+		if !ok {
+			continue
+		}
+		var tools []string
+		if v = strings.TrimSpace(v); v != "" {
+			for _, x := range strings.Split(strings.Trim(v, "[]"), ",") {
+				if x = strings.Trim(strings.TrimSpace(x), `"'`); x != "" {
+					tools = append(tools, x)
+				}
+			}
+			return tools, true
+		}
+		for _, l := range lines[i+1:] {
+			item, ok := strings.CutPrefix(strings.TrimSpace(l), "- ")
+			if !ok {
+				break
+			}
+			tools = append(tools, strings.Trim(strings.TrimSpace(item), `"'`))
+		}
+		return tools, true
+	}
+	return nil, false
+}
+
+// readOnlyAgents run on untrusted repositories and must not be able to write
+// or run commands. Without a `tools:` key an agent inherits every tool of
+// the session, so the key is required.
+var readOnlyAgents = []string{"hunter", "critic", "refuter"}
+
+var writeTools = map[string]bool{"Write": true, "Edit": true, "MultiEdit": true, "Bash": true, "NotebookEdit": true, "KillShell": true, "BashOutput": true}
+
+func TestReadOnlyAgentsHaveNoWriteTools(t *testing.T) {
+	allowed := map[string]bool{"Read": true, "Grep": true, "Glob": true}
+	for _, name := range readOnlyAgents {
+		for _, dir := range []string{filepath.Join(repoRoot, "plugins", "zk-audit", "agents"), filepath.Join(skillRoot, "agents")} {
+			b, err := os.ReadFile(filepath.Join(dir, name+".md"))
+			if err != nil {
+				t.Fatalf("read-only agent %s: %v", name, err)
+			}
+			tools, ok := agentTools(t, string(b))
+			if !ok || len(tools) == 0 {
+				t.Errorf("%s/%s.md has no tools: allowlist; it would inherit every tool", dir, name)
+				continue
+			}
+			for _, tool := range tools {
+				if writeTools[tool] || !allowed[tool] {
+					t.Errorf("%s/%s.md lists %q; read-only agents may use only Read, Grep and Glob", dir, name, tool)
+				}
+			}
+		}
+	}
+	// the check itself must fire
+	if tools, _ := agentTools(t, "---\nname: x\ntools: Read, Bash\n---\n"); len(tools) != 2 || !writeTools[tools[1]] {
+		t.Fatalf("comma form parsed as %q", tools)
+	}
+	if tools, _ := agentTools(t, "---\nname: x\ntools:\n  - Read\n  - Write\ndescription: y\n---\n"); len(tools) != 2 || !writeTools[tools[1]] {
+		t.Fatalf("list form parsed as %q", tools)
+	}
+}
+
+// TestEveryAgentDeclaresTools: every plugin agent states its tools.
+func TestEveryAgentDeclaresTools(t *testing.T) {
+	files, _ := filepath.Glob(filepath.Join(repoRoot, "plugins", "zk-audit", "agents", "*.md"))
+	if len(files) < 4 {
+		t.Fatalf("only %d agent files", len(files))
+	}
+	for _, f := range files {
+		b, _ := os.ReadFile(f)
+		if tools, ok := agentTools(t, string(b)); !ok || len(tools) == 0 {
+			t.Errorf("%s has no tools: allowlist", filepath.Base(f))
+		}
 	}
 }

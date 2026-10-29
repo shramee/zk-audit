@@ -164,3 +164,129 @@ func TestLedger(t *testing.T) {
 		}
 	}
 }
+
+// TestLedgerLensesAndClassesFromProfiles checks that ledger classes and
+// lenses are validated against profiles.json, not a schema enum.
+func TestLedgerLensesAndClassesFromProfiles(t *testing.T) {
+	doc := `{"schema_version":"1","repo":"r","generated_by":"t","units":[
+	 {"id":"circuit:C|made-up-class","kind":"circuit","subject":"C","class":"made-up-class","lenses":["Z9","V"],"paths":["c.go:1"],"status":"planned","agent_ids":[],"reviewed_paths":[],"result_fingerprints":[]}
+	]}`
+	rep, err := Document("ledger", []byte(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(rep.Errors, "\n")
+	for _, want := range []string{`class "made-up-class" is owned by no lens`, `lens "Z9" is not defined`} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("want %q in %s", want, joined)
+		}
+	}
+	if strings.Contains(joined, `lens "V"`) {
+		t.Errorf("V (the vector scan) must be accepted: %s", joined)
+	}
+}
+
+func pocDoc(evidence, result, path, extra string) string {
+	return `{"schema_version":"1","repo":"r","run_id":"20261029-101010","profile":"standard","records":[
+	{"fingerprint":"VoteCircuit|tally|hint-output-unconstrained","verdict":"confirmed","title":"t","layer":"circuit","bug_class":"hint-output-unconstrained",
+	 "location":{"file":"c/vote.go","line":3,"scope":"VoteCircuit.Define"},"detected_by":["C1"],"description":"d",
+	 "severity":"low","confidence":60,"evidence":"` + evidence + `","proof":"p","impact":"i",
+	 "gates":{"executes":"e","reachable":"r","unprivileged":"u","impact":"i"},
+	 "poc":{"path":"` + path + `","command":"go test","result":"` + result + `"` + extra + `}},
+	{"fingerprint":"VoteCircuit|owner|owner-gate","verdict":"lead","title":"t2","layer":"circuit","bug_class":"owner-gate",
+	 "location":{"file":"c/vote.go","line":5,"scope":"VoteCircuit.Define"},"detected_by":["C4"],"description":"d",
+	 "code_smells":["s"],"unverified":"u","poc":{"path":"pocs/2_poc_test.go","command":"go test","result":"demonstrated","demonstrates":"soundness"}}
+	]}`
+}
+
+// TestPoCTruthfulness: with --out, a PoC must exist under <out>/pocs/;
+// model-only PoCs keep ANALYSIS; orphan PoC files and a missing
+// `demonstrates` are warnings; a demoted record may keep its PoC.
+func TestPoCTruthfulness(t *testing.T) {
+	out := t.TempDir()
+	os.MkdirAll(filepath.Join(out, "pocs"), 0o755)
+	os.WriteFile(filepath.Join(out, "pocs", "1_poc_test.go"), []byte("package c"), 0o644)
+	os.WriteFile(filepath.Join(out, "pocs", "2_poc_test.go"), []byte("package c"), 0o644)
+	run := func(doc string, o Options) *Report {
+		t.Helper()
+		rep, err := DocumentWith("findings", []byte(doc), o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rep
+	}
+	has := func(xs []string, sub string) bool { return strings.Contains(strings.Join(xs, "\n"), sub) }
+	ok := run(pocDoc("POC", "demonstrated", "pocs/1_poc_test.go", `,"demonstrates":"soundness"`), Options{Out: out})
+	if !ok.OK() || len(ok.Warnings) != 0 {
+		t.Fatalf("valid PoC: %v %v", ok.Errors, ok.Warnings)
+	}
+	cases := []struct {
+		name, doc     string
+		errs, warning string
+	}{
+		{"missing file", pocDoc("POC", "demonstrated", "pocs/9_poc_test.go", `,"demonstrates":"soundness"`), "does not exist under", ""},
+		{"escapes pocs", pocDoc("POC", "demonstrated", "../etc/passwd", `,"demonstrates":"soundness"`), "is not under <out>/pocs/", ""},
+		{"model only behind POC", pocDoc("POC", "demonstrated_on_model", "pocs/1_poc_test.go", `,"demonstrates":"soundness"`), "keeps evidence ANALYSIS", ""},
+		{"not demonstrated behind POC", pocDoc("POC", "not_demonstrated", "pocs/1_poc_test.go", ``), "requires poc.result", ""},
+		{"no demonstrates", pocDoc("POC", "demonstrated", "pocs/1_poc_test.go", ``), "", "poc.demonstrates is missing"},
+		{"orphan", strings.Replace(pocDoc("ANALYSIS", "demonstrated_on_model", "pocs/1_poc_test.go", `,"demonstrates":"soundness"`), "pocs/2_poc_test.go", "pocs/1_poc_test.go", 1), "", "pocs/2_poc_test.go is not the poc.path of any record"},
+		{"not run, no file", pocDoc("ANALYSIS", "not_run", "pocs/7_poc_test.go", ``), "", "does not exist under"},
+	}
+	for _, c := range cases {
+		rep := run(c.doc, Options{Out: out})
+		if c.errs != "" && !has(rep.Errors, c.errs) {
+			t.Errorf("%s: want error %q, got %v", c.name, c.errs, rep.Errors)
+		}
+		if c.errs == "" && !rep.OK() {
+			t.Errorf("%s: unexpected errors %v", c.name, rep.Errors)
+		}
+		if c.warning != "" && !has(rep.Warnings, c.warning) {
+			t.Errorf("%s: want warning %q, got %v", c.name, c.warning, rep.Warnings)
+		}
+	}
+	// without --out the files are not checked
+	if rep := run(pocDoc("POC", "demonstrated", "pocs/9_poc_test.go", `,"demonstrates":"soundness"`), Options{}); !rep.OK() {
+		t.Errorf("no --out: %v", rep.Errors)
+	}
+}
+
+// TestLedgerTruthfulness: covered units need saved agent outputs (with
+// --out) and reviewed_paths that include the unit's own file.
+func TestLedgerTruthfulness(t *testing.T) {
+	out := t.TempDir()
+	os.MkdirAll(filepath.Join(out, "agents"), 0o755)
+	os.WriteFile(filepath.Join(out, "agents", "C1.md"), []byte("FINDING ..."), 0o644)
+	os.WriteFile(filepath.Join(out, "agents", "C2__circuit_vote.md"), []byte("no findings: read vote.go"), 0o644)
+	unit := func(agents, reviewed string) string {
+		return `{"schema_version":"1","repo":"r","generated_by":"t","units":[
+		{"id":"circuit:VoteCircuit|hint-soundness","kind":"circuit","subject":"VoteCircuit","class":"hint-soundness","lenses":["C1"],"paths":["circuit/vote.go:40"],"status":"covered","agent_ids":` + agents + `,"reviewed_paths":` + reviewed + `,"result_fingerprints":[]}]}`
+	}
+	cases := []struct {
+		name, doc, err, warn string
+	}{
+		{"ok", unit(`["C1","C2@circuit/vote"]`, `["circuit/vote.go","circuit/hints.go"]`), "", ""},
+		{"dir counts", unit(`["C1"]`, `["circuit/"]`), "", ""},
+		{"no output", unit(`["C1","C3"]`, `["circuit/vote.go"]`), "agent C3 has no saved output", ""},
+		{"other file", unit(`["C1"]`, `["circuit/other.go"]`), "do not include the unit's own file", ""},
+		{"absolute", unit(`["C1"]`, `["/etc/passwd","circuit/vote.go"]`), "not a repository-relative path", ""},
+		{"unknown agent", unit(`["C1","W1"]`, `["circuit/vote.go"]`), "agent W1 has no saved output", "agent id W1 is no lens"},
+	}
+	for _, c := range cases {
+		rep, err := DocumentWith("ledger", []byte(c.doc), Options{Out: out})
+		if err != nil {
+			t.Fatal(err)
+		}
+		joined := strings.Join(rep.Errors, "\n")
+		if c.err == "" && !rep.OK() || c.err != "" && !strings.Contains(joined, c.err) {
+			t.Errorf("%s: errors %v, want %q", c.name, rep.Errors, c.err)
+		}
+		if c.warn != "" && !strings.Contains(strings.Join(rep.Warnings, "\n"), c.warn) {
+			t.Errorf("%s: warnings %v, want %q", c.name, rep.Warnings, c.warn)
+		}
+	}
+	// without --out, agent outputs are not checked but paths are
+	rep, _ := DocumentWith("ledger", []byte(unit(`["C9"]`, `["circuit/other.go"]`)), Options{})
+	if j := strings.Join(rep.Errors, "\n"); strings.Contains(j, "no saved output") || !strings.Contains(j, "own file") {
+		t.Errorf("no --out: %v", rep.Errors)
+	}
+}

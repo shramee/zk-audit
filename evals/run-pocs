@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs the eval PoCs of a fixture in a sanitized scratch copy, offline and
-# with a time limit. Never runs anything inside this repository.
+# Runs the eval PoCs of a fixture in a sanitized scratch copy, in the skill's
+# OS sandbox (offline, time and memory limits). Never runs anything inside this repository.
 #
 # Usage: evals/run-pocs <fixture-name> <scratch-dir>
 #   Copies the fixture with evals/sanitize to <scratch-dir>/<fixture-name>,
@@ -16,8 +16,15 @@ pkg="$(cat "$pocs/PACKAGE")"
 dest="$scratch/$name"
 "$here/sanitize" "$name" "$dest" >/dev/null
 cp "$pocs"/*_test.go "$dest/$pkg/"
-cd "$dest"
-# -mod=mod lets the go command record go.sum lines for test-only imports from
-# the module cache; GOPROXY=off keeps it offline unless EVAL_GOPROXY is set
-# (make eval-pocs sets it, after `make fixtures` has used the network anyway).
-GOWORK=off GOFLAGS=-mod=mod GOPROXY="${EVAL_GOPROXY:-off}" timeout 900 go test -count=1 -run '^Test(PoC|Decoy)_' -v "./$pkg/"
+# Run through the skill's sandbox, the same command an audit uses: no network
+# (GOPROXY=off; EVAL_GOPROXY fetches missing modules first), the scratch copy the
+# only writable tree, cgo off, local toolchain, time and memory limits.
+# Without bwrap / sandbox-exec it warns and runs with the limits only.
+if [ "${EVAL_GOPROXY:-off}" != off ]; then
+  # Fetch the PoCs' module dependencies (gnark/test needs testify) before
+  # the offline run. `go list` resolves imports without building or running
+  # anything, so this step needs no sandbox.
+  GOWORK=off CGO_ENABLED=0 GOFLAGS=-mod=mod GOPROXY="$EVAL_GOPROXY" go -C "$dest" list -test -deps "./$pkg/" >/dev/null
+fi
+exec "$here/../plugins/zk-audit/skills/zk-audit/scripts/sandbox" --rw "$dest" --timeout 900 -- \
+  go -C "$dest" test -count=1 -run '^Test(PoC|Decoy)_' -v "./$pkg/"

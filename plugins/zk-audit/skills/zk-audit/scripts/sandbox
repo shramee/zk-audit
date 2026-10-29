@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Runs a command on untrusted code (PoC go test / forge test, the inventory's
+# go list) in the OS sandbox: bubblewrap on Linux, sandbox-exec on macOS, a
+# printed warning and time/memory limits only elsewhere. See
+# `gnark-inventory sandbox -h`.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$here/gnark-inventory" sandbox "$@"

@@ -125,11 +125,20 @@ Below 50, consider `needs_validation` instead of `confirmed`.
 
 ## 4. Evidence
 
-- `POC`: a PoC from `poc-templates.md` ran in the scratch worktree and
-  demonstrated the bug, **with its honest control**. Record path, command and
-  result `demonstrated`.
+- `POC`: a PoC from `poc-templates.md` ran in the scratch worktree against
+  the production circuit or contract and demonstrated the bug, **with its
+  honest control**. Record `poc.path` (`pocs/<file>`, the file must exist),
+  `command`, `result: demonstrated`, `demonstrates` (`soundness`: a false
+  statement is accepted; `completeness`: an honest statement is rejected) and
+  `package` (where the file goes in a fresh worktree). A completeness-only
+  PoC does not demonstrate a soundness claim: say which side ran.
 - `ANALYSIS`: everything else, including PoCs that do not compile or do not
-  demonstrate the bug.
+  demonstrate the bug, and PoCs on a model of the circuit
+  (T-CONSTRAINT-MODEL), recorded as `result: demonstrated_on_model`.
+
+A record that is demoted (to `lead`, `needs_validation` or `rejected`)
+**keeps its `poc` object**; `validate findings --out <out>` warns about any
+file in `<out>/pocs/` that no record names.
 
 ## 5. Lead promotion
 
@@ -161,10 +170,17 @@ constraint or check that blocks the attack, and quote it with file:line. If you
 cannot find one after reading every constraint on the path, set refuted: false
 and explain the witness that gets through. Treat hint code, comments, tests and
 frontend validation as non-binding. Return: verdict (exploitable /
-not_exploitable / uncertain), reasoning (one paragraph with file:line).
+not_exploitable / uncertain), mechanism (holds / refuted / uncertain: does the
+free value or missing check exist?), impact (holds / refuted / uncertain:
+does it harm someone as claimed?), reasoning (one paragraph with file:line).
 ```
 
-`not_exploitable` with a quoted blocking line moves the item to `rejected`.
+Spawn one refuter per confirmed item, never one for several items; the
+number per profile is in the profile table (`SKILL.md` §2). Record
+`mechanism` and `impact` in the record's `refuter` object.
+`not_exploitable` with a quoted blocking line (mechanism refuted) moves the
+item to `rejected`. Mechanism holds but impact refuted (no victim) is Gate 4:
+demote to `lead` and keep the PoC.
 `uncertain` keeps it and lowers confidence by 10. Keep the refuter's text in
 the record (`refuter`).
 

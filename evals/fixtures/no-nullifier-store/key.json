@@ -1,0 +1,14 @@
+{
+  "schema_version": "1", "case": "no-nullifier-store", "fixture": "no-nullifier-store",
+  "items": [
+    {"id": "I1", "class": "integration", "critical": true,
+     "title": "Nullifier is never recorded, so proofs replay (double spend)",
+     "ranges": [{"file": "contracts/Mixer.sol", "anchors": ["require(verifier.verifyProof(proof, input)", "recipient.transfer(value);"]}],
+     "match": "(?i)nullifier|spent|double.?spend|replay|record|store|mapping",
+     "expect": ["confirmed"], "partial": ["needs_validation", "lead"], "severity": ["critical", "high"]}
+  ],
+  "decoys": [],
+  "other": [
+    {"id": "O1", "title": "deposit takes no accounting", "ranges": [{"file": "contracts/Mixer.sol", "anchors": ["function deposit"]}], "match": "(?i)deposit|accounting|commitment"}
+  ]
+}

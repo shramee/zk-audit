@@ -1,0 +1,7 @@
+{"schema_version":"1","case":"ci-smoke","fixture":"ci-smoke",
+ "items":[{"id":"C1","class":"soundness","critical":true,
+  "title":"Square root published from an unconstrained hint",
+  "ranges":[{"file":"circuit/circuit.go","anchors":["api.AssertIsEqual(c.RootVal, out[0])"]}],
+  "match":"(?i)root|sqrt|square|hint|unconstrained|free|binding|rootval\\*rootval|multiply",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["high","critical","medium"]}],
+ "decoys":[],"other":[]}

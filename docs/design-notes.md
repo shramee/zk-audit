@@ -126,6 +126,21 @@ left open, it is recorded here with the reason.
 - **Eval PoCs** (`evals/pool/pocs`) run against gnark v0.14.0 in a sanitized
   scratch copy (`evals/run-pocs`, `make eval-pocs`, CI). They pin the
   templates in `poc-templates.md` to working code.
+- **Every automatic outcome is checked by hand against the records, and the key
+  is allowed to be wrong.** The 2026-10-29 runs (`evals/baseline/pool-2026-10-29.md`)
+  showed two scorer or key faults: decoy D5 matched any "on curve" wording, so a
+  correct record about `eddsa.Verify` not checking `Sig.R` (verified against gnark
+  v0.14.0 source and a PoC) scored as a false positive, and a dependency record that
+  cites a file as a related location could outrank the record on the item. D5 now
+  means signature malleability only; the key gained other-observations O4 (eddsa `R`
+  and `A` not checked on the curve) and O5 (`Pool`'s `IVerifier` ABI does not match
+  the verifier gnark exports); within a tier the scorer prefers the record whose own
+  location is on the item. A key corrected after seeing the runs favours those runs;
+  the baseline file says so, and re-scores the 2026-10-27 run with the same key.
+- **A rejected record does not count as a found item.** The key expects a lead,
+  info or hardening note for P8 (Go branch on a witness). A run that reports only a
+  correctly reasoned `rejected` record scores it missed. This is deliberate and
+  recorded in the baseline; a lenient reading would add one item to that run.
 
 ## Knowledge base
 

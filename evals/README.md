@@ -88,3 +88,26 @@ matches every record and hardening note to the key:
   PoC rate (confirmed circuit records with a demonstrated PoC), cost, time.
 
 `evals/score summarize <score.json>...` aggregates runs per case.
+
+**Check every outcome by hand.** The scorer is regex and location matching; the key
+is a human's reading of the fixture. Read each record behind each outcome before
+trusting a figure. The 2026-10-29 runs found a decoy whose pattern was too wide and
+two true observations the key did not list; the fixes are in `key.json` and
+`answer-key.md`, with a scorer test for the tie-break. A rejected record does not
+count as a found item (the key asks for a lead, info or hardening note).
+
+## Recorded runs
+
+`baseline/` holds one markdown file per measurement session and the
+`findings.json` of each run. Scores below use the key as of the 2026-10-29
+measurement; the first run was re-scored with it.
+
+| Date | Case, profile | Revision | Recall | False positives | Cost (USD) | Time (min) | Record |
+|---|---|---|---|---|---|---|---|
+| 2026-10-27 | pool, quick `--no-poc` | `f5a730f` | 12 / 14 (86 %) | 0 | about 10.7 | 9.3 | [`pool-quick.md`](baseline/pool-quick.md) (history) |
+| 2026-10-29 | pool, quick `--no-poc` | `e198ed7` | 12 / 14 (86 %) | 0 | 9.16 | 10.7 | [`pool-2026-10-29.md`](baseline/pool-2026-10-29.md) (current) |
+| 2026-10-29 | pool, standard | `e198ed7` | 12 / 14 (86 %) | 0 | 26.09 | 22.8 | same file |
+| 2026-10-29 | pool, deep | `e198ed7` | 13 / 14 (93 %; 12 found, 2 partial) | 0 | 25.64 | 21.8 | same file |
+
+One run per row; no variance estimate. Deep ran one of its three passes (see the
+baseline file).

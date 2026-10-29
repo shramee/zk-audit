@@ -1,8 +1,13 @@
-# Baseline — pool fixture, quick profile
+# Baseline — pool fixture, quick profile (2026-10-27, history)
+
+> **Superseded.** The current baseline is
+> [`pool-2026-10-29.md`](pool-2026-10-29.md): quick, standard and deep, measured
+> after the priming fix at `e198ed7`. Its quick re-run scores the same as this
+> file (12 / 14 = 86 %). This file is kept as history and is not edited further.
 
 First end-to-end run of the skill (M3 baseline). Scored against
-`evals/pool/answer-key.md`. The run's `findings.json` is kept next to this
-file as `pool-quick.findings.json`.
+`evals/pool/answer-key.md` (now `evals/fixtures/pool/answer-key.md`). The run's
+`findings.json` is kept next to this file as `pool-quick.findings.json`.
 
 ## Run
 

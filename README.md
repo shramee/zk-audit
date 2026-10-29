@@ -11,8 +11,8 @@ replay, VK drift, proof malleability). It proves what it can with a witness or a
 Go / Foundry test, and it records what it actually examined.
 
 > Status: early. The inventory tool, schemas, validators, report assembler and
-> knowledge base work today; the agent orchestration has one recorded blind
-> end-to-end run (quick profile on the pool fixture). See
+> knowledge base work today; the agent orchestration has recorded blind
+> end-to-end runs (quick, standard and deep on the pool fixture, 2026-10-29). See
 > [Current status](#current-status) and the project x-ray in
 > [`docs/x-ray/`](docs/x-ray/x-ray.md).
 
@@ -130,10 +130,10 @@ parties (admin, relayer, sequencer) behave.
 | Findings, ledger and stack schemas with validators | Implemented. |
 | Deterministic report assembler (`assemble`) | Implemented: validates its inputs, refuses forbidden clean claims, quotes code from the audited tree, counts coverage only from the ledger; golden tests. |
 | Knowledge base: 79 sourced vectors in 12 slices, advisory table, API footguns, judging, PoC templates | Written and linted. Four PoC templates were run against gnark v0.14.0. |
-| Skill, orchestration, lens files, commands, `poc-builder` and `refuter` agents | Written as prompts. One blind end-to-end run is recorded: quick profile on the pool fixture, recall 12 of 14 planted items, no false positives ([`evals/baseline/pool-quick.md`](plugins/zk-audit/evals/baseline/pool-quick.md)). |
+| Skill, orchestration, lens files, commands, `poc-builder` and `refuter` agents | Written as prompts. Blind end-to-end runs on the pool fixture, measured 2026-10-29 at `e198ed7` (one run per profile, so no variance estimate; [`evals/baseline/pool-2026-10-29.md`](evals/baseline/pool-2026-10-29.md)): quick recall **12 of 14** planted items (86 %, the same figure as on 2026-10-27), standard 12 of 14, deep 13 of 14 (two half credits); no false positives and no decoy confirmed in any run after the key was corrected. The trusted-party items (P13, P14) are still mostly missed. Deep's three-pass loop did not run: it stopped after one hunt and one targeted wave ([findings in the baseline](evals/baseline/pool-2026-10-29.md#three-pass-memory-deep)). The first run is kept as history in [`evals/baseline/pool-quick.md`](evals/baseline/pool-quick.md). |
 | Install routes | Claude Code plugin, or the skill folder copied alone into `~/.claude/skills/zk-audit`; both checked in [`docs/pashov-parity.md`](docs/pashov-parity.md), the second on every CI run. |
-| Eval harness | One fixture (`pool`) with an answer key, a sanitizer that strips hint comments, and executed eval PoCs in CI. No scored LLM runs in CI, no all-safe panel, no `case.yaml` suite yet. |
-| `diff` mode, `--loop` memory, coverage critics | Described in prompts; no tool support. |
+| Eval harness | One fixture (`pool`) with a machine-readable answer key and scorer (`evals/score`), a sanitizer that strips hint comments, executed eval PoCs in CI, and `evals/cases` for headless runs; recorded runs are in `evals/baseline/`. No scored LLM runs in CI, no all-safe panel. |
+| `diff` mode, `--loop` memory, coverage critics | Described in prompts; no tool support. Coverage critic and targeted wave ran in the 2026-10-29 standard and deep runs and added no record; `--loop` wrote `memory.json` but ran one pass of three. |
 | Regenerate-and-diff of `Verifier.sol` (deep profile) | Not automated. |
 | Semgrep rules, zkao bridge | Not started. |
 

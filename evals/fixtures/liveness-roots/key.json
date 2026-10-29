@@ -1,0 +1,48 @@
+{
+  "schema_version": "1",
+  "case": "liveness-roots",
+  "fixture": "liveness-roots",
+  "items": [
+    {
+      "id": "L1",
+      "class": "liveness",
+      "title": "Eight-root history window lets any depositor evict a pending proof's root",
+      "ranges": [
+        {
+          "file": "src/RootRing.sol",
+          "anchors": [
+            "uint32 public constant ROOT_HISTORY = 8;"
+          ]
+        },
+        {
+          "file": "src/RootRing.sol",
+          "anchors": [
+            "function deposit(uint256 commitment)",
+            "roots[currentRootIndex] = root;"
+          ]
+        },
+        {
+          "file": "src/RootRing.sol",
+          "anchors": [
+            "require(isKnownRoot(root), \"unknown root\");"
+          ]
+        }
+      ],
+      "match": "(?i)root.?history|stale|evict|window|ring|front.?run|grief|expire",
+      "expect": [
+        "confirmed",
+        "needs_validation"
+      ],
+      "partial": [
+        "lead",
+        "hardening"
+      ],
+      "severity": [
+        "low",
+        "medium"
+      ]
+    }
+  ],
+  "decoys": [],
+  "other": []
+}

@@ -5,7 +5,9 @@ Entry points: `/zk-audit:recon [path ...]` (plugin install) or
 current repository. `{skill}` is the directory that holds the skill's
 `SKILL.md`.
 
-Follow `{skill}/SKILL.md` Phase 0 and Phase 1 only. Do not spawn hunting
+Parse the arguments first:
+`{skill}/scripts/gnark-inventory args --repo <repo> --mode recon -- <arguments>`
+(its `scope` and `out` are the inputs). Then follow `{skill}/SKILL.md` Phase 0 and Phase 1 only. Do not spawn hunting
 agents and do not run PoCs.
 
 Print, in this order:

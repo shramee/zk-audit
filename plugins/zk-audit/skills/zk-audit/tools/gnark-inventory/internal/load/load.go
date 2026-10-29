@@ -17,6 +17,7 @@ import (
 	"golang.org/x/tools/go/packages"
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fsutil"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/gomod"
 )
 
 // Options control loading.
@@ -80,6 +81,14 @@ func Load(root string, opt Options) (*Program, error) {
 		}
 		for _, m := range mods {
 			prog.loadTyped(filepath.Dir(m.Abs), opt, seen)
+		}
+		if len(mods) == 0 {
+			// a package directory inside a module (a gnark std package in
+			// the module cache): load the packages under root with the
+			// enclosing module
+			if abs, _ := gomod.Enclosing(root); abs != "" {
+				prog.loadTyped(root, opt, seen)
+			}
 		}
 	}
 
@@ -244,29 +253,35 @@ func (prog *Program) loadTyped(dir string, opt Options, seen map[string]bool) {
 	}
 }
 
-// targetEnv prepares the go command environment for loading the target: it
-// drops any -mod flag inherited from the caller (the target decides between
-// its vendor directory and the module cache) and, unless network access is
-// allowed, sets GOPROXY=off so loading never downloads modules.
+// hardened are the go command settings for loading an untrusted target
+// (x-ray G-14): no cgo (go list would run the C toolchain on the target's
+// #cgo directives), no workspace file from a parent directory, no GOFLAGS
+// from the caller (-mod, -toolexec, -overlay), and no toolchain switch.
+var hardened = []string{"CGO_ENABLED=0", "GOWORK=off", "GOFLAGS="}
+
+// targetEnv prepares the go command environment for loading the target. It
+// overrides CGO_ENABLED, GOWORK and GOFLAGS (the target decides between its
+// vendor directory and the module cache), and, unless network access is
+// allowed, sets GOPROXY=off so loading never downloads modules and
+// GOTOOLCHAIN=local so it never downloads a toolchain. With network access
+// GOTOOLCHAIN is left to the caller, so a target that needs a newer Go can
+// still load.
 func targetEnv(environ []string, allowNetwork bool) []string {
+	drop := map[string]bool{"CGO_ENABLED": true, "GOWORK": true, "GOFLAGS": true}
+	if !allowNetwork {
+		drop["GOPROXY"] = true
+		drop["GOTOOLCHAIN"] = true
+	}
 	var env []string
 	for _, kv := range environ {
-		if strings.HasPrefix(kv, "GOFLAGS=") {
-			var keep []string
-			for _, f := range strings.Fields(strings.TrimPrefix(kv, "GOFLAGS=")) {
-				if !strings.HasPrefix(f, "-mod=") {
-					keep = append(keep, f)
-				}
-			}
-			kv = "GOFLAGS=" + strings.Join(keep, " ")
+		k, _, _ := strings.Cut(kv, "=")
+		if !drop[k] {
+			env = append(env, kv)
 		}
-		if !allowNetwork && strings.HasPrefix(kv, "GOPROXY=") {
-			continue
-		}
-		env = append(env, kv)
 	}
+	env = append(env, hardened...)
 	if !allowNetwork {
-		env = append(env, "GOPROXY=off")
+		env = append(env, "GOPROXY=off", "GOTOOLCHAIN=local")
 	}
 	return env
 }

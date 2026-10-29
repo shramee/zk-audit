@@ -8,6 +8,9 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/advisory"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 )
 
 const disclaimer = `> This review is a time-boxed, best-effort search for bugs by an automated
@@ -57,14 +60,18 @@ func locStr(l Location) string {
 	return fmt.Sprintf("%s:%d", l.File, l.Line)
 }
 
-// agentOrder sorts agent ids C*, I*, V-*, G*, A*, F*, then anything else.
+// agentOrder sorts agent ids C*, I*, T*, PR*, V-*, G*, A*, F*, then
+// anything else.
 func agentOrder(ids []string) []string {
 	group := func(s string) int {
-		switch {
-		case strings.HasPrefix(s, "V-"):
-			return 2
-		case len(s) == 2 && s[1] >= '0' && s[1] <= '9':
-			if i := strings.IndexByte("CIVGAF", s[0]); i >= 0 {
+		for i, p := range []string{"C", "I", "S", "T", "PR", "V-", "G", "A", "F"} {
+			if p == "V-" {
+				if strings.HasPrefix(s, p) {
+					return i
+				}
+				continue
+			}
+			if strings.HasPrefix(s, p) && len(s) > len(p) && s[len(p)] >= '0' && s[len(p)] <= '9' {
 				return i
 			}
 		}
@@ -107,7 +114,7 @@ func render(in *input) string {
 	w("Rendered by `gnark-inventory assemble` from `findings.json` and `coverage-ledger.json`. Coverage statements come only from the ledger.\n\n")
 
 	confirmed := in.byVerdict("confirmed")
-	needs := in.byVerdict("needs_validation")
+	needs := in.needsOpen()
 	leads := in.byVerdict("lead")
 	rejected := in.byVerdict("rejected")
 	sortRanked(confirmed)
@@ -118,7 +125,7 @@ func render(in *input) string {
 
 	w("## 3. Findings\n\n")
 	if len(confirmed) == 0 {
-		w("No confirmed findings in the examined units. Section 8 lists what was and was not examined.\n\n")
+		w("No confirmed findings in the examined units. Section %d lists what was and was not examined.\n\n", secCoverage)
 	} else {
 		w("| # | Title | Severity | Confidence | Evidence | Detected by |\n|---|---|---|---|---|---|\n")
 		for i, r := range confirmed {
@@ -154,11 +161,17 @@ func render(in *input) string {
 			w("- **%s** — %s · %s · detected by %s — %s Smells: %s. Unverified: %s\n",
 				inline(titleOf(r)), code(r.Location.Scope), code(locStr(r.Location)), strings.Join(agentOrder(r.DetectedBy), ", "),
 				endSentence(inline(r.Description)), inline(strings.Join(r.CodeSmells, "; ")), endSentence(inline(r.Unverified)))
+			if r.PoC != nil {
+				w("  PoC kept: %s\n", pocLine(r.PoC))
+			}
 		}
 		w("\n")
 	}
 
 	w("## 6. Needs validation\n\n")
+	if n := len(in.accepted()); n > 0 {
+		w("%s accepted in `zk-audit.md` %s listed in section %d, not here.\n\n", plural(n, "trusted-party risk"), map[bool]string{true: "is", false: "are"}[n == 1], secTrusted)
+	}
 	if len(needs) == 0 {
 		w("None.\n\n")
 	} else {
@@ -167,9 +180,17 @@ func render(in *input) string {
 			w("| **%s** · %s | %s | %d | %s | %s |\n", cell(titleOf(r)), cell(code(locStr(r.Location))), r.Severity, conf(r), cell(strings.Join(r.Blockers, "; ")), cell(r.ValidationPlan))
 		}
 		w("\n")
+		for _, r := range needs {
+			if r.PoC != nil {
+				w("- PoC kept for **%s**: %s\n", inline(titleOf(r)), pocLine(r.PoC))
+			}
+		}
 	}
 
-	w("## 7. Hardening notes\n\n")
+	in.writeTrusted(&b)
+	in.writePrivacy(&b)
+
+	w("## %d. Hardening notes\n\n", secHardening)
 	if len(in.f.Hardening) == 0 {
 		w("None recorded.\n\n")
 	} else {
@@ -187,6 +208,7 @@ func render(in *input) string {
 	}
 
 	in.writeCoverage(&b, len(rejected))
+	in.writeNotCovered(&b)
 	w("%s", disclaimer)
 	return b.String()
 }
@@ -200,7 +222,10 @@ func endSentence(s string) string {
 }
 
 func titleOf(r *Record) string {
-	if r.RunTag != "" {
+	switch {
+	case r.RunTag != "" && r.Seen != nil:
+		return fmt.Sprintf("%s [%s · seen in %d/%d passes]", r.Title, r.RunTag, r.Seen.Passes, r.Seen.Of)
+	case r.RunTag != "":
 		return r.Title + " [" + r.RunTag + "]"
 	}
 	return r.Title
@@ -219,6 +244,7 @@ func (in *input) writeScope(b *strings.Builder) {
 
 	var files []string
 	for _, u := range in.l.Units {
+		// candidate units were read too; they only lack a closed judgment
 		if u.Status == "covered" || u.Status == "candidate" {
 			files = append(files, u.ReviewedPaths...)
 		}
@@ -263,17 +289,20 @@ func (in *input) writeScope(b *strings.Builder) {
 		}
 		w("| Versions | %s |\n", cell(strings.Join(vs, " · ")))
 		if len(in.s.Gnark.Advisories) == 0 {
-			w("| Advisories | none matched the pinned gnark version |\n")
+			w("| Advisories | none matched the pinned gnark or gnark-crypto version%s |\n", asOf(in.s.Gnark.AdvisoryTableAsOf))
 		} else {
 			var as []string
 			for _, a := range in.s.Gnark.Advisories {
 				s := fmt.Sprintf("%s (%s, fixed %s", a.ID, a.Severity, a.Fixed)
+				if a.Package == advisory.GnarkCrypto {
+					s = fmt.Sprintf("%s (gnark-crypto %s, %s, affected %s", a.ID, a.Version, a.Severity, a.Affected())
+				}
 				if a.Status != "affected" {
 					s += ", " + strings.ReplaceAll(a.Status, "_", " ")
 				}
 				as = append(as, s+")")
 			}
-			w("| Advisories | %s |\n", cell(strings.Join(as, " · ")))
+			w("| Advisories | %s%s |\n", cell(strings.Join(as, " · ")), asOf(in.s.Gnark.AdvisoryTableAsOf))
 		}
 	}
 
@@ -300,11 +329,24 @@ func (in *input) writeScope(b *strings.Builder) {
 	for _, r := range in.f.Records {
 		agents = append(agents, r.DetectedBy...)
 	}
-	agents = agentOrder(uniq(agents))
+	var other []string
+	known := agents[:0]
+	for _, a := range uniq(agents) {
+		if profile.Load().AgentKnown(a) {
+			known = append(known, a)
+		} else {
+			other = append(other, a)
+		}
+	}
+	agents = agentOrder(known)
 	if len(agents) == 0 {
 		w("| Agents | none recorded |\n")
 	} else {
 		w("| Agents | %s |\n", cell(strings.Join(agents, ", ")))
+	}
+	if len(other) > 0 {
+		sort.Strings(other)
+		w("| Other sources | %s |\n", cell(strings.Join(other, ", ")))
 	}
 
 	oos := append([]string(nil), in.f.OutOfScope...)
@@ -315,7 +357,7 @@ func (in *input) writeScope(b *strings.Builder) {
 		}
 	}
 	if n > 0 {
-		oos = append(oos, plural(n, "ledger unit") + " marked out_of_scope (section 8)")
+		oos = append(oos, plural(n, "ledger unit")+fmt.Sprintf(" marked out_of_scope (section %d)", secCoverage))
 	}
 	if len(oos) == 0 {
 		w("| Out of scope | none recorded |\n\n")
@@ -347,13 +389,17 @@ func (in *input) writePosture(b *strings.Builder, confirmed, needs, leads, rejec
 		line += " (" + strings.Join(sev, ", ") + ")"
 	}
 	ex, app := in.examined()
-	line += fmt.Sprintf(" · %d needs validation · %s · %d rejected. Ledger: %d of %s examined.", len(needs), plural(len(leads), "lead"), len(rejected), ex, plural(app, "applicable unit"))
+	line += fmt.Sprintf(" · %d needs validation", len(needs))
+	if n := len(in.accepted()); n > 0 {
+		line += " · " + plural(n, "accepted risk")
+	}
+	line += fmt.Sprintf(" · %s · %d rejected. Ledger: %d of %s examined.", plural(len(leads), "lead"), len(rejected), ex, plural(app, "applicable unit"))
 	w("%s\n\n", line)
 	if len(confirmed) == 0 {
 		if in.f.NoFindings {
 			w("The run recorded no findings: %s\n\n", endSentence(inline(in.f.NoFindingsReason)))
 		}
-		w("The absence of confirmed findings does not mean the code is free of bugs. Only the units listed as examined in section 8 were reviewed.\n\n")
+		w("The absence of confirmed findings does not mean the code is free of bugs. Only the units listed as examined in section %d were reviewed.\n\n", secCoverage)
 	}
 }
 
@@ -364,6 +410,9 @@ func (in *input) writeDetail(b *strings.Builder, n int, r *Record) {
 		code(r.Location.Scope), code(locStr(r.Location)), r.Severity, conf(r), r.Evidence, strings.Join(agentOrder(r.DetectedBy), ", "))
 	if len(r.VectorIDs) > 0 {
 		meta += " · vectors " + strings.Join(r.VectorIDs, ", ")
+	}
+	if r.Calibration != "" {
+		meta += " · calibration " + r.Calibration
 	}
 	w("%s\n\n", meta)
 	if len(r.RelatedLocations) > 0 {
@@ -391,7 +440,7 @@ func (in *input) writeDetail(b *strings.Builder, n int, r *Record) {
 			inline(r.Gates.Executes), inline(r.Gates.Reachable), inline(r.Gates.Unprivileged), inline(r.Gates.Impact))
 	}
 	if r.PoC != nil {
-		w("**PoC.** %s — %s → %s.\n\n", code(r.PoC.Path), code(r.PoC.Command), strings.ReplaceAll(r.PoC.Result, "_", " "))
+		w("**PoC.** %s\n\n", pocLine(r.PoC))
 		if ex := strings.TrimRight(r.PoC.OutputExcerpt, "\n"); ex != "" {
 			lines := strings.Split(ex, "\n")
 			if len(lines) > maxQuote {
@@ -424,7 +473,18 @@ func (in *input) writeDetail(b *strings.Builder, n int, r *Record) {
 		if r.Refuter.By != "" {
 			by = " (by " + inline(r.Refuter.By) + ")"
 		}
-		w("**Refuter.** %s — %s%s\n\n", strings.ReplaceAll(r.Refuter.Verdict, "_", " "), endSentence(inline(r.Refuter.Reasoning)), by)
+		var split []string
+		if r.Refuter.Mechanism != "" {
+			split = append(split, "mechanism "+r.Refuter.Mechanism)
+		}
+		if r.Refuter.Impact != "" {
+			split = append(split, "impact "+r.Refuter.Impact)
+		}
+		verdict := strings.ReplaceAll(r.Refuter.Verdict, "_", " ")
+		if len(split) > 0 {
+			verdict += " (" + strings.Join(split, ", ") + ")"
+		}
+		w("**Refuter.** %s — %s%s\n\n", verdict, endSentence(inline(r.Refuter.Reasoning)), by)
 	} else {
 		w("**Refuter.** not run.\n\n")
 	}
@@ -448,14 +508,31 @@ func optionName(i int) string {
 	return fmt.Sprint(i + 1)
 }
 
-// open opens a repo-relative file of the audited tree; it refuses paths that
-// leave the tree.
+// open opens a repo-relative regular file of the audited tree. It refuses
+// absolute paths and paths with "..", resolves symlinks in both the root and
+// the file, and refuses a file whose real path leaves the real root (a
+// symlink in the repository pointing at ~/.ssh/id_rsa is never quoted).
 func (in *input) open(file string) (*os.File, bool) {
-	if in.repo == "" || file == "" || filepath.IsAbs(file) || strings.HasPrefix(filepath.Clean(file), "..") {
+	if in.repo == "" || file == "" || filepath.IsAbs(file) || strings.HasPrefix(filepath.Clean(filepath.FromSlash(file)), "..") {
 		return nil, false
 	}
-	f, err := os.Open(filepath.Join(in.repo, filepath.FromSlash(file)))
+	root, err := filepath.EvalSymlinks(in.repo)
 	if err != nil {
+		return nil, false
+	}
+	real, err := filepath.EvalSymlinks(filepath.Join(root, filepath.FromSlash(file)))
+	if err != nil {
+		return nil, false
+	}
+	if rel, err := filepath.Rel(root, real); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil, false
+	}
+	f, err := os.Open(real)
+	if err != nil {
+		return nil, false
+	}
+	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() {
+		f.Close()
 		return nil, false
 	}
 	return f, true
@@ -521,11 +598,11 @@ func (in *input) quote(l Location) (string, string, bool) {
 }
 
 var statuses = []string{"planned", "in_progress", "covered", "candidate", "deferred", "blocked", "not_applicable", "out_of_scope"}
-var kinds = []string{"circuit", "hint", "public-input", "contract-fn", "verifier", "prover", "dependency"}
+var kinds = []string{"circuit", "package", "gadget", "hint", "public-input", "contract-fn", "verifier", "role", "setup", "prover", "dependency"}
 
 func (in *input) writeCoverage(b *strings.Builder, rejected int) {
 	w := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
-	w("## 8. Coverage\n\n")
+	w("## %d. Coverage\n\n", secCoverage)
 	counts := map[string]map[string]int{}
 	total := map[string]int{}
 	for _, u := range in.l.Units {
@@ -558,18 +635,21 @@ func (in *input) writeCoverage(b *strings.Builder, rejected int) {
 	if app > 0 {
 		pct = ex * 100 / app
 	}
-	w("\nExamined (covered or candidate): %d of %d applicable units (%d%%).\n\n", ex, app, pct)
+	w("\nExamined (covered): %d of %d applicable units (%d%%).\n\n", ex, app, pct)
 
 	var open, skipped []Unit
 	for _, u := range in.l.Units {
 		switch u.Status {
-		case "planned", "in_progress", "deferred", "blocked":
+		case "planned", "in_progress", "candidate", "deferred", "blocked":
 			open = append(open, u)
 		case "not_applicable", "out_of_scope":
 			skipped = append(skipped, u)
 		}
 	}
 	reason := func(u Unit) string {
+		if u.Status == "candidate" && strings.TrimSpace(u.Reason) == "" {
+			return "raised " + strings.Join(u.ResultFingerprints, ", ") + "; not closed after judging"
+		}
 		if strings.TrimSpace(u.Reason) == "" {
 			return "no reason recorded"
 		}
@@ -591,6 +671,7 @@ func (in *input) writeCoverage(b *strings.Builder, rejected int) {
 		}
 		w("\n")
 	}
+	in.writeGadgets(b)
 	w("Rejected candidates: %d (kept in `findings.json` so a later run does not raise them again).\n\n", rejected)
 	if c := in.f.Companions; c == nil {
 		w("Companions: not recorded.\n\n")
@@ -618,4 +699,22 @@ func (in *input) writeCoverage(b *strings.Builder, rejected int) {
 			w("\n")
 		}
 	}
+}
+
+// pocLine describes a PoC: file, command, result, and which property it
+// breaks.
+func pocLine(p *PoC) string {
+	res := strings.ReplaceAll(p.Result, "_", " ")
+	if p.Demonstrates != "" {
+		res += " (" + p.Demonstrates + ")"
+	}
+	return fmt.Sprintf("%s — %s → %s.", code(p.Path), code(p.Command), res)
+}
+
+// asOf is the advisory table date suffix of the report's Advisories row.
+func asOf(date string) string {
+	if date == "" {
+		return ""
+	}
+	return " (advisory table as of " + date + ")"
 }

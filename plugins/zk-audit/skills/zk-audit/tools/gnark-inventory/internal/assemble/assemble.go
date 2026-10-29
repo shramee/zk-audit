@@ -6,6 +6,7 @@
 package assemble
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,6 +26,9 @@ import (
 // audited source tree used to quote constraint lines verbatim; when empty the
 // assembler uses stack.json's repo if that directory exists.
 type Options struct {
+	// Out is the audit output directory: when set, poc.path files must exist
+	// under <out>/pocs/ and covered units' agent outputs under <out>/agents/.
+	Out       string
 	Findings  string
 	Ledger    string
 	Stack     string
@@ -37,6 +41,12 @@ type Result struct {
 	Report   string
 	Warnings []string
 	Summary  string
+	// Repo is the audited tree the quotes came from ("" when unknown).
+	Repo string
+	// RunID is findings.json's run_id.
+	RunID string
+	// Manifest is pocs/MANIFEST.json (nil when there are no PoCs).
+	Manifest []byte
 }
 
 // InvalidError reports input that failed validation. The caller must not
@@ -70,7 +80,7 @@ func Assemble(opt Options) (*Result, error) {
 			problems = append(problems, fmt.Sprintf("%s: %v", kind, err))
 			return nil
 		}
-		rep, err := validate.Document(kind, b)
+		rep, err := validate.DocumentWith(kind, b, validate.Options{Out: opt.Out})
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("%s %s: %v", kind, p, err))
 			return nil
@@ -132,7 +142,11 @@ func Assemble(opt Options) (*Result, error) {
 	}
 	warnings = append(warnings, crossCheck(in)...)
 	r := render(in)
-	return &Result{Report: r, Warnings: warnings, Summary: in.summary()}, nil
+	man, err := manifest(in, opt.Out)
+	if err != nil {
+		return nil, err
+	}
+	return &Result{Report: r, Warnings: warnings, Summary: in.summary(), Repo: in.repo, RunID: in.f.RunID, Manifest: man}, nil
 }
 
 type input struct {
@@ -159,7 +173,14 @@ func checkClaims(f *Findings) []string {
 		chk(fmt.Sprintf("hardening[%d]", i), h.Title+" "+h.Detail)
 	}
 	for i, r := range f.Records {
-		chk(fmt.Sprintf("records[%d] (%s)", i, r.Fingerprint), strings.Join([]string{r.Title, r.Description, r.Impact, r.Unverified, r.ValidationPlan}, " "))
+		text := []string{r.Title, r.Description, r.Impact, r.Unverified, r.ValidationPlan}
+		if t := r.Trust; t != nil {
+			text = append(text, t.Party, t.Power, t.Assumption, t.Mitigation)
+		}
+		chk(fmt.Sprintf("records[%d] (%s)", i, r.Fingerprint), strings.Join(text, " "))
+	}
+	for i, a := range f.AcceptedRisks {
+		chk(fmt.Sprintf("accepted_risks[%d]", i), a.Party+" "+a.Risk)
 	}
 	return out
 }
@@ -206,8 +227,11 @@ func crossCheck(in *input) []string {
 				w = append(w, fmt.Sprintf("ledger unit %s lists fingerprint %q that is not in findings.json", u.ID, fp))
 			}
 		}
-		if u.Status == "planned" || u.Status == "in_progress" {
+		switch u.Status {
+		case "planned", "in_progress":
 			w = append(w, fmt.Sprintf("ledger unit %s is still %s; the report lists it as not examined", u.ID, u.Status))
+		case "candidate":
+			w = append(w, fmt.Sprintf("ledger unit %s is still candidate; after judging mark it covered (with its result_fingerprints) or blocked; the report counts it as not examined", u.ID))
 		}
 	}
 	return w
@@ -256,13 +280,14 @@ func (in *input) summary() string {
 		len(in.byVerdict("confirmed")), len(in.byVerdict("needs_validation")), len(in.byVerdict("lead")), len(in.byVerdict("rejected")), ex, app)
 }
 
-// examined counts covered or candidate units, and units that apply (all
-// minus not_applicable and out_of_scope).
+// examined counts covered units, and units that apply (all minus
+// not_applicable and out_of_scope). A candidate unit (an agent raised
+// something, judging has not closed it) is not examined coverage.
 func (in *input) examined() (int, int) {
 	ex, app := 0, 0
 	for _, u := range in.l.Units {
 		switch u.Status {
-		case "covered", "candidate":
+		case "covered":
 			ex++
 			app++
 		case "not_applicable", "out_of_scope":
@@ -279,4 +304,85 @@ func repoName(r string) string {
 		return "?"
 	}
 	return path.Base(r)
+}
+
+// manifestEntry is one file of pocs/MANIFEST.json.
+type manifestEntry struct {
+	File         string `json:"file"`
+	SHA256       string `json:"sha256,omitempty"`
+	Fingerprint  string `json:"fingerprint,omitempty"`
+	Verdict      string `json:"verdict,omitempty"`
+	Result       string `json:"result,omitempty"`
+	Demonstrates string `json:"demonstrates,omitempty"`
+	Package      string `json:"package,omitempty"`
+	Command      string `json:"command,omitempty"`
+	Missing      bool   `json:"missing,omitempty"`
+}
+
+// manifest lists every PoC file under <out>/pocs/ with its hash and the
+// record it belongs to, and every record PoC whose file is missing, so a PoC
+// can be re-run after the worktree is gone. Deterministic: sorted by file.
+func manifest(in *input, out string) ([]byte, error) {
+	if out == "" {
+		return nil, nil
+	}
+	byFile := map[string]*manifestEntry{}
+	for _, r := range in.f.Records {
+		if r.PoC == nil {
+			continue
+		}
+		rel, ok := validate.PoCPath(out, r.PoC.Path)
+		if !ok {
+			continue
+		}
+		byFile[rel] = &manifestEntry{File: "pocs/" + rel, Fingerprint: r.Fingerprint, Verdict: r.Verdict, Result: r.PoC.Result,
+			Demonstrates: r.PoC.Demonstrates, Package: r.PoC.Package, Command: r.PoC.Command, Missing: true}
+	}
+	root := filepath.Join(out, "pocs")
+	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil || !d.Type().IsRegular() {
+			return nil
+		}
+		rel, _ := filepath.Rel(root, p)
+		rel = filepath.ToSlash(rel)
+		if rel == "MANIFEST.json" {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return nil
+		}
+		e := byFile[rel]
+		if e == nil {
+			e = &manifestEntry{File: "pocs/" + rel}
+			byFile[rel] = e
+		}
+		e.Missing = false
+		e.SHA256 = fmt.Sprintf("%x", sha256.Sum256(b))
+		return nil
+	})
+	if len(byFile) == 0 {
+		return nil, nil
+	}
+	var files []string
+	for f := range byFile {
+		files = append(files, f)
+	}
+	sort.Strings(files)
+	doc := struct {
+		SchemaVersion string           `json:"schema_version"`
+		RunID         string           `json:"run_id"`
+		Commit        string           `json:"commit,omitempty"`
+		Rerun         string           `json:"rerun"`
+		PoCs          []*manifestEntry `json:"pocs"`
+	}{SchemaVersion: "1", RunID: in.f.RunID, Commit: in.f.Commit,
+		Rerun: "git -C <repo> worktree add --detach <worktree> <commit>; copy the file into <worktree>/<package>/; run the command through {skill}/scripts/sandbox --rw <worktree> --ro <repo> with <worktree> in place of the recorded worktree path"}
+	for _, f := range files {
+		doc.PoCs = append(doc.PoCs, byFile[f])
+	}
+	b, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
 }

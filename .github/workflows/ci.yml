@@ -21,37 +21,51 @@ jobs:
         with:
           go-version: "1.24"
           cache: false
+      - name: Install bubblewrap for the PoC and recon sandbox
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          bwrap --ro-bind / / --unshare-net --unshare-pid true
       - name: Offline checks (vet, unit tests, knowledge-base lint, standalone skill install)
         env:
           GOFLAGS: -mod=vendor
           GOPROXY: "off"
+          ZK_AUDIT_REQUIRE_SANDBOX: "1"
         run: make check
       - name: Typed-mode tests against gnark v0.14.0 fixtures
         run: make test-types
-      - name: Eval PoCs on sanitized copies of every fixture (Go)
+      - name: Install Foundry for the Foundry eval PoCs
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - name: Eval PoCs on sanitized copies of every fixture (Go and Foundry, sandboxed)
         run: make eval-pocs
 
-  foundry-pocs:
-    # The integration fixtures' Foundry PoCs. Kept in a separate, clearly named
-    # job so the Go pipeline stays independent of the Solidity toolchain.
+  versions:
+    # Version support matrix (references/gnark-versions.md): the PoC
+    # templates, the per-gadget harness, a Foundry test against the exported
+    # Groth16 verifier and the inventory on three gnark releases. Downloads
+    # gnark and, for v0.16.4, Go 1.26.8 (GOTOOLCHAIN=auto); the template runs
+    # themselves are offline (GOPROXY=off).
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gnark: [v0.10.0, v0.14.0, v0.16.4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
           cache: false
-      - name: Install Foundry (pinned)
+      - name: Install Foundry for the exported-verifier check
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: stable
-      - name: Install the pinned solc (solc_version in the fixtures' foundry.toml)
-        run: |
-          d="$(mktemp -d)"; mkdir -p "$d/src"
-          printf 'pragma solidity 0.8.35;\ncontract Probe {}\n' > "$d/src/Probe.sol"
-          (cd "$d" && forge build --use 0.8.35)
-      - name: Foundry PoCs on sanitized copies of the integration fixtures (offline)
-        run: evals/run-foundry-pocs all "$(mktemp -d)"
+          version: v1.7.1
+      - name: Version matrix for gnark ${{ matrix.gnark }}
+        run: test/versions/run --foundry --check --out "$RUNNER_TEMP/versions" ${{ matrix.gnark }}
 
   ci-smoke:
     # One tiny scored audit behind a budget cap. Runs on push to main, on the

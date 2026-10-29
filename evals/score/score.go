@@ -100,7 +100,17 @@ func (it *Item) matches(e entry) bool {
 	if it.re != nil && !it.re.MatchString(text) {
 		return false
 	}
-	for _, l := range e.locs {
+	return it.touches(e.locs)
+}
+
+// primary reports whether the entry's own location, not a related one, is
+// inside the item.
+func (it *Item) primary(e entry) bool {
+	return len(e.locs) > 0 && it.touches(e.locs[:1])
+}
+
+func (it *Item) touches(locs []Location) bool {
+	for _, l := range locs {
 		end := l.EndLine
 		if end < l.Line {
 			end = l.Line
@@ -179,7 +189,20 @@ func score(k *Key, es []entry) *Result {
 			case contains(it.Partial, e.class):
 				tier = 1
 			}
-			if bestIdx < 0 || tier > bestTier || (tier == bestTier && rank[e.class] > rank[es[bestIdx].class]) {
+			// Within a tier the record that sits on the item itself wins over
+			// one that only lists it as a related location (a dependency
+			// record that cites the file); then the stronger verdict.
+			better := bestIdx < 0 || tier > bestTier
+			if !better && tier == bestTier {
+				b := es[bestIdx]
+				switch {
+				case it.primary(e) != it.primary(b):
+					better = it.primary(e)
+				default:
+					better = rank[e.class] > rank[b.class]
+				}
+			}
+			if better {
 				bestIdx, bestTier = i, tier
 			}
 		}

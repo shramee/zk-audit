@@ -1,7 +1,7 @@
 SKILL := plugins/zk-audit/skills/zk-audit
 TOOL := $(SKILL)/tools/gnark-inventory
 
-.PHONY: check vet test test-types fixtures lint-kb standalone sync-schemas sync-agents vendor eval-pocs eval-foundry-pocs eval-score eval-audit
+.PHONY: check vet test test-types fixtures lint-kb standalone sync-schemas sync-agents sync-profiles vendor eval-pocs eval-score eval-audit
 
 ## check: everything CI runs (offline)
 check: vet test lint-kb standalone eval-score
@@ -31,7 +31,7 @@ fixtures:
 	done; [ $$fail -eq 0 ]
 
 test-types: fixtures
-	cd $(TOOL) && ZK_INVENTORY_REQUIRE_TYPES=1 go test -count=1 ./internal/inventory/
+	cd $(TOOL) && ZK_INVENTORY_REQUIRE_TYPES=1 go test -count=1 ./internal/inventory/ ./internal/verifier/
 
 lint-kb:
 	cd $(TOOL) && go run . lint-kb ../..
@@ -41,15 +41,15 @@ lint-kb:
 standalone:
 	test/standalone-skill.sh
 
-## eval-pocs: run every fixture's Go eval PoCs in sanitized scratch copies
-## (network for the fixture modules, like test-types)
+## eval-pocs: run every fixture's eval PoCs (Go, and Foundry for the integration
+## fixtures) in sanitized scratch copies, inside the skill's sandbox and
+## offline. Go fixtures run directly (the gnark-inventory harness wrappers of
+## lib-gadgets included); the Foundry ones (liveness-roots, sol-gnark-abi, and
+## the mock-verifier integration fixtures) need forge. Missing modules (testify
+## for gnark/test) and the pinned solc are fetched first, outside the sandbox,
+## by `go list` and a compile-only `forge build`
 eval-pocs: fixtures
 	EVAL_GOPROXY="$$(go env GOPROXY)" evals/run-pocs all "$$(mktemp -d)"
-
-## eval-foundry-pocs: run every integration fixture's Foundry PoCs in sanitized
-## scratch copies (needs forge; no forge-std, mock verifiers only)
-eval-foundry-pocs:
-	evals/run-foundry-pocs all "$$(mktemp -d)"
 
 ## sync-schemas: copy the canonical schemas into the tool's embed directory
 sync-schemas:
@@ -58,6 +58,11 @@ sync-schemas:
 ## sync-agents: copy the skill's agent briefs (canonical) to the plugin's agents/
 sync-agents:
 	cp $(SKILL)/agents/*.md plugins/zk-audit/agents/
+
+## sync-profiles: regenerate the profile and agent tables in SKILL.md and
+## references/orchestration.md from the tool's profiles.json
+sync-profiles:
+	cd $(TOOL) && go run . profiles --sync-docs ../..
 
 vendor:
 	cd $(TOOL) && go mod tidy && go mod vendor

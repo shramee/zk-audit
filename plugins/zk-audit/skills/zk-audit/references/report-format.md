@@ -18,18 +18,46 @@ Where each part comes from:
 | Report part | Source |
 |---|---|
 | Scope: profile, run, commit, companions, out of scope | `findings.json` top-level fields |
-| Scope: files reviewed, agents | ledger `reviewed_paths` and `agent_ids` of covered or candidate units, plus `detected_by` |
+| Scope: files reviewed, agents | ledger `reviewed_paths` and `agent_ids` of covered or candidate units, plus `detected_by`; ids that are no lens or critic go to an "Other sources" row |
 | Scope: stack, versions, advisories | `stack.json` |
 | Posture | `findings.json` `posture` (written by the orchestrator), then computed totals |
 | Findings, details, leads, needs validation | `records`, by verdict |
 | Constraint / code quote | the lines `location.line`–`end_line` of `<repo>/<file>`, verbatim, at most 30 |
+| Trusted parties | records with a `trust` object (accepted risks among them), `findings.json` `accepted_risks`, ledger units of class `trusted-party` |
+| Privacy | records with `property: privacy`, a `V-PR*` vector or `trust.breaks` privacy; ledger units of class `privacy` |
 | Hardening notes | `findings.json` `hardening` |
-| Coverage | ledger statuses only; load mode from `inventory.json` |
+| Coverage | ledger statuses only (examined = `covered`); load mode from `inventory.json` |
+| Coverage: gadget contracts (library mode) | `inventory.json` `gadgets` (doc promises, preconditions, doc checks) and each gadget's `doc-contract` ledger unit with the records it names |
+| Not covered | fixed text, then the lenses outside the profile (`profiles.json`), the ledger units not examined and the missing companions |
+| PoC lines, `pocs/MANIFEST.json` | `poc` objects of every verdict, and the files in `<out>/pocs/` |
 
 The assembler rejects the claims listed under Language in any free-text field.
 
-Path: `~/.zk-audit/<repo>/<run-id>/REPORT.md`. With `--file-output`, the same
-file is also written to `<repo>/zk-audit-report-<run-id>.md`.
+## Evidence checks
+
+`validate findings|ledger FILE --out <out>` and `assemble --out <out>` check
+the records against the files in `<out>`. Errors stop the report (exit 1);
+warnings print and the report is written.
+
+| Check | Error | Warning |
+|---|---|---|
+| `evidence: POC` | no `poc`, `result` not `demonstrated`, or `demonstrated_on_model` (model PoCs keep `ANALYSIS`) | – |
+| `poc.path` | outside `<out>/pocs/`, or missing for a demonstrated PoC or `evidence: POC` | missing for `not_run`, `not_demonstrated`, `does_not_compile` |
+| `poc.demonstrates` | – | absent on a demonstrated PoC |
+| `evidence: ANALYSIS` with `result: demonstrated` | – | use `POC`, or `demonstrated_on_model` |
+| file in `<out>/pocs/` no record names | – | attach it to its (possibly demoted) record |
+| `covered` / `candidate` unit agent | no `<out>/agents/<ID>.md` (`C1@pkg/x` → `C1__pkg_x.md`) | id is no lens or critic in the profiles |
+| `covered` unit `reviewed_paths` | absolute or `..` path, or none is the unit's own file (or a directory holding it) | – |
+| unit still `planned`, `in_progress` or `candidate` | – | listed as not examined |
+
+Without `--out`, the file checks are skipped; the path checks still run.
+Errors are claims the run cannot back with a file; warnings are gaps a human
+should see but that do not make the report false.
+
+Path: `~/.zk-audit/<repo>/<run-id>/REPORT.md`. With `--file-output` (pass
+`assemble --file-output`), the same file is also written to
+`<repo>/zk-audit-report-<run-id>.md`, the only file the tool ever writes into
+the repository; `--out` or `--report` inside it is refused (exit 2).
 
 ## Language
 
@@ -69,7 +97,7 @@ and the single most important action. No marketing.>
 Totals: 1 confirmed (1 high) · 0 needs validation · 2 leads · 1 rejected. Ledger: 14 of 20 applicable units examined.
 
 (With no confirmed finding, the assembler adds that this does not mean the code
-is free of bugs and points to section 8.)
+is free of bugs and points to section 10.)
 
 ## 3. Findings
 
@@ -81,7 +109,7 @@ is free of bugs and points to section 8.)
 
 ### 1. <Title>
 
-`TallyCircuit.Define` · `tally/circuit.go:40-44` · severity **high** · confidence 90 · evidence **POC** · detected by C1, V-hints · vectors V-H3
+`TallyCircuit.Define` · `tally/circuit.go:40-44` · severity **high** · confidence 90 · evidence **POC** · detected by C1, V-hints · vectors V-H3 · calibration SC-FORGE-ANY
 
 **Description.** <one sentence from the record>
 
@@ -99,7 +127,7 @@ Also at: `Ballot.cast` `contracts/Ballot.sol:31`     (related_locations, if any)
 
 **Impact.** <impact>
 
-**PoC.** `pocs/<file>` — `go test -run PoC_1 ./circuit` → demonstrated.
+**PoC.** `pocs/<file>` — `go test -run PoC_1 ./circuit` → demonstrated (soundness).
 
 **Fix.** <fix summary>
 
@@ -111,7 +139,7 @@ Option A — <label>
 
 **Chain.** `<fingerprint>` → …     (if chain)
 
-**Refuter.** exploitable — <one paragraph> (by fp-check)
+**Refuter.** exploitable (mechanism holds, impact holds) — <one paragraph> (by fp-check)
 
 ## 5. Leads
 
@@ -124,23 +152,53 @@ Trails worth manual work. No severity, no fix.
 | Item | Severity | Confidence | Blockers | How to validate |
 |---|---|---|---|---|
 
-## 7. Hardening notes
+## 7. Trusted parties
+
+| Party | Power | Breaks | Assumption | Status | Severity | Where |
+|---|---|---|---|---|---|---|
+| owner of Ballot (owner) | replaces the verifier | soundness, funds | the owner never installs an unaudited verifier | needs validation | high | Owner swaps the verifier `contracts/Ballot.sol:12-15` |
+
+Accepted in `zk-audit.md` without a record: (accepted_risks, if any)
+
+Trusted-party units examined: X of Y.
+
+## 8. Privacy
+
+| Item | Verdict | Severity | Where | Detected by |
+|---|---|---|---|---|
+
+Privacy units examined: X of Y. (Or: the privacy lens is not part of the profile.)
+
+## 9. Hardening notes
 
 Optional, short: hygiene that is not a vulnerability (stale verifier file in the
 repo, no public-input-order test, `api.Println` in a circuit).
 
-## 8. Coverage
+## 10. Coverage
 
 | Kind | Units | planned | in progress | covered | candidate | deferred | blocked | not applicable | out of scope |
 |---|---|---|---|---|---|---|---|---|---|
 
-Examined (covered or candidate): X of Y applicable units (Z%).
+Examined (covered): X of Y applicable units (Z%).
 
-- Units not examined, with status and reason (copied from the ledger).
+- Units not examined, with status and reason (copied from the ledger). A
+  `candidate` unit is not examined coverage: judging must close it as
+  `covered` (keeping its `result_fingerprints`) or `blocked`.
 - Units not applicable or out of scope, with reasons.
 - Rejected candidates: N (kept in `findings.json`).
 - Companions not available.
 - Load mode of the inventory (`types` / `syntax` / `mixed`) and its errors.
+
+## 11. Not covered
+
+This review never examines: gnark itself beyond advisories and gadget
+preconditions; other frameworks natively; cryptographic assumptions and
+ceremony transcripts; deployed state and infrastructure outside the
+repository; economic, governance and MEV attacks beyond the vectors; formal
+verification. (Fixed text, the same in every report.)
+
+In this run: the lenses outside the profile, the ledger units not examined
+(count), the companions not available.
 
 > This review is a time-boxed, best-effort search for bugs by an automated
 > agent. It is not a guarantee of security. Absence of a finding is not
@@ -156,6 +214,12 @@ Examined (covered or candidate): X of Y applicable units (Z%).
   witness and impact, but no fix block unless one exists.
 - Keep a finding the refuter marked `not_exploitable` only if a gate still
   passed. The assembler then prints the gates next to the refuter's view.
-- KNOWN / NEW tags (`run_tag`, with `--loop`) go after the title: `[KNOWN]`.
-  The orchestrator prints `seen in k/N passes` itself.
+- KNOWN / NEW tags (`run_tag`) and `seen` are set by `gnark-inventory memory
+  merge` in loop mode, never by hand; the assembler prints them after the
+  title: `[KNOWN · seen in 2/3 passes]`.
 - The coverage section is mandatory, even with zero findings.
+- The trusted-parties, privacy and not-covered sections are always printed.
+  A record whose `trust.accepted` is true (`zk-audit.md` accepts the risk)
+  appears under Trusted parties as an accepted risk and not in the
+  needs-validation table; the posture totals count it separately. It is
+  never dropped.

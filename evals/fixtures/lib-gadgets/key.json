@@ -1,0 +1,186 @@
+{
+  "schema_version": "1",
+  "case": "lib-gadgets",
+  "fixture": "lib-gadgets",
+  "items": [
+    {
+      "id": "L1",
+      "class": "soundness",
+      "critical": true,
+      "title": "ToBits returns bits that are never constrained to be boolean",
+      "ranges": [
+        {
+          "file": "gadgets/bits.go",
+          "anchors": [
+            "func ToBits(",
+            "recompose(api, out, v)"
+          ]
+        }
+      ],
+      "match": "(?i)tobits|boolean|bits?hint|recompos|non-boolean",
+      "expect": [
+        "confirmed"
+      ],
+      "partial": [
+        "needs_validation",
+        "lead"
+      ],
+      "severity": [
+        "high",
+        "critical"
+      ]
+    },
+    {
+      "id": "L2",
+      "class": "soundness",
+      "critical": true,
+      "title": "DivMod never constrains r < b",
+      "ranges": [
+        {
+          "file": "gadgets/arith.go",
+          "anchors": [
+            "func DivMod(",
+            "api.AssertIsEqual(a, api.Add(api.Mul(q, b), r))"
+          ]
+        }
+      ],
+      "match": "(?i)divmod|remainder|r ?< ?b|quotient",
+      "expect": [
+        "confirmed"
+      ],
+      "partial": [
+        "needs_validation",
+        "lead"
+      ],
+      "severity": [
+        "high",
+        "critical",
+        "medium"
+      ]
+    },
+    {
+      "id": "L3",
+      "class": "soundness",
+      "title": "Canonical uses Reduce, so the result is not below p",
+      "ranges": [
+        {
+          "file": "gadgets/field.go",
+          "anchors": [
+            "func Canonical[",
+            "return f.Reduce(x)"
+          ]
+        }
+      ],
+      "match": "(?i)canonical|reducestrict|reduce|modulus|< ?p",
+      "expect": [
+        "confirmed"
+      ],
+      "partial": [
+        "needs_validation",
+        "lead"
+      ],
+      "severity": [
+        "medium",
+        "high",
+        "low"
+      ]
+    },
+    {
+      "id": "L4",
+      "class": "soundness",
+      "title": "Mux3 accepts sel = 3 without a documented precondition",
+      "ranges": [
+        {
+          "file": "gadgets/bits.go",
+          "anchors": [
+            "func Mux3(",
+            "return api.Lookup2("
+          ]
+        }
+      ],
+      "match": "(?i)mux3|sel(ector)?|lookup2|precondition|domain",
+      "expect": [
+        "confirmed",
+        "lead",
+        "needs_validation",
+        "hardening"
+      ],
+      "severity": [
+        "low",
+        "info",
+        "medium"
+      ]
+    }
+  ],
+  "decoys": [
+    {
+      "id": "D1",
+      "title": "IsLess wrong for in-range inputs",
+      "ranges": [
+        {
+          "file": "gadgets/arith.go",
+          "anchors": [
+            "func IsLess(",
+            "return api.Sub(1, bs[64])"
+          ]
+        }
+      ],
+      "match": "(?i)isless|comparison|less"
+    },
+    {
+      "id": "D2",
+      "title": "AssertRange accepts out-of-range values",
+      "ranges": [
+        {
+          "file": "gadgets/bits.go",
+          "anchors": [
+            "func AssertRange(",
+            "bits.ToBinary(api, v, bits.WithNbDigits(nbBits))"
+          ]
+        }
+      ],
+      "match": "(?i)assertrange|range"
+    },
+    {
+      "id": "D3",
+      "title": "Accumulator.Add does not check v is boolean (documented precondition)",
+      "ranges": [
+        {
+          "file": "gadgets/accumulator.go",
+          "anchors": [
+            "func (a *Accumulator) Add(",
+            "a.sum = a.api.Add(a.sum, v)"
+          ]
+        }
+      ],
+      "match": "(?i)accumulator|add|boolean|flag"
+    }
+  ],
+  "other": [
+    {
+      "id": "O1",
+      "title": "gnark v0.14.0 and gnark-crypto v0.19.0 advisories",
+      "ranges": [
+        {
+          "file": "go.mod",
+          "anchors": []
+        }
+      ],
+      "match": "(?i)GHSA|advisor|CVE|v0\\.14|v0\\.19"
+    },
+    {
+      "id": "O2",
+      "title": "DivMod with b = 0 (documented precondition)",
+      "ranges": [
+        {
+          "file": "gadgets/arith.go",
+          "anchors": [
+            "func DivMod(",
+            "return q, r"
+          ]
+        }
+      ],
+      "match": "(?i)zero|b ?= ?0|division by"
+    }
+  ]
+}

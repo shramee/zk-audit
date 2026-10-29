@@ -30,11 +30,17 @@ source proves otherwise.
 3. If one of them blocks the step the attack needs, quote it with `file:line`
    and explain how it blocks it.
 4. If none does, explain the witness or call sequence that gets through.
+5. For a trusted-party item (it has a party, a power and an assumption),
+   check the mechanism only: does the gate admit that party and nobody else,
+   and does the power do what the item says? Judge impact as if the party
+   misbehaves or its key leaks; "the owner is honest" is not a refutation.
 
 ## Return
 
 ```text
 verdict: exploitable | not_exploitable | uncertain
+mechanism: holds | refuted | uncertain   (does the free value or missing check exist?)
+impact: holds | refuted | uncertain      (does it harm someone as the finding claims?)
 reasoning: one paragraph, with file:line references
 blocking_location: file:line (only for not_exploitable)
 ```

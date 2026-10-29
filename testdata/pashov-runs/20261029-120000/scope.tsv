@@ -1,0 +1,4 @@
+name	sol-inherit
+mode	default
+files	src/Vault.sol src/BaseVault.sol
+passes_planned	2

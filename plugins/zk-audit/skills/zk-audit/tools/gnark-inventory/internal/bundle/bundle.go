@@ -13,59 +13,20 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/detect"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fsutil"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/inventory"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/memory"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/modcache"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 )
 
-// Agent is one hunting agent.
-type Agent struct {
-	ID    string
-	Lens  string // file under references/
-	Slice string // attack-vectors slice for vector-scan shards
-	Shard string // circuit, integration, prover, all
-	// Profiles that select this agent.
-	Profiles []string
-}
-
-var (
-	std  = []string{"standard", "deep"}
-	all  = []string{"quick", "standard", "deep"}
-	deep = []string{"deep"}
-)
-
-// Agents lists every agent of orchestration.md.
-var Agents = []Agent{
-	{"C1", "agents/C1-hint-soundness.md", "", "circuit", all},
-	{"C2", "agents/C2-range-decomposition.md", "", "circuit", std},
-	{"C3", "agents/C3-field-arithmetic.md", "", "circuit", std},
-	{"C4", "agents/C4-control-selector.md", "", "circuit", std},
-	{"C5", "agents/C5-crypto-gadgets.md", "", "circuit", std},
-	{"C6", "agents/C6-spec-invariant.md", "", "all", std},
-	{"I1", "agents/I1-public-input-binding.md", "", "integration", all},
-	{"I2", "agents/I2-verifier-contract.md", "", "integration", std},
-	{"I3", "agents/I3-protocol-state.md", "", "integration", std},
-	{"I4", "agents/I4-prover-service.md", "", "prover", std},
-	{"V-hints", "agents/vector-scan.md", "attack-vectors/hints.md", "circuit", all},
-	{"V-range", "agents/vector-scan.md", "attack-vectors/range-bits.md", "circuit", all},
-	{"V-field", "agents/vector-scan.md", "attack-vectors/field-arith.md", "circuit", all},
-	{"V-selector", "agents/vector-scan.md", "attack-vectors/selector-control.md", "circuit", all},
-	{"V-hash", "agents/vector-scan.md", "attack-vectors/hash-merkle.md", "circuit", all},
-	{"V-curves", "agents/vector-scan.md", "attack-vectors/curves-signatures.md", "circuit", all},
-	{"V-commit", "agents/vector-scan.md", "attack-vectors/commitments-recursion.md", "circuit", all},
-	{"V-generic", "agents/vector-scan.md", "attack-vectors/generic-zk.md", "circuit", all},
-	{"V-pubin", "agents/vector-scan.md", "attack-vectors/public-inputs.md", "integration", all},
-	{"V-verifier", "agents/vector-scan.md", "attack-vectors/verifier-contracts.md", "integration", all},
-	{"V-state", "agents/vector-scan.md", "attack-vectors/protocol-state.md", "integration", all},
-	{"V-prover", "agents/vector-scan.md", "attack-vectors/prover-service.md", "prover", all},
-	{"G1", "agents/G1-numerical-gap.md", "", "circuit", deep},
-	{"G2", "agents/G2-binding-gap.md", "", "all", all},
-	{"G3", "agents/G3-composition-gap.md", "", "circuit", deep},
-	{"A1", "agents/A1-asymmetry.md", "", "all", deep},
-	{"F1", "agents/F1-first-principles.md", "", "all", std},
-}
+// Agent is one hunting agent; the definitions live in profiles.json.
+type Agent = profile.Lens
 
 // Shard is a named set of repo-relative files.
 type Shard struct {
@@ -102,7 +63,18 @@ func Build(opt Options) ([]Result, error) {
 	if err := json.Unmarshal(b, &inv); err != nil {
 		return nil, fmt.Errorf("bundle: inventory.json: %w", err)
 	}
+	if inv.Repo != "" && fsutil.Inside(opt.Out, inv.Repo) {
+		return nil, fmt.Errorf("bundle: --out %s is inside the audited repository %s", opt.Out, inv.Repo)
+	}
 	binding, _ := os.ReadFile(filepath.Join(opt.Out, "binding-table.md"))
+	periph := peripheral(opt.Out)
+	regen := regenSummary(opt.Out)
+	known := ""
+	if m, ok, err := memory.Load(opt.Out); err != nil {
+		return nil, fmt.Errorf("bundle: %w", err)
+	} else if ok {
+		known = m.Known()
+	}
 	refs := filepath.Join(opt.Skill, "references")
 	read := func(rel string) (string, error) {
 		x, err := os.ReadFile(filepath.Join(refs, rel))
@@ -128,9 +100,16 @@ func Build(opt Options) ([]Result, error) {
 		return nil, err
 	}
 	var out []Result
-	for _, a := range Agents {
-		if !contains(a.Profiles, opt.Profile) {
+	if _, ok := profile.Load().Profile(opt.Profile); !ok {
+		return nil, fmt.Errorf("bundle: unknown profile %q (want one of %s)", opt.Profile, strings.Join(profile.Load().ProfileIDs(), ", "))
+	}
+	for _, a := range profile.Load().Lenses {
+		if !a.In(opt.Profile) {
 			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: "not in profile " + opt.Profile})
+			continue
+		}
+		if a.When != "" && !ConditionHolds(a.When, &inv) {
+			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: profile.Conditions[a.When]})
 			continue
 		}
 		targets := shardsOf(shards, a.Shard)
@@ -138,7 +117,7 @@ func Build(opt Options) ([]Result, error) {
 			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: "empty " + a.Shard + " shard"})
 			continue
 		}
-		lens, err := read(a.Lens)
+		lens, err := read(a.File)
 		if err != nil {
 			return nil, err
 		}
@@ -153,7 +132,7 @@ func Build(opt Options) ([]Result, error) {
 			if sh.Name != sh.Kind {
 				id = a.ID + "@" + sh.Name
 			}
-			md := render(&inv, a, id, sh, string(binding), sop, lens, slice, rules, opt.Profile)
+			md := render(&inv, a, id, sh, string(binding), periph, known, sop, lens, slice, rules, opt.Profile, regen)
 			p := filepath.Join(dir, safeName(id)+".md")
 			if err := os.WriteFile(p, []byte(md), 0o644); err != nil {
 				return nil, err
@@ -164,13 +143,56 @@ func Build(opt Options) ([]Result, error) {
 	return out, nil
 }
 
-func contains(xs []string, x string) bool {
-	for _, y := range xs {
-		if y == x {
-			return true
+// reGateway matches the interface or contract name of a verifier gateway
+// whose verifier is deployed elsewhere (SP1, RISC Zero).
+var reGateway = regexp.MustCompile(`(?i)sp1|risc ?zero|risc0`)
+
+// ConditionHolds evaluates a lens's `when` condition (profile.Conditions) on
+// an inventory. "non-gnark-verifier": a verifier in the repository that
+// gnark did not generate, or a verification call to an SP1 or RISC Zero
+// gateway.
+func ConditionHolds(name string, inv *inventory.Inventory) bool {
+	switch name {
+	case "non-gnark-verifier":
+		return len(CustomVerifiers(inv)) > 0
+	case "exported-gadgets":
+		for _, g := range inv.Gadgets {
+			if !g.InTest {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// CustomVerifiers lists the verifiers gnark did not generate (by contract
+// name), and the gateway interfaces verification calls go through.
+func CustomVerifiers(inv *inventory.Inventory) []string {
+	c := inv.Contracts
+	if c == nil {
+		return nil
+	}
+	var out []string
+	seen := map[string]bool{}
+	add := func(s string) {
+		if s != "" && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	for _, v := range c.NonGnarkVerifiers() {
+		add(v.Contract)
+	}
+	for _, vc := range c.VerifyCalls {
+		typ := vc.ReceiverType
+		if vc.Target != nil {
+			typ = vc.Target.Contract
+		}
+		if typ != "" && reGateway.MatchString(typ) {
+			add(typ)
+		}
+	}
+	return out
 }
 
 func safeName(s string) string {
@@ -196,6 +218,12 @@ func Shards(inv *inventory.Inventory) ([]Shard, error) {
 	for _, c := range inv.Circuits {
 		if !c.InTest {
 			circuitDirs[path.Dir(c.Define.File)] = true
+		}
+	}
+	// packages of exported gadgets are circuit code too (library mode)
+	for _, g := range inv.Gadgets {
+		if !g.InTest {
+			circuitDirs[g.Package] = true
 		}
 	}
 	goFiles, err := fsutil.Walk(root, fsutil.HasExt(".go"))
@@ -318,11 +346,34 @@ func lineCount(abs string) int {
 	return n
 }
 
-func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, sop, lens, slice, rules, profile string) string {
+// regenSummary reads <out>/regen/diff.json, written by `verifier regen
+// --compare`, and returns its one-line summary, or "".
+func regenSummary(out string) string {
+	b, err := os.ReadFile(filepath.Join(out, "regen", "diff.json"))
+	if err != nil {
+		return ""
+	}
+	var d struct {
+		Summary string `json:"summary"`
+		Sides   []struct {
+			Name string `json:"name"`
+		} `json:"sides"`
+	}
+	if json.Unmarshal(b, &d) != nil || d.Summary == "" {
+		return ""
+	}
+	var names []string
+	for _, s := range d.Sides {
+		names = append(names, "`"+s.Name+"`")
+	}
+	return strings.Join(names, " vs ") + ": " + d.Summary + " (`regen/diff.json` in the audit output directory)"
+}
+
+func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, periph, known, sop, lens, slice, rules, profile, regen string) string {
 	var b strings.Builder
 	w := func(format string, x ...any) { fmt.Fprintf(&b, format, x...) }
 	w("# Bundle %s\n\n", id)
-	w("Agent id: `%s` · lens: `%s` · shard: `%s` · profile: `%s` · repository: `%s`\n\n", id, a.Lens, sh.Name, profile, inv.Repo)
+	w("Agent id: `%s` · lens: `%s` · shard: `%s` · profile: `%s` · repository: `%s`\n\n", id, a.File, sh.Name, profile, inv.Repo)
 	w("The repository is read-only for you (shared rules §1).\n\n")
 	w("## 1. Source shard\n\nRead every file below in full before writing anything. Paths are relative to the repository root.\n\n| File | Lines |\n|---|---|\n")
 	total := 0
@@ -332,7 +383,7 @@ func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, sop
 		w("| `%s` | %d |\n", f, n)
 	}
 	w("| **total** | %d |\n\n", total)
-	w("Peripheral code (read on demand, never edit): gnark std at the version pinned in `go.mod`, in the Go module cache (`go env GOMODCACHE`)/github.com/consensys/gnark@<version>/std; vendored libraries under `vendor/` or Foundry `lib/`.\n\n")
+	w("%s\n\n", periph)
 	if strings.TrimSpace(binding) != "" && sh.Kind != "prover" {
 		w("## 2. Binding table\n\n%s\n\n", demote(binding))
 	}
@@ -360,6 +411,110 @@ func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, sop
 			n++
 		}
 	}
+	for _, g := range inv.Gadgets {
+		if !in[g.Pos.File] || g.InTest {
+			continue
+		}
+		var ins, outs, checks []string
+		for _, p := range g.Params {
+			if p.Kind != "api" && p.Kind != "field" {
+				ins = append(ins, p.Name+" "+p.Flow)
+			}
+		}
+		for _, r := range g.Results {
+			if r.Source != "none" {
+				o := fmt.Sprintf("%d %s", r.Index, r.Source)
+				if len(r.Hints) > 0 {
+					o += " (" + strings.Join(r.Hints, ", ") + ")"
+				}
+				outs = append(outs, o)
+			}
+		}
+		for _, c := range g.Checks {
+			checks = append(checks, c.Kind)
+		}
+		w("- gadget %s `%s` at `%s:%d`: inputs %s; outputs %s; doc promises %d, preconditions %d; doc checks: %s\n", g.ID, g.Name, g.Pos.File, g.Pos.Line,
+			orNone(strings.Join(ins, ", ")), orNone(strings.Join(outs, "; ")), len(g.Promises), len(g.Preconds), orNone(strings.Join(checks, ", ")))
+		n++
+	}
+	if c := inv.Contracts; c != nil {
+		for _, p := range c.Privileged {
+			if in[p.File] {
+				w("- privileged %s at `%s:%d`: gate `%s`, party %s, powers %s\n", p.Contract+"."+p.Function, p.File, p.Line, p.Gate, p.Party, strings.Join(p.Powers, ", "))
+				n++
+			}
+		}
+		for _, r := range c.Roles {
+			if in[r.File] {
+				w("- role %s.%s (%s) at `%s:%d`: %s\n", r.Contract, r.Name, r.Kind, r.File, r.Line, r.Source)
+				n++
+			}
+		}
+		for _, u := range c.Upgrades {
+			if in[u.File] {
+				w("- upgrade path %s at `%s:%d`: `%s`\n", u.Kind, u.File, u.Line, u.Text)
+				n++
+			}
+		}
+		for _, v := range c.Verifiers {
+			if in[v.File] {
+				x := v.Kind + ", generator " + v.Generator
+				if v.Template != "" {
+					x += "; " + v.Template
+				}
+				if len(v.Precompiles) > 0 {
+					x += "; precompiles " + strings.Join(v.Precompiles, ", ")
+				}
+				w("- verifier %s at `%s:%d`: %s\n", v.Contract, v.File, v.Line, x)
+				n++
+			}
+		}
+		for _, e := range c.EntryPoints {
+			if in[e.File] {
+				pay := ""
+				if e.Payable {
+					pay = ", payable"
+				}
+				w("- entry point %s.%s at `%s:%d` (%s%s): gate `%s`, party %s, effects %s\n", e.Contract, e.Function, e.File, e.Line, e.Visibility, pay, e.Gate, e.Party, strings.Join(e.Effects, ", "))
+				n++
+			}
+		}
+	}
+	if p := inv.Provenance; p != nil {
+		if p.ABI != nil {
+			for _, c := range p.ABI.Calls {
+				file := c.Site
+				if i := strings.LastIndex(file, ":"); i > 0 {
+					file = file[:i]
+				}
+				if !in[file] {
+					continue
+				}
+				for _, a := range c.Against {
+					w("- verifier ABI %s at `%s` (%s): caller sends `%s`, %s has `%s` — %s\n", a.Status, c.Site, c.Caller, c.Signature, a.Name, a.Signature, a.Detail)
+					n++
+				}
+			}
+			for _, v := range p.ABI.Verifiers {
+				file := v.Site
+				if i := strings.LastIndex(file, ":"); i > 0 {
+					file = file[:i]
+				}
+				if in[file] {
+					w("- verifier template %s for `%s` at `%s`: %s\n", v.Status, v.Verifier, v.Site, v.Detail)
+					n++
+				}
+			}
+		}
+		if p.Ceremony != nil && (sh.Kind == "all" || sh.Kind == "prover") {
+			w("- setup provenance: %s — %s\n", p.Ceremony.Verdict, p.Ceremony.Detail)
+			n++
+		}
+	}
+	if regen != "" && (sh.Kind == "integration" || sh.Kind == "all") {
+		w("- regenerated verifier (verifier regen): %s\n", regen)
+		n++
+	}
 	if n == 0 {
 		w("_none_\n")
 	}
@@ -368,6 +523,9 @@ func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, sop
 	w("## 5. Lens\n\n%s\n\n", demote(lens))
 	if slice != "" {
 		w("## 6. Vector slice\n\n%s\n\n", demote(slice))
+	}
+	if known != "" {
+		w("## 6a. Already known (loop memory)\n\n%s\n", known)
 	}
 	w("## 7. Shared rules\n\n%s\n", demote(rules))
 	return b.String()
@@ -387,4 +545,53 @@ func demote(md string) string {
 		}
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+// peripheral describes where agents find peripheral code. Hunters have no
+// shell, so the gnark (and gnark-crypto) source directories are resolved
+// here, from stack.json and the module cache, and stated as absolute paths
+// or as unavailable (`gnark-inventory preflight` prints the command that
+// fetches them).
+func peripheral(out string) string {
+	var b strings.Builder
+	b.WriteString("Peripheral code (read on demand, never edit): vendored libraries under `vendor/` or Foundry `lib/`")
+	var st detect.Stack
+	raw, err := os.ReadFile(filepath.Join(out, "stack.json"))
+	if err != nil || json.Unmarshal(raw, &st) != nil || len(st.Gnark.Versions) == 0 {
+		b.WriteString("; gnark std at the version pinned in `go.mod` (no stack.json: version unknown).")
+		return b.String()
+	}
+	cache := modcache.Dir()
+	for _, v := range st.Gnark.Versions {
+		if !strings.HasPrefix(v, "v") {
+			fmt.Fprintf(&b, "; gnark %s: std source location unknown", v)
+			continue
+		}
+		m := modcache.Lookup(cache, "github.com/consensys/gnark", v)
+		if cache != "" && m.SourcePresent {
+			fmt.Fprintf(&b, "; gnark std at the pinned %s: `%s` (use this absolute path with Read and Grep)", v, filepath.Join(m.Source, "std"))
+		} else {
+			fmt.Fprintf(&b, "; gnark std at the pinned %s is **not available** (not in the module cache): do not reason about std internals from memory, write a LEAD whose `unverified:` names the std function", v)
+		}
+	}
+	seen := map[string]bool{}
+	for _, gm := range st.GoModules {
+		v := gm.GnarkCrypto
+		if v == "" || seen[v] || !strings.HasPrefix(v, "v") {
+			continue
+		}
+		seen[v] = true
+		if m := modcache.Lookup(cache, "github.com/consensys/gnark-crypto", v); cache != "" && m.SourcePresent {
+			fmt.Fprintf(&b, "; gnark-crypto %s (native reference implementations): `%s`", v, m.Source)
+		}
+	}
+	b.WriteString(".")
+	return b.String()
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "none"
+	}
+	return s
 }

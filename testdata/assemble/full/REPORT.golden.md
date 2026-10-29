@@ -10,18 +10,18 @@ Rendered by `gnark-inventory assemble` from `findings.json` and `coverage-ledger
 | Run | 20261027-101500 |
 | Commit | `3f9c2a1b7d5e4f60718293a4b5c6d7e8f9012345` |
 | Files reviewed | `circuit/hints.go` · `circuit/transfer.go` · `contracts/Pool.sol` |
-| Stack | gnark v0.14.0 (advisories: 3) · groth16 · bn254 · solidity: yes · foundry: yes |
+| Stack | gnark v0.14.0 (advisories: 3) · gnark-crypto v0.19.0 (advisories: 1) · groth16 · bn254 · solidity: yes · foundry: yes |
 | Versions | `go.mod`: gnark v0.14.0, gnark-crypto v0.19.0, go 1.24.0 |
-| Advisories | GHSA-7fx8-hmgc-82jp (high, fixed v0.16.4) · GHSA-3mvx-pp85-pm65 (critical, fixed v0.16.2) · GHSA-fwf3-jmp7-gmrj (moderate, fixed v0.16.0) |
+| Advisories | GHSA-7fx8-hmgc-82jp (high, fixed v0.16.4) · GHSA-3mvx-pp85-pm65 (critical, fixed v0.16.2) · GHSA-fwf3-jmp7-gmrj (moderate, fixed v0.16.0) · GHSA-fj2x-735w-74vq (gnark-crypto v0.19.0, high, affected >= v0.9.1, < v0.18.1; >= v0.19.0, < v0.19.2) (advisory table as of 2026-10-29) |
 | Companions | ✔ fp-check · ✖ circom-auditor · ✖ solidity-auditor |
-| Agents | C1, I1, I3, V-hash, V-hints, V-prover, V-pubin, V-range, G2 |
-| Out of scope | Verifier.sol internals: a stub, not a generated verifier · 1 ledger unit marked out_of_scope (section 8) |
+| Agents | C1, I1, I2, I3, T1, V-hash, V-hints, V-privacy, V-prover, V-pubin, V-range, G2 |
+| Out of scope | Verifier.sol internals: a stub, not a generated verifier · 1 ledger unit marked out_of_scope (section 10) |
 
 ## 2. Posture
 
 Proofs gate withdrawals from a shared pool. The Merkle membership check does not bind the spent note to the leaf, so any prover can withdraw. The owner can swap the verifier at any time. The single most important action is to hash the note into the leaf and bind Index into the path.
 
-Totals: 3 confirmed (1 critical, 1 high, 1 low) · 1 needs validation · 1 lead · 1 rejected. Ledger: 3 of 6 applicable units examined.
+Totals: 3 confirmed (1 critical, 1 high, 1 low) · 2 needs validation · 1 accepted risk · 2 leads · 1 rejected. Ledger: 2 of 8 applicable units examined.
 
 ## 3. Findings
 
@@ -115,7 +115,7 @@ Option B — use std/accumulator/merkle
 
 ### 3. Remainder hint output is never constrained
 
-`TransferCircuit.Define` · `circuit/transfer.go:61-67` · severity **low** · confidence 70 · evidence **ANALYSIS** · detected by C1, V-hints · vectors V-H1
+`TransferCircuit.Define` · `circuit/transfer.go:61-67` · severity **low** · confidence 70 · evidence **ANALYSIS** · detected by C1, V-hints · vectors V-H1 · calibration SC-UNUSED-FREE-VALUE
 
 **Description.** The prover sets the divHint remainder to any value.
 
@@ -143,37 +143,70 @@ Option B — use std/accumulator/merkle
 
 Trails worth manual work. No severity, no fix.
 
+- **Prover-chosen fees fingerprint withdrawals** — `Pool.withdraw` · `contracts/Pool.sol:35-36` · detected by V-privacy — Fees are free public inputs, so a unique fee pair links a withdrawal to its prover. Smells: fee0 and fee1 are public and unbounded. Unverified: whether the frontend fixes the fees.
 - **Recipient is only fed to a discarded IsZero** — `Pool.withdraw` · `contracts/Pool.sol:45` · detected by I1, G2 — The circuit never relates Recipient to the note owner. Smells: api.IsZero(c.Recipient) result dropped; Recipient | appears in no AssertIsEqual. Unverified: whether the Groth16 IC term alone binds the recipient against front-running.
 
 ## 6. Needs validation
 
+1 trusted-party risk accepted in `zk-audit.md` is listed in section 7, not here.
+
 | Item | Severity | Confidence | Blockers | How to validate |
 |---|---|---|---|---|
+| **Owner swaps the verifier at any time** · `contracts/Pool.sol:20-23` | high | 80 | Is the owner a timelocked multisig, and who holds its keys? | Read the deployed owner on chain and its timelock delay. |
 | **Keys come from a single-party Groth16 setup** · `cmd/setup/main.go:20` | high | 60 | which proving key backs the deployed verifier?; was a ceremony run? | Compare the deployed verifier's VK with the ceremony transcript. |
 
-## 7. Hardening notes
+## 7. Trusted parties
+
+Powers that a trusted party holds over soundness, funds, liveness or privacy. Each is an assumption users carry, not a defect the code can fix alone.
+
+| Party | Power | Breaks | Assumption | Status | Severity | Where |
+|---|---|---|---|---|---|---|
+| owner of Pool (owner) | adds any root; a fake tree mints withdrawals | soundness, funds | The owner posts only roots of the real deposit tree | accepted risk (`zk-audit.md:7`) | high | Owner posts Merkle roots `contracts/Pool.sol:25-28` |
+| owner of Pool (owner) | replaces the verifier; a verifier that accepts everything drains the pool | soundness, funds | The owner key never installs an unaudited verifier | needs validation | high | Owner swaps the verifier at any time `contracts/Pool.sol:20-23` |
+
+Accepted in `zk-audit.md` without a record:
+
+- **sequencer** — The sequencer orders withdrawals and can delay them. (`zk-audit.md:9`)
+
+Trusted-party units examined: 1 of 2 (privileged functions, roles and setup sites; section 10 lists the rest).
+
+## 8. Privacy
+
+What the public inputs, calldata, events, operators or services reveal about values the protocol claims to hide.
+
+| Item | Verdict | Severity | Where | Detected by |
+|---|---|---|---|---|
+| Prover-chosen fees fingerprint withdrawals | lead | – | `contracts/Pool.sol:35-36` | V-privacy |
+
+The privacy lens (PR1) is not part of the `quick` profile; privacy was examined only through other lenses' findings.
+
+## 9. Hardening notes
 
 - **Unused helper returns unconstrained hint outputs** — `circuit/transfer.go:106` — decompose is never called; delete it or constrain its outputs.
 - **No test checks the public-input order against Pool.withdraw**
 
-## 8. Coverage
+## 10. Coverage
 
 | Kind | Units | planned | in progress | covered | candidate | deferred | blocked | not applicable | out of scope |
 |---|---|---|---|---|---|---|---|---|---|
 | circuit | 4 | 1 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
 | public-input | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
-| contract-fn | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |
+| contract-fn | 2 | 0 | 0 | 1 | 0 | 0 | 1 | 0 | 0 |
 | verifier | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+| role | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | prover | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
-| **total** | 8 | 1 | 0 | 1 | 2 | 1 | 1 | 1 | 1 |
+| **total** | 10 | 2 | 0 | 2 | 2 | 1 | 1 | 1 | 1 |
 
-Examined (covered or candidate): 3 of 6 applicable units (50%).
+Examined (covered): 2 of 8 applicable units (25%).
 
 Units not examined:
 
+- `circuit:TransferCircuit|hint-soundness` — candidate — raised TransferCircuit|res[1]|hint-output-unconstrained, TransferCircuit|Path[0]|merkle-leaf-unbound; not closed after judging
 - `circuit:TransferCircuit|spec-invariant` — deferred — C6 is not in the quick profile
 - `circuit:SigCircuit|crypto-gadgets` — planned — no reason recorded
+- `public-input:TransferCircuit.Recipient|public-input-binding` — candidate — raised Pool|withdraw|recipient-not-constrained, Pool|withdraw|missing-fingerprint; not closed after judging
 - `contract-fn:Pool.withdraw|protocol-state` — blocked — agent hit its turn limit
+- `role:Pool.owner|trusted-party` — planned — no reason recorded
 
 Units not applicable or out of scope:
 
@@ -187,6 +220,23 @@ Companions not available: circom-auditor, solidity-auditor. Their areas were cov
 Inventory load mode: `syntax` (1 load error). Items marked unresolved in `inventory.md` were not type-checked.
 
 - go/packages: cannot find module providing package github.com/consensys/gnark/frontend
+
+## 11. Not covered
+
+This review never examines:
+
+- gnark itself: its backends, gnark-crypto and the internals of std, beyond matching the pinned version against known advisories and checking the preconditions of the gadgets the circuits call;
+- circuits written for other frameworks (Circom, Noir, Halo2), which are routed to companion skills or checked against the generic vectors only;
+- cryptographic assumptions: hash, curve and pairing security, the soundness of the proof system, and trusted-setup ceremony transcripts;
+- deployed state and infrastructure outside the repository: bytecode, verifying keys and owners on chain, servers, key management, and relayers, indexers and frontends as operated;
+- economic, governance and MEV attacks beyond the listed vectors;
+- formal verification: no property is proven.
+
+In this run:
+
+- lenses not part of the `quick` profile: C2, C3, C4, C5, C6, I2, I3, I4, S1, PR1, V-contract, V-liveness, V-privacy, G1, G3, A1, F1;
+- ledger units not examined: 6 of 8 applicable (section 10);
+- companions not available: circom-auditor, solidity-auditor.
 
 > This review is a time-boxed, best-effort search for bugs by an automated
 > agent. It is not a guarantee of security. Absence of a finding is not

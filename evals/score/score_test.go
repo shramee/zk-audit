@@ -192,3 +192,18 @@ func TestSummarize(t *testing.T) {
 		}
 	}
 }
+
+// A dependency record that lists the item's file only as a related location
+// must not outrank the record that sits on the item when both are in an
+// accepted class, even when its verdict is stronger: the item's best record
+// (and so its severity check) is the better-placed one.
+func TestRecordOnTheItemBeatsRelatedMention(t *testing.T) {
+	k, es := setup(t, `{"records": [
+	  {"verdict": "confirmed", "title": "Library advisory covers division", "location": {"file": "go.mod", "line": 3},
+	   "related_locations": [{"file": "c/c.go", "line": 6}], "severity": "medium"},
+	  {"verdict": "lead", "title": "Division by y is unchecked", "location": {"file": "c/c.go", "line": 6}}]}`)
+	r := score(k, es)
+	if r.Items[1].Best != "lead" || r.Items[1].SeverityOK != nil {
+		t.Fatalf("the record on the item must be the best one: %+v", r.Items[1])
+	}
+}

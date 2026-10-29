@@ -22,8 +22,7 @@ evals/
   score/                 deterministic scorer (Go, no dependencies)
   run-audit              headless runner for audit cases: N runs, then score
   sanitize               fixture copy without hints
-  run-pocs               run a fixture's (or all fixtures') Go PoCs
-  run-foundry-pocs       run a fixture's (or all) Foundry PoCs (forge, mock verifier)
+  run-pocs               run a fixture's (or all fixtures') Go and Foundry PoCs in the sandbox
   baseline/              recorded runs
 ```
 
@@ -44,7 +43,7 @@ Fixtures live in `testdata/<name>/` (planted, safe and advisory) or are fetched
 at a pinned commit by `evals/lib/scaffold-real` (real). Each has
 `evals/fixtures/<name>/{key.json, answer-key.md, sanitize.sed, pocs/}`. "PoC"
 is how the planted bug was shown to be real: a Go test run by `evals/run-pocs`
-(T-* templates), a `forge` test run by `evals/run-foundry-pocs` against a mock
+(T-* templates), a `forge` test run by `evals/run-pocs` against a mock
 verifier, a public audit **report**, or Phase-0 **version** detection.
 
 ### Planted — circuit (soundness)
@@ -86,6 +85,14 @@ is located structurally and confirmed by review rather than an executed PoC.
 | missing-root-check | withdraw never checks `knownRoots[root]` (V-VC/M4) | yes | forge |
 | input-order | verifier input array order ≠ public-witness order (V-PI1) | yes | forge |
 | cross-domain-replay | no chain/contract binding, proof replays across deployments (V-PI5) | yes | forge |
+
+### Planted — liveness, ABI and library (not circuit soundness)
+
+| Fixture | Bug | Foundry | PoC |
+|---|---|---|---|
+| liveness-roots | root ring buffer evicts a pending withdrawal's root (liveness; Foundry, no gnark) | yes | forge |
+| sol-gnark-abi | caller's verifier interface does not match the gnark-exported verifier (completeness) | yes | forge, real proof |
+| lib-gadgets | library mode: four gadgets break their documented contracts | – | Go (harness wrappers) |
 
 ### Advisory replays (dependency)
 
@@ -134,8 +141,8 @@ without the plugin and reports the difference.
 Fixture PoCs (offline after `make fixtures`; no model calls):
 
 ```bash
-make eval-pocs           # every fixture's Go PoCs, in sanitized scratch copies
-make eval-foundry-pocs   # every integration fixture's forge PoCs (needs forge)
+make eval-pocs           # every fixture's Go and forge PoCs, sanitized copies, in the sandbox (needs forge)
+evals/run-pocs <fixture> "$(mktemp -d)"   # one fixture (`all` runs every one)
 ```
 
 Audit cases, three runs each, scored (these cost money):
@@ -183,3 +190,26 @@ matches every record and hardening note to the key:
   PoC rate (confirmed circuit records with a demonstrated PoC), cost, time.
 
 `evals/score summarize <score.json>...` aggregates runs per case.
+
+**Check every outcome by hand.** The scorer is regex and location matching; the key
+is a human's reading of the fixture. Read each record behind each outcome before
+trusting a figure. The 2026-10-29 runs found a decoy whose pattern was too wide and
+two true observations the key did not list; the fixes are in `key.json` and
+`answer-key.md`, with a scorer test for the tie-break. A rejected record does not
+count as a found item (the key asks for a lead, info or hardening note).
+
+## Recorded runs
+
+`baseline/` holds one markdown file per measurement session and the
+`findings.json` of each run. Scores below use the key as of the 2026-10-29
+measurement; the first run was re-scored with it.
+
+| Date | Case, profile | Revision | Recall | False positives | Cost (USD) | Time (min) | Record |
+|---|---|---|---|---|---|---|---|
+| 2026-10-27 | pool, quick `--no-poc` | `f5a730f` | 12 / 14 (86 %) | 0 | about 10.7 | 9.3 | [`pool-quick.md`](baseline/pool-quick.md) (history) |
+| 2026-10-29 | pool, quick `--no-poc` | `e198ed7` | 12 / 14 (86 %) | 0 | 9.16 | 10.7 | [`pool-2026-10-29.md`](baseline/pool-2026-10-29.md) (current) |
+| 2026-10-29 | pool, standard | `e198ed7` | 12 / 14 (86 %) | 0 | 26.09 | 22.8 | same file |
+| 2026-10-29 | pool, deep | `e198ed7` | 13 / 14 (93 %; 12 found, 2 partial) | 0 | 25.64 | 21.8 | same file |
+
+One run per row; no variance estimate. Deep ran one of its three passes (see the
+baseline file).

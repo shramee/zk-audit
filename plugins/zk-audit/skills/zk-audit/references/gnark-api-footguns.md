@@ -124,9 +124,15 @@ Witness layout (`frontend/schema/walk.go`, `frontend/schema/tags.go`):
 ## std/signature
 
 - `eddsa.Verify(curve, sig, msg, pk, h)` (`std/signature/eddsa/eddsa.go`):
-  asserts `S < order` (v0.14.0+), `A` and `R` on the curve, `A` not of small
-  order. **Mixed-order keys are accepted** (V-E2). `IsValid` returns a flag
-  instead.
+  asserts a bound on `S` (v0.14.0: `S <= order`, so `S = order` passes;
+  v0.15.0+: `S < order`), that `Q = [S]G - [h]A` is on the curve, and that
+  `[cofactor](Q - R)` is the identity. It does **not** check that `A` or `R`
+  is on the curve, that `A` is not of small order, or that either is in the
+  prime-order subgroup: small-order and mixed-order keys pass (V-E2), and with
+  `R = (0,0)` the first cofactor doubling divides 0 by 0, whose output only a
+  modified solver controls (V-E4). Check `A` (on curve, prime order) and `R`
+  (on curve) yourself before using them. v0.15.0+ adds `IsValid`, which
+  returns a flag instead of asserting. Read at v0.14.0 and v0.16.4.
 - `ecdsa` `PublicKey.Verify` (`std/signature/ecdsa/ecdsa.go`): "We assume that
   the message msg is already hashed to the scalar field" (V-E3).
 

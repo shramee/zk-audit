@@ -9,6 +9,7 @@ import (
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/detect"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/inventory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/load"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/solidity"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/validate"
 )
 
@@ -42,14 +43,26 @@ func TestSeedValidates(t *testing.T) {
 			t.Errorf("seed status %s", u.Status)
 		}
 	}
-	// 2 production circuits x 6 classes; 9 public-input groups (Fees is one
+	// 2 production circuits x 7 classes (C1-C6, PR1); 9 public-input groups (Fees is one
 	// group of 2); 3 production hint sites; 1 verifier; 4 functions that
 	// verify or write proof state (constructor, setVerifier, addRoot,
-	// withdraw) x 3 classes; 1 prover file; 1 dependency
-	want := map[string]int{"circuit": 12, "public-input": 9, "hint": 3, "verifier": 1, "contract-fn": 12, "prover": 1, "dependency": 1}
+	// withdraw) x 4 classes (I1, I2, I3 protocol-state and liveness), plus the 2 owner-gated setters (setVerifier,
+	// addRoot) x trusted-party; 1 role (Pool.owner); 1 setup site
+	// (cmd/setup); 1 prover file; 1 dependency; 3 entry points (setVerifier,
+	// addRoot, withdraw) x contract-review
+	want := map[string]int{"circuit": 14, "public-input": 9, "hint": 3, "verifier": 1, "contract-fn": 21, "role": 1, "setup": 1, "prover": 1, "dependency": 1}
 	for k, v := range want {
 		if kinds[k] != v {
 			t.Errorf("kind %s: %d units, want %d (all %v)", k, kinds[k], v, kinds)
+		}
+	}
+	ids := map[string]bool{}
+	for _, u := range l.Units {
+		ids[u.ID] = true
+	}
+	for _, id := range []string{"contract-fn:Pool.withdraw|contract-review", "contract-fn:Pool.setVerifier|trusted-party", "contract-fn:Pool.addRoot|trusted-party", "role:Pool.owner|trusted-party", "setup:cmd/setup/main.go|trusted-party"} {
+		if !ids[id] {
+			t.Errorf("missing trusted-party unit %s", id)
 		}
 	}
 	for _, u := range l.Units {
@@ -57,4 +70,58 @@ func TestSeedValidates(t *testing.T) {
 			t.Errorf("Fees unit should record its 2 leaves: %+v", u)
 		}
 	}
+}
+
+// Entry points seed contract-review units (S1 with the vector scan) and
+// verifiers gnark did not generate seed custom-verifier units (the V-custom
+// shard with I2).
+func TestSeedContractReviewAndCustomVerifiers(t *testing.T) {
+	r, err := solidity.ScanRepo(fixture.Dir(t, "sol-library"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv := &inventory.Inventory{Repo: "sol-library", Contracts: r}
+	l := Seed(inv, nil, "test")
+	b, _ := json.Marshal(l)
+	rep, err := validate.Document("ledger", b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.OK() {
+		t.Fatalf("seeded ledger invalid: %v", rep.Errors)
+	}
+	units := map[string]Unit{}
+	for _, u := range l.Units {
+		units[u.ID] = u
+	}
+	for _, id := range []string{"verifier:Groth16Lib|custom-verifier", "verifier:HandVerifier|custom-verifier"} {
+		u, ok := units[id]
+		if !ok {
+			t.Errorf("missing %s (have %v)", id, keys(units))
+			continue
+		}
+		if strings.Join(u.Lenses, ",") != "V,I2" || !strings.Contains(u.Notes, "hand-written") {
+			t.Errorf("%s: lenses %v notes %q", id, u.Lenses, u.Notes)
+		}
+	}
+	n := 0
+	for _, u := range l.Units {
+		if u.Class == "contract-review" {
+			n++
+			if strings.Join(u.Lenses, ",") != "S1,V" || !strings.HasPrefix(u.Notes, "gate ") {
+				t.Errorf("%s: lenses %v notes %q", u.ID, u.Lenses, u.Notes)
+			}
+		}
+	}
+	if n != len(r.EntryPoints) || n == 0 {
+		t.Errorf("%d contract-review units for %d entry points", n, len(r.EntryPoints))
+	}
+}
+
+func keys(m map[string]Unit) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

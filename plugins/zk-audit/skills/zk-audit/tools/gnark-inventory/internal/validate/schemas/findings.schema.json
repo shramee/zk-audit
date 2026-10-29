@@ -11,7 +11,7 @@
     "repo": { "type": "string", "minLength": 1 },
     "commit": { "type": "string" },
     "run_id": { "type": "string", "pattern": "^[0-9]{8}-[0-9]{6}$" },
-    "profile": { "enum": ["quick", "standard", "deep", "local", "diff", "recon"] },
+    "profile": { "enum": ["quick", "standard", "deep", "library", "local", "diff", "recon"] },
     "no_findings": { "type": "boolean" },
     "no_findings_reason": { "type": "string", "minLength": 1 },
     "posture": { "type": "string", "minLength": 1, "description": "REPORT.md section 2: three to six sentences written by the orchestrator after judging" },
@@ -35,6 +35,20 @@
           "title": { "$ref": "#/$defs/nonEmpty" },
           "detail": { "type": "string" },
           "location": { "$ref": "#/$defs/location" }
+        }
+      }
+    },
+    "accepted_risks": {
+      "type": "array",
+      "description": "Risks zk-audit.md accepts that no record covers (a record of an accepted risk carries trust.accepted instead); listed under Trusted parties",
+      "items": {
+        "type": "object",
+        "required": ["party", "risk", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "party": { "$ref": "#/$defs/nonEmpty" },
+          "risk": { "$ref": "#/$defs/nonEmpty" },
+          "source": { "type": "string", "pattern": "^zk-audit\\.md(:[0-9]+(-[0-9]+)?)?$" }
         }
       }
     },
@@ -73,10 +87,36 @@
         "detected_by": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } },
         "vector_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^V-[A-Z]+[0-9]+$" } },
         "description": { "$ref": "#/$defs/nonEmpty" },
-        "run_tag": { "enum": ["NEW", "KNOWN"] }
+        "run_tag": { "enum": ["NEW", "KNOWN"], "description": "Loop mode, set by `gnark-inventory memory merge`: NEW when first seen in the latest pass, KNOWN when seen in an earlier one" },
+        "seen": {
+          "type": "object",
+          "required": ["passes", "of"],
+          "additionalProperties": false,
+          "description": "Loop mode, set by `gnark-inventory memory merge`: in how many of the passes run so far the fingerprint was reported",
+          "properties": { "passes": { "type": "integer", "minimum": 1 }, "of": { "type": "integer", "minimum": 1 } }
+        }
       }
     },
     "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+    "property": { "enum": ["soundness", "completeness", "privacy", "liveness"], "description": "What the record breaks; privacy records are listed in the report's Privacy section" },
+    "calibration": { "type": "string", "pattern": "^SC-[A-Z0-9]+(-[A-Z0-9]+)*$", "description": "The severity-calibration anchor the record fits (references/severity-calibration.md); validate findings checks the verdict and severity against it" },
+    "trust": {
+      "type": "object",
+      "required": ["party", "role", "power", "breaks", "assumption"],
+      "additionalProperties": false,
+      "description": "A trusted-party item (judging.md Gate 3): who holds the power, what it breaks, and the assumption users carry. `validate findings` checks the verdict and severity rules.",
+      "properties": {
+        "party": { "$ref": "#/$defs/nonEmpty", "description": "Who holds the power, as the code names it (owner of Vault, UPDATER_ROLE, the setup ceremony)" },
+        "role": { "enum": ["owner", "admin", "role", "upgrader", "deployer", "setup", "prover", "sequencer", "relayer", "oracle", "service", "other"] },
+        "power": { "$ref": "#/$defs/nonEmpty", "description": "What the party can do, in one sentence" },
+        "breaks": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["soundness", "funds", "liveness", "privacy"] } },
+        "assumption": { "$ref": "#/$defs/nonEmpty", "description": "The trust assumption users carry, as a statement" },
+        "mitigation": { "type": "string", "description": "What the repository shows that limits the power (timelock, multisig owner, multi-party ceremony), with file:line; empty or absent when none" },
+        "accepted": { "type": "boolean", "description": "zk-audit.md marks the party trusted or lists this power as an accepted risk" },
+        "source": { "type": "string", "pattern": "^zk-audit\\.md(:[0-9]+(-[0-9]+)?)?$", "description": "Where zk-audit.md accepts it, e.g. zk-audit.md:12" },
+        "lead_reason": { "$ref": "#/$defs/nonEmpty", "description": "Only for a lead: why the power itself is not established" }
+      }
+    },
     "fix": {
       "type": "object",
       "required": ["summary"],
@@ -104,7 +144,12 @@
       "properties": {
         "path": { "$ref": "#/$defs/nonEmpty" },
         "command": { "$ref": "#/$defs/nonEmpty" },
-        "result": { "enum": ["demonstrated", "not_demonstrated", "does_not_compile", "not_run"] },
+        "result": {
+          "enum": ["demonstrated", "demonstrated_on_model", "not_demonstrated", "does_not_compile", "not_run"],
+          "description": "demonstrated: the attack passed against the production circuit or contract, with the honest control and sanity case; demonstrated_on_model: only a model of the circuit (T-CONSTRAINT-MODEL) shows it, so evidence stays ANALYSIS"
+        },
+        "demonstrates": { "enum": ["soundness", "completeness"], "description": "Which property the PoC breaks: a false statement accepted (soundness) or an honest statement rejected (completeness)" },
+        "package": { "$ref": "#/$defs/nonEmpty", "description": "Repository-relative directory the PoC file is copied into (Go package or Foundry root) to re-run it in a fresh worktree" },
         "output_excerpt": { "type": "string" }
       }
     },
@@ -126,6 +171,8 @@
       "properties": {
         "verdict": { "enum": ["exploitable", "not_exploitable", "uncertain"] },
         "reasoning": { "$ref": "#/$defs/nonEmpty" },
+        "mechanism": { "enum": ["holds", "refuted", "uncertain"], "description": "Does the claimed mechanism (the free value, the missing check) exist?" },
+        "impact": { "enum": ["holds", "refuted", "uncertain"], "description": "Does it harm anyone as claimed? A real mechanism with no victim is mechanism: holds, impact: refuted" },
         "by": { "type": "string" }
       }
     },
@@ -137,7 +184,7 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "confirmed" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true,
+        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" }, "property": { "$ref": "#/$defs/property" },
         "severity": { "$ref": "#/$defs/severity" },
         "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
         "evidence": { "enum": ["POC", "ANALYSIS"] },
@@ -158,14 +205,16 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "needs_validation" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true,
+        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" }, "property": { "$ref": "#/$defs/property" },
         "severity": { "$ref": "#/$defs/severity" },
         "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
         "proof": { "type": "string" },
         "impact": { "type": "string" },
         "blockers": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmpty" } },
         "validation_plan": { "$ref": "#/$defs/nonEmpty" },
-        "fix": { "$ref": "#/$defs/fix" }
+        "fix": { "$ref": "#/$defs/fix" },
+        "poc": { "$ref": "#/$defs/poc" },
+        "refuter": { "$ref": "#/$defs/refuter" }
       }
     },
     "rejected": {
@@ -176,9 +225,11 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "rejected" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true,
+        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" }, "property": { "$ref": "#/$defs/property" },
         "reason": { "$ref": "#/$defs/nonEmpty" },
-        "refuting_location": { "$ref": "#/$defs/location" }
+        "refuting_location": { "$ref": "#/$defs/location" },
+        "poc": { "$ref": "#/$defs/poc" },
+        "refuter": { "$ref": "#/$defs/refuter" }
       }
     },
     "lead": {
@@ -189,9 +240,11 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "lead" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true,
+        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" }, "property": { "$ref": "#/$defs/property" },
         "code_smells": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmpty" } },
-        "unverified": { "$ref": "#/$defs/nonEmpty" }
+        "unverified": { "$ref": "#/$defs/nonEmpty" },
+        "poc": { "$ref": "#/$defs/poc", "description": "A demoted record keeps the PoC that was built for it" },
+        "refuter": { "$ref": "#/$defs/refuter" }
       }
     },
     "record": {

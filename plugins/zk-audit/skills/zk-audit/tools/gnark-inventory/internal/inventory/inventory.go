@@ -28,7 +28,7 @@ func Build(prog *load.Program, opt Options) (*Inventory, error) {
 	inv := &Inventory{
 		SchemaVersion: SchemaVersion, ToolVersion: opt.ToolVersion, Repo: prog.Root,
 		LoadMode: prog.Mode, LoadErrors: []string{}, Scope: opt.Files,
-		Circuits: []*Circuit{}, Hints: []*HintSite{}, HintFuncs: []*HintFunc{}, Footguns: []*Footgun{},
+		Circuits: []*Circuit{}, Hints: []*HintSite{}, HintFuncs: []*HintFunc{}, Footguns: []*Footgun{}, Gadgets: []*Gadget{},
 	}
 	seenErr := map[string]bool{}
 	for _, e := range prog.Errors {
@@ -160,6 +160,14 @@ func Build(prog *load.Program, opt Options) (*Inventory, error) {
 		}
 	}
 
+	// exported gadgets (library mode); methods of circuit types are not
+	circuitTypes := map[string]bool{}
+	for _, c := range all {
+		circuitTypes[path.Dir(c.Decl.File)+"|"+c.Name] = true
+	}
+	inv.Gadgets = findGadgets(prog, inv, inScope, circuitTypes)
+	inv.Summary.Gadgets = len(inv.Gadgets)
+
 	// Solidity
 	sol, err := scanSolidity(prog.Root, opt.Files)
 	if err != nil {
@@ -218,34 +226,8 @@ func sortFootguns(fs []*Footgun) []*Footgun {
 }
 
 // scanSolidity scans .sol files, skipping Foundry dependency trees (lib/ next
-// to a foundry.toml) and test / script files.
+// to a foundry.toml) and test / script files; imports into them are read as
+// peripheral contracts (solidity.ScanRepo).
 func scanSolidity(root string, files []string) (*solidity.Result, error) {
-	tomls, err := fsutil.Walk(root, func(rel string) bool { return path.Base(rel) == "foundry.toml" })
-	if err != nil {
-		return nil, err
-	}
-	var libs []string
-	for _, t := range tomls {
-		d := path.Dir(t.Rel)
-		if d == "." {
-			libs = append(libs, "lib/")
-		} else {
-			libs = append(libs, d+"/lib/")
-		}
-	}
-	sols, err := fsutil.Walk(root, func(rel string) bool {
-		if !strings.HasSuffix(rel, ".sol") || !fsutil.InScope(rel, files) {
-			return false
-		}
-		for _, l := range libs {
-			if strings.HasPrefix(rel, l) {
-				return false
-			}
-		}
-		return !strings.HasSuffix(rel, ".t.sol") && !strings.HasSuffix(rel, ".s.sol")
-	})
-	if err != nil {
-		return nil, err
-	}
-	return solidity.ScanFiles(sols)
+	return solidity.ScanRepo(root, files)
 }

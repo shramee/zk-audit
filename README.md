@@ -11,8 +11,8 @@ replay, VK drift, proof malleability). It proves what it can with a witness or a
 Go / Foundry test, and it records what it actually examined.
 
 > Status: early. The inventory tool, schemas, validators, report assembler and
-> knowledge base work today; the agent orchestration has one recorded blind
-> end-to-end run (quick profile on the pool fixture). See
+> knowledge base work today; the agent orchestration has recorded blind
+> end-to-end runs (quick, standard and deep on the pool fixture, 2026-10-29). See
 > [Current status](#current-status) and the project x-ray in
 > [`docs/x-ray/`](docs/x-ray/x-ray.md).
 
@@ -49,13 +49,17 @@ Properties the audit checks:
 |---|---|---|---|
 | Soundness | Can a prover make a false statement verify (an under-constrained value)? | C1–C5, G1, G3 | V-H, V-R, V-F, V-S, V-M, V-E, V-CM, V-G |
 | Completeness | Can every honest user always get a proof (no over-constraint, zero divisor, prover DoS)? | C6, C3, I4 | V-F2, V-M7, V-PV2, V-PV3 |
-| Zero knowledge / privacy | Do the proof, its public inputs or the service leak a secret? | C5, I4, F1 | V-CM2, V-G6, V-PV5 |
+| Zero knowledge / privacy | Do the proof, its public inputs, its tags, the relayer or the service leak a secret or link users? | PR1, C5, I4 | V-PR, V-CM2, V-G6, V-PV5 |
+| Liveness | Can an honest, valid proof always be accepted in time (gas, root windows, capacity)? | I3, I2 | V-LV |
+| Trusted parties | What can the owner, roles, upgrader, setup ceremony, prover, sequencer or relayer do, and what breaks if they misbehave? | T1 | V-VC2, V-PV1 |
 | Statement binding and replay | Is the proof bound to what the contract does with it: input order and encoding, sender, recipient, chain, nonce, nullifier? | I1, I3, G2 | V-PI, V-PS, V-CM5 |
 | Setup and key trust | Do the keys come from a trusted setup, and is the deployed verifier and VK the one for this circuit? | I2, I4 | V-PV1, V-VC, V-CM4 |
 | Known advisories | Is the pinned gnark version affected? | Phase 0, I4 | `gnark-versions.md` |
 
-Privacy has no dedicated lens or ledger class yet; it relies on the vectors
-above and the first-principles lens.
+Trusted-party powers are reported as `needs_validation` with the trust
+assumption as a blocker (or as accepted risks when `zk-audit.md` trusts the
+party), never dropped; severities follow anchors calibrated against published
+audit labels (`severity-calibration.md`).
 
 Coverage checklist (lens files are in
 [`references/agents/`](plugins/zk-audit/skills/zk-audit/references/agents/),
@@ -71,8 +75,12 @@ slices in [`references/attack-vectors/`](plugins/zk-audit/skills/zk-audit/refere
 | Commitments, recursion, Fiat-Shamir | C5 crypto gadgets | `commitments-recursion.md` (V-CM) | standard, deep |
 | Circuit vs spec, invariants, over-constraint | C6 spec and invariants | `generic-zk.md` (V-G) | standard, deep |
 | Public-input order, encoding, binding | I1 public-input binding | `public-inputs.md` (V-PI) | all |
-| Verifier contract, VK provenance, admin swap | I2 verifier contracts | `verifier-contracts.md` (V-VC) | standard, deep |
-| Nullifiers, roots, replay, identities | I3 protocol state | `protocol-state.md` (V-PS) | standard, deep |
+| Verifier contract, VK provenance, verifier gas | I2 verifier contracts | `verifier-contracts.md` (V-VC) | standard, deep |
+| Hand-written and non-gnark verifiers: transcript, precompiles, pairing, input and point checks | I2 + V-custom shard (only when such a verifier is found) | `custom-verifiers.md` (V-CV) | all |
+| The contract beyond the proof: funds flow, tokens, reentrancy, signatures, initialisation, accounting | S1 contract review (+ `solidity-auditor` when installed) | `contract-review.md` (V-SA) | standard, deep |
+| Nullifiers, roots, replay, identities, liveness | I3 protocol state | `protocol-state.md` (V-PS), `gas-liveness.md` (V-LV) | standard, deep |
+| Owner, roles, upgrades, setup, sequencer and relayer powers | T1 trusted parties | — | all |
+| Public data, tags, correlation, relayers, witness exposure | PR1 privacy | `privacy.md` (V-PR) | standard, deep |
 | Setup, keys, deserialisation, logs, versions | I4 prover service | `prover-service.md` (V-PV) | standard, deep |
 | Circuit × contract × state seams | G2 binding gaps | — | all |
 | Range × field × invariant seams | G1 numerical gaps | — | deep |
@@ -81,21 +89,33 @@ slices in [`references/attack-vectors/`](plugins/zk-audit/skills/zk-audit/refere
 | Every other assumption (liveness, griefing, upgrades, cross-circuit reuse) | F1 first principles | — | standard, deep |
 
 Every slice also gets its own vector-scan shard (V-hints, V-range, …,
-V-prover) in every profile. The coverage ledger records one unit per circuit ×
-lens class, public input, hint, verifier, contract function × integration
-class, prover file and gnark dependency; the report states which units were
-covered, deferred or not applicable, and never says "verified clean".
+V-prover) in every profile, except V-privacy, V-liveness and V-contract
+(standard and deep) and V-custom (every profile, only when the inventory
+finds a verifier gnark did not generate). The coverage ledger records one
+unit per circuit × lens class, public input, hint, verifier, contract
+function × integration class, entry point, non-gnark verifier, privileged
+function, role and setup site, prover file and gnark dependency; the report
+states which units were covered, deferred or not applicable, and never says
+"verified clean".
+
+Every profile checks each verification call's ABI against the verifier the
+pinned gnark exports and scans for single-party setups and ceremony files;
+deep also regenerates the verifier with the target's own gnark in the
+sandbox and diffs it. Deployed bytecode and verifying keys are compared only
+when the user supplies them (`gnark-inventory verifier`).
 
 ### Out of scope
 
 - gnark backends, gnark-crypto and gnark std internals, beyond known
   advisories.
-- Solidity bugs unrelated to proof consumption (token accounting, general
-  access control, gas). The integration lenses cover the ZK surface only; the
-  `solidity-auditor` companion extends this when installed, and the report
-  says which applied.
+- A full Solidity audit. S1 and the V-contract shard (standard, deep)
+  review every entry point for funds flow, tokens, reentrancy, signatures,
+  initialisation and accounting, from a sourced checklist; quick covers the
+  ZK surface only. The `solidity-auditor` companion goes wider when
+  installed, and the report says which applied.
 - Economic and game-theoretic design. F1 may raise leads, but there is no
-  systematic review.
+  systematic review. Every report ends with a fixed "Not covered" section
+  that lists these limits and the run's own gaps.
 - Infrastructure: servers, key storage, CI, deployment pipelines, front ends.
 - Formal verification, Noir, Halo2 and other frontends.
 
@@ -126,14 +146,16 @@ parties (admin, relayer, sequencer) behave.
 
 | Part | State |
 |---|---|
-| `gnark-inventory`: `detect`, `inventory`, `bundle`, `validate`, `assemble`, `lint-kb`, `advisories`, `rules` | Implemented, unit tested, run in CI. |
+| `gnark-inventory`: `args`, `detect`, `preflight`, `inventory`, `bundle`, `profiles`, `validate`, `assemble`, `ledger`, `agents`, `memory`, `diff`, `sandbox`, `harness`, `lint-kb`, `advisories`, `rules` | Implemented, unit tested, run in CI. |
+| Safety by code | Hunters and critics are read-only plugin agent types (Read, Grep, Glob); PoCs and recon type loading run in an OS sandbox (bubblewrap on Linux: no network, writes only to the worktree; `sandbox-exec` on macOS, untested in CI); the tool refuses writes into the target and symlinked quotes; `validate` / `assemble` check PoC files and agent outputs on disk. A standalone skill install restricts agent tools by prompt only. |
 | Findings, ledger and stack schemas with validators | Implemented. |
 | Deterministic report assembler (`assemble`) | Implemented: validates its inputs, refuses forbidden clean claims, quotes code from the audited tree, counts coverage only from the ledger; golden tests. |
-| Knowledge base: 79 sourced vectors in 12 slices, advisory table, API footguns, judging, PoC templates | Written and linted. Four PoC templates were run against gnark v0.14.0. |
-| Skill, orchestration, lens files, commands, `poc-builder` and `refuter` agents | Written as prompts. One blind end-to-end run is recorded: quick profile on the pool fixture, recall 12 of 14 planted items, no false positives ([`evals/baseline/pool-quick.md`](plugins/zk-audit/evals/baseline/pool-quick.md)). |
+| Knowledge base: 91 sourced vectors in 14 slices (privacy and gas-liveness added), advisory table, API footguns, judging, severity calibration against 60 published findings, PoC templates | Written and linted. Four PoC templates were run against gnark v0.14.0; the stale-root Foundry template runs on the `liveness-roots` fixture in `make eval-pocs`. |
+| Skill, orchestration, lens files, commands, `hunter`, `critic`, `poc-builder` and `refuter` agents | Written as prompts. One blind end-to-end run is recorded: quick profile on the pool fixture, recall 12 of 14 planted items, no false positives ([`evals/baseline/pool-quick.md`](plugins/zk-audit/evals/baseline/pool-quick.md)). |
 | Install routes | Claude Code plugin, or the skill folder copied alone into `~/.claude/skills/zk-audit`; both checked in [`docs/pashov-parity.md`](docs/pashov-parity.md), the second on every CI run. |
 | Eval harness | One fixture (`pool`) with an answer key, a sanitizer that strips hint comments, and executed eval PoCs in CI. No scored LLM runs in CI, no all-safe panel, no `case.yaml` suite yet. |
-| `diff` mode, `--loop` memory, coverage critics | Described in prompts; no tool support. |
+| `diff` mode, `--loop` memory | Tool support: `diff` flags the high-risk triggers, `memory` holds NEW / KNOWN tags, "seen in k/N" and the stop rule. Not yet measured in an end-to-end run. |
+| Coverage critics | Prompted (`zk-audit:critic`); the ledger records a decision per missing unit through `ledger add` / `ledger mark`. |
 | Regenerate-and-diff of `Verifier.sol` (deep profile) | Not automated. |
 | Semgrep rules, zkao bridge | Not started. |
 
@@ -163,11 +185,14 @@ cp -R "$tmp/zk-audit/plugins/zk-audit/skills/zk-audit" ~/.claude/skills/zk-audit
 
 If the skill list does not show `zk-audit` yet in the running session, read
 `~/.claude/skills/zk-audit/SKILL.md` and follow it. In this route the modes
-are `/zk-audit setup|recon|diff`, and the PoC builder and refuter run as
-general-purpose agents briefed with `agents/*.md` from the skill folder.
+are `/zk-audit setup|recon|diff`, and the hunters, critics, PoC builder and
+refuter run as general-purpose agents briefed with `agents/*.md` from the
+skill folder (read-only by prompt only).
 
 **Claude Code plugin** (adds the `/zk-audit:setup|recon|diff` commands and the
-`zk-audit:poc-builder` / `zk-audit:refuter` agent types):
+`zk-audit:hunter`, `zk-audit:critic`, `zk-audit:poc-builder` and
+`zk-audit:refuter` agent types; hunter, critic and refuter have read-only
+tool allowlists, which only a plugin install enforces):
 
 ```text
 /plugin marketplace add shramee/zk-audit
@@ -195,9 +220,11 @@ PoCs, and the companion skills listed by `/zk-audit setup`.
 | `/zk-audit circuits/transfer.go contracts/Pool.sol` | Limits scope to the named files. |
 | `/zk-audit diff origin/main` or `/zk-audit:diff origin/main` | Reviews a commit range. |
 | `/zk-audit recon` or `/zk-audit:recon` | Recon only: stack, advisories, public-input table, hint and footgun inventory. |
+| `/zk-audit library` | Audits a gnark gadget library (no production circuit, no verifier contract): exported-gadget inventory, doc-contract lens L1, a PoC harness per gadget, differential tests. Phase 0 proposes it when it detects such a repository. |
 | `/zk-audit setup` or `/zk-audit:setup` | Shows companions and tools; installs only after you confirm. |
 
-Flags: `--local`, `--loop N`, `--no-poc`, `--file-output`, `--out DIR`.
+Flags: `--local`, `--loop N`, `--no-poc`, `--file-output`, `--out DIR`,
+`--profile P`. The skill parses them with `gnark-inventory args`.
 
 When the plugin namespaces skills, the main entry point is `/zk-audit:zk-audit`.
 Asking a plain question ("is this circuit ok?") gets a direct answer without

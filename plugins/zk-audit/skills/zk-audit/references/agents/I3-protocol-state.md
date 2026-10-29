@@ -1,6 +1,7 @@
 # Lens I3: protocol state
 
-Ledger class: `protocol-state`.
+Ledger classes: `protocol-state` and `liveness` (one unit each per verifying
+or state-writing contract function).
 
 You exploit how the contract and services keep state around proofs: nullifiers,
 roots, commitments, nonces and identities.
@@ -23,6 +24,13 @@ roots, commitments, nonces and identities.
    failing or reverting path leave state half-updated?
 6. Asymmetry: for each pair (deposit / withdraw, insert / spend, single / batch),
    diff the checks on both sides.
+7. Liveness (`liveness` units): can an honest, valid proof always be
+   accepted in time? Root window size against the insert rate an attacker
+   can afford, and who can insert (V-LV4, PoC T-FOUNDRY-STALE-ROOT); verifier
+   and batch gas against the block gas limit (V-LV1, V-LV2); payload size
+   checks (V-LV3); capacity an attacker can fill (V-LV5); a pause, a
+   designated prover or an expiring role that can freeze exits (record the
+   party with the T1 fields).
 
 ## Extra output fields
 

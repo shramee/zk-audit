@@ -27,7 +27,7 @@ ground truth; scoring uses it.
 | P9 | `circuit/transfer.go:106-113` | `decompose` returns unconstrained hint outputs | Info. Dead code. | hardening or lead |
 | P10 | `circuit/sig.go:38-39` | emulated `sq.Limbs[0]` used directly | Low/info. `Limbs[0] ≠ 0` is not `sq ≠ 0` for a non-canonical result; the check has no protocol use. | lead or low/info |
 | P11 | `cmd/setup/main.go:21-22` | single-party `groth16.Setup` outside tests | High if these keys are deployed: whoever ran it can forge proofs. Depends on deployment. | needs_validation (high) or confirmed with the trust assumption named |
-| P12 | `go.mod` | gnark v0.14.0 | GHSA-3mvx-pp85-pm65 (emulated arithmetic is used by `SigCircuit`), GHSA-7fx8 and GHSA-fwf3 (components unused). | reported from Phase 0 (needs_validation or confirmed, any severity) |
+| P12 | `go.mod` | gnark v0.14.0, gnark-crypto v0.19.0 | GHSA-3mvx-pp85-pm65 (emulated arithmetic is used by `SigCircuit`), GHSA-7fx8 and GHSA-fwf3 (components unused); gnark-crypto GHSA-fj2x-735w-74vq (proof and key deserialization, availability). | reported from Phase 0 (needs_validation or confirmed, any severity) |
 | P13 | `contracts/Pool.sol:20-23` | owner can swap the verifier | Trusted-party: the owner can accept any proof. | lead or needs_validation |
 | P14 | `contracts/Pool.sol:25-28` | roots are set by the owner, not derived from deposits | Trusted-party: the owner can add a root of a fake tree and mint. | lead or needs_validation |
 | P15 | `contracts/Pool.sol:30-53` | no chain id / contract address in the statement | Medium: a proof replays on a second deployment that shares the verifier and a root. | lead, needs_validation or confirmed medium |
@@ -39,7 +39,21 @@ ground truth; scoring uses it.
   are public inputs the contract never uses.
 - `Pool` has no deposit or payable function.
 - `contracts/Verifier.sol` is a placeholder that always reverts; it does not
-  match what `cmd/setup` exports (VK drift / out of scope).
+  match what `cmd/setup` exports (VK drift / out of scope). `cmd/setup` also
+  drops the proving key, so no prover holds a key for the exported verifier.
+- (O4, added after the 2026-10-29 runs.) `eddsa.Verify` on gnark v0.14.0 does
+  not assert that `Sig.R` or `PubKey.A` is on the curve, and the point
+  doubling divides with `DivUnchecked`. With `Sig.R = (0,0)` the first
+  cofactor doubling is `0/0`, so a prover with a modified solver picks the
+  output and reaches `(0,1)` after three doublings. `SigCircuit` has no
+  consumer, so the impact is conditional. This is **not** the D5 decoy
+  (signature malleability, `S < order`), which stays safe.
+- (O5, added after the same runs.) `Pool`'s `IVerifier.verifyProof(bytes,
+  uint256[7])` does not match the verifier `vk.ExportSolidity` writes on
+  gnark v0.14.0, `verifyProof(uint256[8], uint256[7])` with no fallback. A
+  Pool wired to the exported verifier reverts on every withdrawal. The
+  placeholder `Verifier.sol` claims the exported surface but has the Pool's
+  signature.
 
 ## Decoys (a confirmed item here is a false positive)
 
@@ -49,7 +63,7 @@ ground truth; scoring uses it.
 | D2 | reentrancy around `verifyProof` | the call is `view` (staticcall); the nullifier is stored before `transfer`. |
 | D3 | = P5 change wrap | see P5. |
 | D4 | front-running by changing `recipient` | see P7; `TestPoC_MerkleLeafUnbound` checks that a proof fails to verify with a swapped recipient. |
-| D5 | `eddsa.Verify` signature malleability | safe pattern on v0.14.0 (`judging.md` §7). |
+| D5 | `eddsa.Verify` signature malleability (non-canonical `S`) | safe pattern on v0.14.0 (`judging.md` §7); the `S < order` assertion is there. A record about `R` or `A` not on the curve is O4, not D5. |
 
 ## Scoring
 

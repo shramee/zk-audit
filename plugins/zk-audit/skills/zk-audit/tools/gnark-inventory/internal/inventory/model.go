@@ -4,6 +4,7 @@ package inventory
 
 import (
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/solidity"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/verifier"
 )
 
 // Pos is a source position.
@@ -14,18 +15,24 @@ type Pos struct {
 
 // Inventory is the document written to inventory.json.
 type Inventory struct {
-	SchemaVersion string           `json:"schema_version"`
-	ToolVersion   string           `json:"tool_version"`
-	Repo          string           `json:"repo"`
-	LoadMode      string           `json:"load_mode"`
-	LoadErrors    []string         `json:"load_errors"`
-	Scope         []string         `json:"scope,omitempty"`
-	Circuits      []*Circuit       `json:"circuits"`
-	Hints         []*HintSite      `json:"hints"`
-	HintFuncs     []*HintFunc      `json:"hint_functions"`
-	Footguns      []*Footgun       `json:"footguns"`
-	Contracts     *solidity.Result `json:"contracts"`
-	Summary       Summary          `json:"summary"`
+	SchemaVersion string      `json:"schema_version"`
+	ToolVersion   string      `json:"tool_version"`
+	Repo          string      `json:"repo"`
+	LoadMode      string      `json:"load_mode"`
+	LoadErrors    []string    `json:"load_errors"`
+	Scope         []string    `json:"scope,omitempty"`
+	Circuits      []*Circuit  `json:"circuits"`
+	Hints         []*HintSite `json:"hints"`
+	HintFuncs     []*HintFunc `json:"hint_functions"`
+	Footguns      []*Footgun  `json:"footguns"`
+	// Gadgets are the exported functions and methods that build
+	// constraints (library mode, lens L1).
+	Gadgets   []*Gadget        `json:"gadgets"`
+	Contracts *solidity.Result `json:"contracts"`
+	// Provenance holds the static verifier-provenance checks (ABI check,
+	// ceremony scan); the inventory command fills it after stack detection.
+	Provenance *verifier.Provenance `json:"provenance,omitempty"`
+	Summary    Summary              `json:"summary"`
 }
 
 // Summary holds counts for quick display and for the ledger seed.
@@ -33,6 +40,7 @@ type Summary struct {
 	GoFiles        int            `json:"go_files"`
 	GnarkFiles     int            `json:"gnark_files"`
 	Circuits       int            `json:"circuits"`
+	Gadgets        int            `json:"gadgets"`
 	PublicInputs   int            `json:"public_inputs_static"`
 	HintSites      int            `json:"hint_sites"`
 	UnreachedHints int            `json:"unreached_hint_outputs"`

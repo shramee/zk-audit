@@ -29,6 +29,8 @@ type PoC struct {
 	Path          string `json:"path"`
 	Command       string `json:"command"`
 	Result        string `json:"result"`
+	Demonstrates  string `json:"demonstrates"`
+	Package       string `json:"package"`
 	OutputExcerpt string `json:"output_excerpt"`
 }
 
@@ -44,6 +46,8 @@ type Gates struct {
 type Refuter struct {
 	Verdict   string `json:"verdict"`
 	Reasoning string `json:"reasoning"`
+	Mechanism string `json:"mechanism"`
+	Impact    string `json:"impact"`
 	By        string `json:"by"`
 }
 
@@ -60,6 +64,7 @@ type Record struct {
 	VectorIDs        []string   `json:"vector_ids"`
 	Description      string     `json:"description"`
 	RunTag           string     `json:"run_tag"`
+	Seen             *Seen      `json:"seen"`
 
 	Severity   string   `json:"severity"`
 	Confidence *int     `json:"confidence"`
@@ -80,6 +85,36 @@ type Record struct {
 
 	CodeSmells []string `json:"code_smells"`
 	Unverified string   `json:"unverified"`
+
+	Trust       *Trust `json:"trust"`
+	Calibration string `json:"calibration"`
+	Property    string `json:"property"`
+}
+
+// Trust is a trusted-party record's trust object.
+type Trust struct {
+	Party      string   `json:"party"`
+	Role       string   `json:"role"`
+	Power      string   `json:"power"`
+	Breaks     []string `json:"breaks"`
+	Assumption string   `json:"assumption"`
+	Mitigation string   `json:"mitigation"`
+	Accepted   bool     `json:"accepted"`
+	Source     string   `json:"source"`
+	LeadReason string   `json:"lead_reason"`
+}
+
+// AcceptedRisk is a risk zk-audit.md accepts that no record covers.
+type AcceptedRisk struct {
+	Party  string `json:"party"`
+	Risk   string `json:"risk"`
+	Source string `json:"source"`
+}
+
+// Seen is loop mode's "seen in k of N passes".
+type Seen struct {
+	Passes int `json:"passes"`
+	Of     int `json:"of"`
 }
 
 // Hardening is one hygiene note.
@@ -97,17 +132,18 @@ type Companions struct {
 
 // Findings is findings.json.
 type Findings struct {
-	Repo             string      `json:"repo"`
-	Commit           string      `json:"commit"`
-	RunID            string      `json:"run_id"`
-	Profile          string      `json:"profile"`
-	NoFindings       bool        `json:"no_findings"`
-	NoFindingsReason string      `json:"no_findings_reason"`
-	Posture          string      `json:"posture"`
-	OutOfScope       []string    `json:"out_of_scope"`
-	Companions       *Companions `json:"companions"`
-	Hardening        []Hardening `json:"hardening"`
-	Records          []Record    `json:"records"`
+	Repo             string         `json:"repo"`
+	Commit           string         `json:"commit"`
+	RunID            string         `json:"run_id"`
+	Profile          string         `json:"profile"`
+	NoFindings       bool           `json:"no_findings"`
+	NoFindingsReason string         `json:"no_findings_reason"`
+	Posture          string         `json:"posture"`
+	OutOfScope       []string       `json:"out_of_scope"`
+	Companions       *Companions    `json:"companions"`
+	Hardening        []Hardening    `json:"hardening"`
+	AcceptedRisks    []AcceptedRisk `json:"accepted_risks"`
+	Records          []Record       `json:"records"`
 }
 
 // Unit is one coverage-ledger unit.
@@ -134,6 +170,30 @@ type Ledger struct {
 
 // Inventory holds the parts of inventory.json the report uses.
 type Inventory struct {
-	LoadMode   string   `json:"load_mode"`
-	LoadErrors []string `json:"load_errors"`
+	LoadMode   string      `json:"load_mode"`
+	LoadErrors []string    `json:"load_errors"`
+	Gadgets    []InvGadget `json:"gadgets"`
+}
+
+// InvGadget is the part of an inventory gadget the report's gadget
+// contract table shows (library mode).
+type InvGadget struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Pos  struct {
+		File string `json:"file"`
+		Line int    `json:"line"`
+	} `json:"pos"`
+	Promises []InvClaim `json:"doc_promises"`
+	Preconds []InvClaim `json:"doc_preconditions"`
+	Checks   []struct {
+		Kind string `json:"kind"`
+	} `json:"doc_checks"`
+	InTest bool `json:"in_test_file"`
+}
+
+// InvClaim is one classified doc sentence.
+type InvClaim struct {
+	Kinds []string `json:"kinds"`
+	Text  string   `json:"text"`
 }

@@ -446,7 +446,7 @@
           ]
         }
       ],
-      "match": "(?i)malleab|canonical|curve check|on.?curve|subgroup"
+      "match": "(?i)malleab|canonical"
     }
   ],
   "other": [
@@ -488,7 +488,34 @@
           "anchors": []
         }
       ],
-      "match": "(?i)placeholder|stub|drift|vk|verifying key|generated|always revert|trace"
+      "match": "(?i)placeholder|stub|drift|vk|verifying key|generated|always revert|trace|proving key|\\bpk\\b"
+    },
+    {
+      "id": "O4",
+      "title": "eddsa.Verify does not check Sig.R or PubKey.A on the curve; small-order keys",
+      "ranges": [
+        {
+          "file": "circuit/sig.go",
+          "anchors": [
+            "eddsa.Verify("
+          ]
+        }
+      ],
+      "match": "(?i)on.?curve|small.?order|torsion|subgroup|\\(0, ?0\\)|cofactor"
+    },
+    {
+      "id": "O5",
+      "title": "Pool's IVerifier ABI does not match the verifier gnark exports",
+      "ranges": [
+        {
+          "file": "contracts/Pool.sol",
+          "anchors": [
+            "interface IVerifier",
+            "verifier.verifyProof(proof, input);"
+          ]
+        }
+      ],
+      "match": "(?i)abi|selector|signature|uint256\\[8\\]|exported verifier|does not have|mismatch"
     }
   ]
 }

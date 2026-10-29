@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -13,17 +14,24 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/advisory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/assemble"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/bundle"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/detect"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fsutil"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/inventory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/kblint"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/ledger"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/load"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/modcache"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/preflight"
+	profiles "github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/report"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/sandbox"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/validate"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/verifier"
 )
 
 // Version of the tool; keep in step with plugin.json and the skill VERSION file
@@ -33,20 +41,37 @@ const Version = "0.1.0"
 const usage = `gnark-inventory ` + Version + ` — deterministic recon for zk-audit
 
 Usage:
+  gnark-inventory args      [--repo DIR] [--mode M] [--run-id ID] [--home DIR] -- WORDS...
   gnark-inventory detect    --repo DIR [--out stack.json]
+  gnark-inventory preflight --repo DIR [--out DIR] [--json]
   gnark-inventory inventory --repo DIR --out DIR [--files a.go,dir/] [--syntax-only] [--allow-network]
-  gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile quick|standard|deep]
-  gnark-inventory validate  findings|ledger|stack FILE
-  gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F]
+  gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile P]
+  gnark-inventory profiles  [--profile P] [--markdown] [--check-docs SKILL_DIR] [--sync-docs SKILL_DIR]
+  gnark-inventory validate  findings|ledger|stack FILE [--out DIR]
+  gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F] [--file-output]
+  gnark-inventory diff      --repo DIR --base REV [--head REV] [--out DIR]
+  gnark-inventory memory    init --out DIR --passes N | merge --out DIR --pass P [--findings F] [--critic F] | known --out DIR | status --out DIR
+  gnark-inventory ledger    mark --out DIR (--unit ID|--match S|--lens L|--kind K|--class C)... [--from STATUS] [--status S] [--agent A]... [--reviewed P]... [--fingerprint F]... [--reason R] [--notes T] [--wave N]
+  gnark-inventory ledger    add  --out DIR --kind K --subject S --class C --lens L [--path FILE:LINE] [--notes T]
+  gnark-inventory ledger    show --out DIR
+  gnark-inventory agents    save --out DIR --id ID [--from FILE] [--status done|blocked|failed|refused] [--reason R]
+  gnark-inventory agents    list --out DIR
+  gnark-inventory verifier  abi|diff|vk|bytecode|regen|ceremony [flags]   (gnark-inventory verifier help)
+  gnark-inventory convert   pashov --in PATH --out FILE [--inventory FILE]
+  gnark-inventory harness   --out DIR (--gadget ID|NAME | --all) [--worktree DIR] [--print] [--emparams T] [--curve C]
+  gnark-inventory sandbox   [--rw DIR]... [--ro DIR]... [--cwd DIR] [--timeout SEC] [--mem MB] [--allow-network] [--engine E] [--require] [--check] -- CMD [ARGS...]
   gnark-inventory lint-kb   [--gnark-src DIR] SKILL_DIR
-  gnark-inventory advisories [--version vX.Y.Z]
+  gnark-inventory advisories [--version vX.Y.Z] [--crypto-version vX.Y.Z] [--repo DIR] [--json] [--osv]
   gnark-inventory rules
   gnark-inventory version
 
-Exit status: 0 ok, 1 validation or lint failure, 2 usage or I/O error.
+Exit status: 0 ok, 1 validation or lint failure, 2 usage or I/O error;
+sandbox returns the command's status, 124 on the time limit, 125 when the
+sandbox cannot be set up, 127 when the command does not exist.
 `
 
 func main() {
+	sandbox.Stage2() // inside a sandbox: set limits and exec the command
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
@@ -64,6 +89,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "detect":
 		err = cmdDetect(args[1:], stdout)
+	case "preflight":
+		err = cmdPreflight(args[1:], stdout)
 	case "inventory":
 		err = cmdInventory(args[1:], stdout)
 	case "assemble":
@@ -76,6 +103,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 		code, err = cmdLint(args[1:], stdout)
 	case "advisories":
 		err = cmdAdvisories(args[1:], stdout)
+	case "args":
+		code, err = cmdArgs(args[1:], stdout)
+	case "diff":
+		err = cmdDiff(args[1:], stdout)
+	case "memory":
+		code, err = cmdMemory(args[1:], stdout)
+	case "ledger":
+		code, err = cmdLedger(args[1:], stdout)
+	case "agents":
+		code, err = cmdAgents(args[1:], stdout, os.Stdin)
+	case "sandbox":
+		code, err = cmdSandbox(args[1:], stdout, stderr)
+	case "verifier":
+		code, err = cmdVerifier(args[1:], stdout, stderr)
+	case "convert":
+		code, err = cmdConvert(args[1:], stdout)
+	case "harness":
+		code, err = cmdHarness(args[1:], stdout)
+	case "profiles":
+		code, err = cmdProfiles(args[1:], stdout)
 	case "rules":
 		err = writeJSON(stdout, inventory.Rules)
 	case "version", "--version", "-v":
@@ -146,11 +193,41 @@ func cmdDetect(args []string, stdout io.Writer) error {
 	if *out == "" {
 		return writeJSON(stdout, st)
 	}
+	if err := refuseInRepo("detect --out", *out, root); err != nil {
+		return err
+	}
 	if err := writeJSONFile(*out, st); err != nil {
 		return err
 	}
 	fmt.Fprintln(stdout, st.Line())
 	return nil
+}
+
+// cmdPreflight checks that the pinned gnark and gnark-crypto sources, the
+// target's requirements and a new enough Go are on this machine, and prints
+// the commands that would fetch what is missing. It never runs them.
+func cmdPreflight(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("preflight", flag.ContinueOnError)
+	repo := repoFlag(fs)
+	out := fs.String("out", "", "audit output directory, used in the printed commands (default <out>)")
+	asJSON := fs.Bool("json", false, "print JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	root, err := absRepo(*repo)
+	if err != nil {
+		return err
+	}
+	st, err := detect.Detect(root, Version)
+	if err != nil {
+		return err
+	}
+	rep := preflight.Check(st, preflight.Options{Cache: modcache.Dir(), LocalGo: modcache.LocalGo(), Out: *out})
+	if *asJSON {
+		return writeJSON(stdout, rep)
+	}
+	_, err = io.WriteString(stdout, rep.Text())
+	return err
 }
 
 func cmdInventory(args []string, stdout io.Writer) error {
@@ -160,8 +237,14 @@ func cmdInventory(args []string, stdout io.Writer) error {
 	files := fs.String("files", "", "comma-separated repo-relative files or directories to report on")
 	syntax := fs.Bool("syntax-only", false, "skip go/packages type loading")
 	network := fs.Bool("allow-network", false, "let the go command download modules while loading")
+	sb := fs.String("sandbox", "auto", "run type loading (go list) in the OS sandbox: auto (when available), on (required) or off")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	switch *sb {
+	case "auto", "on", "off":
+	default:
+		return fmt.Errorf("inventory: --sandbox wants auto, on or off, got %q", *sb)
 	}
 	if *out == "" {
 		return fmt.Errorf("inventory: --out is required")
@@ -170,11 +253,25 @@ func cmdInventory(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if err := refuseInRepo("inventory --out", *out, root); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return err
 	}
-	if inside(*out, root) {
-		fmt.Fprintln(os.Stderr, "gnark-inventory: warning: --out is inside the target repository")
+	if !*syntax && *sb != "off" && os.Getenv(sandbox.MarkerEnv) == "" {
+		absOut, err := filepath.Abs(*out)
+		if err != nil {
+			return err
+		}
+		inner := []string{"--repo", root, "--out", absOut, "--files", *files}
+		if *network {
+			inner = append(inner, "--allow-network")
+		}
+		done, err := inventoryInSandbox(inner, root, absOut, *network, *sb == "on", stdout)
+		if done || err != nil {
+			return err
+		}
 	}
 	var scope []string
 	for _, f := range strings.Split(*files, ",") {
@@ -194,6 +291,9 @@ func cmdInventory(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if inv.Provenance, err = provenance(root, inv, st); err != nil {
+		return err
+	}
 	led := ledger.Seed(inv, st, "gnark-inventory "+Version)
 	if err := writeJSONFile(filepath.Join(*out, "inventory.json"), inv); err != nil {
 		return err
@@ -211,8 +311,11 @@ func cmdInventory(args []string, stdout io.Writer) error {
 		return err
 	}
 	s := inv.Summary
-	fmt.Fprintf(stdout, "load: %s · circuits: %d · public inputs (static): %d · hint sites: %d (unreached outputs: %d) · footgun hits: %d · verify calls: %d · ledger units: %d\n",
-		inv.LoadMode, s.Circuits, s.PublicInputs, s.HintSites, s.UnreachedHints, countHits(s.Footguns), s.VerifyCalls, len(led.Units))
+	fmt.Fprintf(stdout, "load: %s · circuits: %d · gadgets: %d · public inputs (static): %d · hint sites: %d (unreached outputs: %d) · footgun hits: %d · verify calls: %d · ledger units: %d\n",
+		inv.LoadMode, s.Circuits, s.Gadgets, s.PublicInputs, s.HintSites, s.UnreachedHints, countHits(s.Footguns), s.VerifyCalls, len(led.Units))
+	if p := inv.Provenance; p != nil {
+		fmt.Fprintf(stdout, "verifier ABI: %d mismatches · setup: %s\n", p.ABI.Mismatches(), p.Ceremony.Verdict)
+	}
 	fmt.Fprintf(stdout, "wrote %s/{inventory.json,inventory.md,binding-table.md,coverage-ledger.json,stack.json}\n", *out)
 	if len(inv.LoadErrors) > 0 {
 		fmt.Fprintf(stdout, "note: %d load errors (first: %s)\n", len(inv.LoadErrors), inv.LoadErrors[0])
@@ -221,6 +324,40 @@ func cmdInventory(args []string, stdout io.Writer) error {
 		}
 	}
 	return nil
+}
+
+// inventoryInSandbox reruns this inventory command inside the OS sandbox
+// (repository read-only, only the output directory and the sandbox build
+// cache writable, no network unless --allow-network), the same environment
+// PoCs run in. It reports done=false when no OS sandbox exists and the caller
+// should load in-process (auto mode).
+func inventoryInSandbox(args []string, root, out string, network, require bool, stdout io.Writer) (bool, error) {
+	eng, err := sandbox.Detect("auto")
+	if err != nil {
+		return true, err
+	}
+	if eng.Name == sandbox.None {
+		if require {
+			return true, fmt.Errorf("inventory: --sandbox on, but no OS sandbox is usable: %s", eng.Reason)
+		}
+		fmt.Fprintf(os.Stderr, "gnark-inventory: warning: no OS sandbox (%s); loading the target in-process with a hardened go environment\n", eng.Reason)
+		return false, nil
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return true, err
+	}
+	code, _, err := sandbox.Run(append([]string{self, "inventory"}, args...), sandbox.Options{
+		RW: []string{out}, RO: []string{root}, Cwd: out, Network: network, Require: true,
+		Env: []string{"ZK_AUDIT_SELF_EXEC=1"}, Stdout: stdout, Stderr: os.Stderr,
+	})
+	if err != nil {
+		return true, err
+	}
+	if code != 0 {
+		return true, fmt.Errorf("inventory: the sandboxed run exited with status %d", code)
+	}
+	return true, nil
 }
 
 // missingModules reports whether load errors look like an empty module cache
@@ -236,6 +373,37 @@ func missingModules(errs []string) bool {
 	return false
 }
 
+// provenance runs the static verifier-provenance checks: the ABI check of
+// every verification call against the repository's verifiers and the
+// verifier the pinned gnark exports, and the ceremony scan.
+func provenance(root string, inv *inventory.Inventory, st *detect.Stack) (*verifier.Provenance, error) {
+	g := verifier.Gnark{Versions: st.Gnark.Versions, Backends: st.Gnark.Backends}
+	for _, f := range st.Gnark.Features {
+		if f == "commitments" {
+			g.Commitments = true
+		}
+	}
+	static := true
+	for _, c := range inv.Circuits {
+		if c.InTest {
+			continue
+		}
+		if c.Witness.NbPublic < 0 {
+			static = false
+		} else {
+			g.PublicCounts = append(g.PublicCounts, c.Witness.NbPublic)
+		}
+	}
+	if !static {
+		g.PublicCounts = nil
+	}
+	cer, err := verifier.ScanCeremony(root)
+	if err != nil {
+		return nil, err
+	}
+	return &verifier.Provenance{ABI: verifier.CheckABI(inv.Contracts, g), Ceremony: cer}, nil
+}
+
 func countHits(m map[string]int) int {
 	n := 0
 	for _, v := range m {
@@ -244,30 +412,26 @@ func countHits(m map[string]int) int {
 	return n
 }
 
-func inside(p, root string) bool {
-	a, err := filepath.Abs(p)
-	if err != nil {
-		return false
+// refuseInRepo fails when path (resolved through symlinks) lies inside the
+// audited repository: the tool never writes there (SKILL.md hard rules 1
+// and 2). The only exception is the report copy of assemble --file-output.
+func refuseInRepo(what, path, repo string) error {
+	if repo != "" && fsutil.Inside(path, repo) {
+		return fmt.Errorf("%s %s is inside the audited repository %s; write outside it (only assemble --file-output may put the report copy there)", what, path, repo)
 	}
-	rel, err := filepath.Rel(root, a)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return nil
 }
 
 func cmdBundle(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("bundle", flag.ContinueOnError)
 	out := fs.String("out", "", "audit output directory holding inventory.json (required)")
 	skill := fs.String("skill", "", "zk-audit skill directory, the one holding SKILL.md (required)")
-	profile := fs.String("profile", "standard", "quick, standard or deep")
+	profile := fs.String("profile", profiles.Load().Default().ID, "profile id (gnark-inventory profiles lists them)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *out == "" || *skill == "" {
 		return fmt.Errorf("bundle: --out and --skill are required")
-	}
-	switch *profile {
-	case "quick", "standard", "deep":
-	default:
-		return fmt.Errorf("bundle: unknown profile %q", *profile)
 	}
 	res, err := bundle.Build(bundle.Options{Out: *out, Skill: *skill, Profile: *profile})
 	if err != nil {
@@ -290,15 +454,30 @@ func cmdBundle(args []string, stdout io.Writer) error {
 	return writeJSONFile(filepath.Join(*out, "bundles", "index.json"), res)
 }
 
+// cmdValidate checks one document. Flags may come before KIND or after
+// FILE: `validate findings F --out DIR`.
 func cmdValidate(args []string, stdout io.Writer) (int, error) {
-	if len(args) != 2 {
-		return 2, fmt.Errorf("validate: want KIND FILE")
+	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
+	out := fs.String("out", "", "audit output directory: check poc.path files under <out>/pocs/ and agent outputs under <out>/agents/")
+	if err := fs.Parse(args); err != nil {
+		return 2, err
 	}
+	pos := fs.Args()
+	if len(pos) > 2 {
+		if err := fs.Parse(pos[2:]); err != nil {
+			return 2, err
+		}
+		pos = append(pos[:2:2], fs.Args()...)
+	}
+	if len(pos) != 2 {
+		return 2, fmt.Errorf("validate: want [--out DIR] KIND FILE")
+	}
+	args = pos
 	doc, err := os.ReadFile(args[1])
 	if err != nil {
 		return 2, err
 	}
-	rep, err := validate.Document(args[0], doc)
+	rep, err := validate.DocumentWith(args[0], doc, validate.Options{Out: *out})
 	if err != nil {
 		return 2, err
 	}
@@ -330,6 +509,7 @@ func cmdAssemble(args []string, stdout io.Writer) (int, error) {
 	inv := fs.String("inventory", "", "inventory.json (default <out>/inventory.json when present)")
 	repo := fs.String("repo", "", "audited source tree for verbatim constraint quotes (default: stack.json repo)")
 	reportPath := fs.String("report", "", "where to write the report (default <out>/REPORT.md)")
+	fileOutput := fs.Bool("file-output", false, "also write the report to <repo>/zk-audit-report-<run-id>.md (the user asked for --file-output)")
 	if err := fs.Parse(args); err != nil {
 		return 2, err
 	}
@@ -353,7 +533,7 @@ func cmdAssemble(args []string, stdout io.Writer) (int, error) {
 	def(stack, "stack.json", true)
 	def(inv, "inventory.json", true)
 	def(reportPath, "REPORT.md", false)
-	res, err := assemble.Assemble(assemble.Options{Findings: *findings, Ledger: *ledgerPath, Stack: *stack, Inventory: *inv, Repo: *repo})
+	res, err := assemble.Assemble(assemble.Options{Out: *out, Findings: *findings, Ledger: *ledgerPath, Stack: *stack, Inventory: *inv, Repo: *repo})
 	if err != nil {
 		var ie *assemble.InvalidError
 		if errors.As(err, &ie) {
@@ -368,13 +548,36 @@ func cmdAssemble(args []string, stdout io.Writer) (int, error) {
 	for _, w := range res.Warnings {
 		fmt.Fprintln(stdout, "warning:", w)
 	}
-	if *repo != "" && inside(*reportPath, *repo) {
-		fmt.Fprintln(os.Stderr, "gnark-inventory: warning: --report is inside the audited repository")
+	for what, p := range map[string]string{"assemble --out": *out, "assemble --report": *reportPath} {
+		if err := refuseInRepo(what, p, res.Repo); err != nil {
+			return 2, err
+		}
+	}
+	var copyPath string
+	if *fileOutput {
+		if res.Repo == "" {
+			return 2, fmt.Errorf("assemble --file-output needs the audited repository (--repo or stack.json)")
+		}
+		copyPath = filepath.Join(res.Repo, "zk-audit-report-"+res.RunID+".md")
 	}
 	if err := os.WriteFile(*reportPath, []byte(res.Report), 0o644); err != nil {
 		return 2, err
 	}
+	if res.Manifest != nil {
+		if err := os.MkdirAll(filepath.Join(*out, "pocs"), 0o755); err != nil {
+			return 2, err
+		}
+		if err := os.WriteFile(filepath.Join(*out, "pocs", "MANIFEST.json"), res.Manifest, 0o644); err != nil {
+			return 2, err
+		}
+	}
 	fmt.Fprintf(stdout, "wrote %s: %s\n", *reportPath, res.Summary)
+	if copyPath != "" {
+		if err := os.WriteFile(copyPath, []byte(res.Report), 0o644); err != nil {
+			return 2, err
+		}
+		fmt.Fprintf(stdout, "wrote the report copy %s (--file-output)\n", copyPath)
+	}
 	return 0, nil
 }
 
@@ -407,6 +610,11 @@ func cmdLint(args []string, stdout io.Writer) (int, error) {
 func cmdAdvisories(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("advisories", flag.ContinueOnError)
 	ver := fs.String("version", "", "only advisories affecting this gnark version")
+	cver := fs.String("crypto-version", "", "only advisories affecting this gnark-crypto version")
+	repo := fs.String("repo", "", "take the gnark and gnark-crypto versions from every go.mod of this repository")
+	osv := fs.Bool("osv", false, "compare the embedded table with the OSV database for those versions (NETWORK: ask the user first)")
+	osvURL := fs.String("osv-url", advisory.DefaultOSV, "OSV API base URL")
+	asJSON := fs.Bool("json", false, "print JSON (with --repo or --osv)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -414,9 +622,122 @@ func cmdAdvisories(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if *ver == "" {
+	type pin struct{ module, version, gomod string }
+	var pins []pin
+	if *ver != "" {
+		pins = append(pins, pin{advisory.Gnark, *ver, "--version"})
+	}
+	if *cver != "" {
+		pins = append(pins, pin{advisory.GnarkCrypto, *cver, "--crypto-version"})
+	}
+	if *repo != "" {
+		root, err := absRepo(*repo)
+		if err != nil {
+			return err
+		}
+		st, err := detect.Detect(root, Version)
+		if err != nil {
+			return err
+		}
+		for _, m := range st.GoModules {
+			if m.Gnark != "" {
+				pins = append(pins, pin{advisory.Gnark, m.Gnark, m.Path})
+			}
+			if m.GnarkCrypto != "" {
+				pins = append(pins, pin{advisory.GnarkCrypto, m.GnarkCrypto, m.Path})
+			}
+		}
+		if len(pins) == 0 {
+			return fmt.Errorf("advisories: no gnark or gnark-crypto version in any go.mod under %s", root)
+		}
+	}
+	asOf := "advisory table as of " + tab.AsOf
+	if *osv {
+		if len(pins) == 0 {
+			return fmt.Errorf("advisories --osv needs --repo, --version or --crypto-version")
+		}
+		client := advisory.NewOSV(*osvURL)
+		ctx := context.Background()
+		f := &advisory.Freshness{TableAsOf: tab.AsOf, Checked: time.Now().UTC().Format("2006-01-02"), Source: client.BaseURL}
+		seen := map[string]bool{}
+		for _, p := range pins {
+			k := p.module + "@" + p.version
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			if _, err := advisory.ParseVersion(p.version); err != nil {
+				fmt.Fprintf(os.Stderr, "gnark-inventory: skipping %s (%s): %v\n", k, p.gomod, err)
+				continue
+			}
+			vulns, err := client.Query(ctx, p.module, p.version)
+			if err != nil {
+				return err
+			}
+			if err := tab.CompareOSV(f, p.module, p.version, vulns, func(id string) (*advisory.OSVVuln, bool, error) { return client.Get(ctx, id) }); err != nil {
+				return err
+			}
+		}
+		f.Finish()
+		if *asJSON {
+			return writeJSON(stdout, f)
+		}
+		fmt.Fprintln(stdout, f.Summary)
+		for _, n := range f.New {
+			fmt.Fprintf(stdout, "new: %s (%s) %s@%s affected %s — %s\n", n.ID, strings.Join(n.Aliases, ", "), n.Package, n.Version, n.Affected, n.Summary)
+		}
+		for _, c := range f.Changed {
+			fmt.Fprintf(stdout, "changed: %s (OSV %s) %s@%s: table %s, OSV %s\n", c.ID, c.OSVID, c.Package, c.Version, c.Table, c.OSV)
+		}
+		for _, n := range f.NotInOSV {
+			fmt.Fprintf(stdout, "not in OSV: %s (%s@%s; table row verified by %s)\n", n.ID, n.Package, n.Version, n.VerifiedBy)
+		}
+		return nil
+	}
+	if len(pins) == 0 {
 		_, err := stdout.Write(advisory.Raw())
 		return err
 	}
-	return writeJSON(stdout, tab.Affecting(*ver))
+	type hit struct {
+		advisory.Match
+		Module  string `json:"module"`
+		Version string `json:"version"`
+		GoMod   string `json:"go_mod"`
+	}
+	var hits []hit
+	for _, p := range pins {
+		for _, m := range tab.AffectingModule(p.module, p.version) {
+			hits = append(hits, hit{Match: m, Module: p.module, Version: p.version, GoMod: p.gomod})
+		}
+	}
+	if *repo == "" || *asJSON {
+		if hits == nil {
+			hits = []hit{}
+		}
+		if *repo == "" && *cver == "" {
+			// backward compatible: --version alone prints the matches only
+			ms := []advisory.Match{}
+			for _, h := range hits {
+				ms = append(ms, h.Match)
+			}
+			fmt.Fprintln(os.Stderr, asOf+" (offline; --osv compares it with OSV)")
+			return writeJSON(stdout, ms)
+		}
+		fmt.Fprintln(os.Stderr, asOf+" (offline; --osv compares it with OSV)")
+		return writeJSON(stdout, hits)
+	}
+	fmt.Fprintf(stdout, "%s (offline; --osv compares it with OSV, network)\n", asOf)
+	for _, p := range pins {
+		n := 0
+		for _, h := range hits {
+			if h.Module == p.module && h.Version == p.version && h.GoMod == p.gomod {
+				n++
+			}
+		}
+		fmt.Fprintf(stdout, "%s: %s %s: %d advisories\n", p.gomod, strings.TrimPrefix(p.module, "github.com/consensys/"), p.version, n)
+	}
+	for _, h := range hits {
+		fmt.Fprintf(stdout, "- %s %s (%s, %s; affected %s): %s\n", h.ID, h.Status, h.Severity, strings.TrimPrefix(h.Module, "github.com/consensys/"), h.Affected(), h.Action)
+	}
+	return nil
 }

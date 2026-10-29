@@ -3,11 +3,14 @@
 The `PoC:` field of every attack vector names one of these templates. The
 `poc-builder` agent copies the template into the **scratch worktree** (never the
 user's checkout), fills in the circuit, the false statement and the malicious
-values, and runs it with a time limit and no network:
+values, and runs it in the skill's sandbox (no network, worktree the only
+writable tree, cgo off, time and memory limits; `SKILL.md` hard rule 3):
 
 ```bash
-cd <out>/worktree && GOFLAGS=-mod=mod GOPROXY=off timeout 600 go test -run 'PoC_' -count=1 ./<pkg>/
+{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- go -C <out>/worktree test -count=1 -run 'PoC_' ./<pkg>/
 ```
+
+The sandbox sets `GOFLAGS=-mod=mod` and `GOPROXY=off`.
 
 `-mod=mod` is needed because `gnark/test` imports `testify`, which a target
 that never imported `gnark/test` lacks in `go.mod`; with `GOPROXY=off` the go
@@ -25,7 +28,12 @@ command takes it from the module cache and edits only the worktree's
 | a witness the prover assigns directly (unbound input, gated check, wrapped `Sub`, missing binding) | a hand-built assignment | T-INVALID-ASSIGNMENT, then T-PROVE-VERIFY for Critical/High |
 | a solver-computed wire (`DivUnchecked(0, 0)`) | a model circuit | T-CONSTRAINT-MODEL (evidence stays `ANALYSIS`) |
 | an honest input that cannot be proven | an honest witness that fails | T-COMPLETENESS |
-| the contract (binding, replay, state) | a Foundry test | T-FOUNDRY-VERIFIER / T-FOUNDRY-REPLAY |
+| the contract (binding, replay, state, funds flow, signatures) | a Foundry test | T-FOUNDRY-VERIFIER / T-FOUNDRY-REPLAY |
+| a verifier gnark did not generate (inputs, points, transcript) | a changed proof or input that still verifies | T-FOUNDRY-MALLEATE |
+| a public value that singles out the user (privacy) | a candidate set with one match | T-LINKAGE |
+| a root window or capacity an attacker can flush (liveness) | a front-run that makes an honest proof revert | T-FOUNDRY-STALE-ROOT |
+| an exported gadget no production circuit calls (library mode) | the gadget's wrapper circuit from `gnark-inventory harness` | T-GADGET-HARNESS, then the template above that fits |
+| a gadget with a native reference (library mode) | honest inputs on which gadget and reference disagree | T-DIFFERENTIAL |
 
 Practical rules (all learned on the eval fixtures):
 
@@ -55,12 +63,21 @@ Every PoC has three parts. Without all three the evidence is `ANALYSIS`, not
 3. **Sanity control**: a true statement still passes, so the circuit under test
    is the one that ships.
 
-The Go templates were checked against gnark v0.14.0, and every API they use
-exists in gnark v0.16.4 (`constraint/solver/options.go` `OverrideHint`,
-`constraint/solver/hint.go` `GetHintID` / `GetHintName`,
-`test/assert_options.go` `WithSolverOpts`, `backend/backend.go`
-`WithSolverOptions`). Keep slice lengths in the circuit value identical to
-production, or the compiled constraint system differs.
+The Go templates run unchanged on gnark v0.10.0 to v0.16.4 (version matrix
+in `references/gnark-versions.md`). Version notes:
+
+- gnark < v0.9 has no `constraint/solver`: no `OverrideHint`, `GetHintID`
+  or `ccs.Solve` (use `ccs.IsSolved`). A hint cannot be replaced at solve
+  time there; use T-INVALID-ASSIGNMENT or T-CONSTRAINT-MODEL.
+- `test.WithReplacementHint` (test engine) exists from v0.15.0 only.
+- The Groth16 verifier gnark exports takes `uint256[8] proof` from v0.9.0
+  and `bytes proof` from v0.15.0 (T-FOUNDRY-VERIFIER).
+- gnark ≥ v0.15 needs Go ≥ 1.25.7 (v0.16.4: 1.26.8). The sandbox runs the
+  local toolchain only; run the PoC with the `use_go` binary that
+  `gnark-inventory preflight` prints.
+
+Keep slice lengths in the circuit value identical to production, or the
+compiled constraint system differs.
 
 ---
 
@@ -149,7 +166,7 @@ func TestPoC_<FindingID>(t *testing.T) {
 }
 ```
 
-On gnark ≥ v0.15 the test engine can also replace a hint:
+On gnark ≥ v0.15 (not before; version matrix) the test engine can also replace a hint:
 `test.IsSolved(&MyCircuit{}, &falseAssignment, field, test.WithReplacementHint(id, evil))`
 (`test/engine.go`).
 
@@ -196,7 +213,7 @@ Use when the free value comes from the solver, not a hint, so no hook exists.
 `api.DivUnchecked(0, 0)` is an example. Copy the gadget's constraints into a
 small model circuit in the scratch worktree and expose the free wire through a
 hint, then apply T-HINT-OVERRIDE to the model. Record `evidence: ANALYSIS`
-unless you also show that the model and the original emit the same constraints
+and `poc.result: demonstrated_on_model` unless you also show that the model and the original emit the same constraints
 (same `ccs.GetNbConstraints()` for the gadget in isolation). Say in the finding
 that the PoC is a model.
 
@@ -216,31 +233,126 @@ maximum length) and why the protocol needs it to be provable.
 
 ## T-FOUNDRY-VERIFIER
 
-Use for contract-side findings, when `forge` is present. Prefer the real
-generated verifier with a real proof (`proof.MarshalSolidity()` from
-gnark's `backend/groth16/bn254/solidity.go`). Use a mock that returns success
-only when the bug lives in the caller and the verifier is irrelevant to it.
+Use for contract-side findings (binding, replay, state, funds flow, token
+handling, reentrancy, signatures, initialisation) when `forge` is present.
+Without `forge`, or without the solc version the target pins in the local
+solc cache (`forge build --offline` fails), the result is `not_run` with that
+reason: never install or download either during the audit.
+
+**Which verifier.** Pick the first that fits and say which in `notes`:
+
+1. **The real verifier with a real proof**, when the finding involves what
+   the verifier accepts (the ABI, the input width, the inputs the caller
+   builds). In the scratch worktree, write a Go test in the circuit's
+   package that compiles the production circuit, runs `groth16.Setup` (or
+   `plonk.Setup` with `unsafekzg`), writes `Verifier.sol` with
+   `vk.ExportSolidity`, proves one honest witness and prints
+   `proof.MarshalSolidity()` and the public inputs as hex. Run it through
+   the sandbox, then paste the proof words into the Solidity test as
+   constants. This verifier has a fresh VK, so check first that it has the
+   committed verifier's structure:
+   `{skill}/scripts/gnark-inventory verifier diff --a <out>/worktree/<Verifier.sol> --b <repo>/<committed verifier>`
+   (the structure must match; the VK constants differ by construction).
+   `gnark-inventory verifier regen --circuit <pkg>.<Type>` makes the same
+   verifier without the proof.
+2. **The committed verifier with a proof from the committed keys**, only
+   when the proving key is in the repository (`verifier ceremony` lists key
+   files).
+3. **A mock** that accepts everything, when the bug lives in the caller and
+   what the verifier accepts does not matter to it (a replay, a missing
+   nullifier, a token transfer after the check). The mock must have the
+   exact selector and input length the target calls (`inventory.json`
+   `contracts.verify_calls[].target`).
+
+**Where it goes.** The Foundry root is the target's (the directory with
+`foundry.toml`) inside `<out>/worktree`. Put the test under its `test`
+directory as `PoC_<finding-number>.t.sol`. Without a Foundry project, write
+a minimal `<out>/worktree/foundry.toml` (`src`, `test`, `out`, `cache_path`
+under the worktree, and the `solc_version` the contracts' pragma allows that
+is in the local solc cache). The worktree has no forge-std unless the target
+vendors it: declare the cheatcodes you use.
 
 ```solidity
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
-import {Test} from "forge-std/Test.sol";
-import {Target} from "../src/Target.sol"; // the contract under test
+import {Target, ITargetVerifier} from "../src/Target.sol"; // the contract under test
+import {Verifier} from "./Verifier.sol"; // option 1: the verifier gnark exported in the worktree
 
-// match the verifier interface the target calls (selector and input length)
-contract AcceptAll { function verifyProof(bytes calldata, uint256[N] calldata) external pure {} }
+interface Vm {
+    function prank(address) external;
+    function deal(address, uint256) external;
+    function chainId(uint256) external;
+    function warp(uint256) external;
+}
 
-contract PoC_<FindingID> is Test {
-    function test_attack() public {
-        Target target = new Target(address(new AcceptAll()));
-        // 1. honest user action
-        // 2. attacker replays / front-runs / swaps inputs
-        // 3. assert the state the protocol must forbid
+// Option 3 only: same selector and input length as ITargetVerifier.
+contract AcceptAll is ITargetVerifier { /* function verifyProof(...) external pure returns (bool) { return true; } */ }
+
+contract PoC_<FindingID> {
+    Vm constant vm = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
+    Target target;
+
+    function setUp() public {
+        target = new Target(ITargetVerifier(address(new Verifier())) /*, constructor args */);
     }
+
+    // proof words from proof.MarshalSolidity(), public inputs from the same witness
+    function proof() internal pure returns (uint256[8] memory p) { /* p[0] = 0x...; */ }
+
+    function test_attack() public {
+        // 1. honest user action (vm.prank(alice))
+        // 2. attacker replays / front-runs / swaps inputs / re-enters (vm.prank(mallory))
+        // 3. require() the state the protocol must forbid; revert("...") when it does not happen
+    }
+    function test_control() public { /* the same step 2 against the fixed shape is rejected (try/catch) */ }
+    function test_sanity() public { /* the honest flow succeeds, so the contract under test is live */ }
 }
 ```
 
-Run it inside the scratch worktree: `forge test --match-contract PoC_ -vv`.
+Run it through the sandbox (no network, the worktree the only writable
+tree):
+`{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- forge test --root <out>/worktree --offline --match-contract PoC_ -vv`
+(add `--match-path` when the worktree has other test files). Record
+`package` as the repository-relative Foundry root.
+
+## T-FOUNDRY-STALE-ROOT
+
+T-FOUNDRY-VERIFIER specialised for root windows and capacity (V-LV4,
+V-LV5): an honest proof built against a recent root, and an attacker who
+inserts enough leaves before it lands that the root leaves the window. It
+needs no forge-std: declare the two cheatcodes it uses. Replace the verifier
+with one that accepts everything only when, as here, the bug is in the
+window and not in the proof system.
+
+```solidity
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+import {NoteMixer, IMixerVerifier} from "../src/NoteMixer.sol"; // the contract under test
+
+interface Vm { function deal(address, uint256) external; function prank(address) external; }
+contract AcceptAll is IMixerVerifier { /* same signature as the target's verifier, returns true */ }
+
+contract PoC_StaleRoot {
+    Vm constant vm = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
+    NoteMixer mixer;
+    function setUp() public { mixer = new NoteMixer(new AcceptAll() /*, constructor args */); }
+
+    function test_attack_frontRunEvictsPendingRoot() public {
+        // 1. victim inserts and reads the root its proof uses
+        // 2. attacker (vm.prank) inserts WINDOW leaves, the window size read from the contract
+        // 3. the victim's withdrawal reverts with the contract's unknown-root error
+        //    (try/catch Error(string) and compare the reason)
+        // 4. the attacker withdraws its own leaves again: the cost is gas only
+    }
+    function test_control_noFrontRun() public { /* same withdrawal without step 2 succeeds */ }
+    function test_sanity_windowMinusOne() public { /* WINDOW - 1 inserts keep the root valid */ }
+}
+```
+
+The window-minus-one case pins the bound the finding states. For a
+time-based window, advance time with `vm.warp` instead of inserting. Run it
+like T-FOUNDRY-VERIFIER; with no forge-std in the worktree this file needs
+no remapping.
 
 ## T-FOUNDRY-REPLAY
 
@@ -248,6 +360,145 @@ T-FOUNDRY-VERIFIER specialised for replay and front-running. Submit the same
 proof and public inputs from a second address, on a second deployment, or
 under a second `chainid` (`vm.chainId`), and show that both calls succeed or
 that the second caller receives the funds.
+
+## T-FOUNDRY-MALLEATE
+
+T-FOUNDRY-VERIFIER for verifiers gnark did not generate, or edited after
+generation (`attack-vectors/custom-verifiers.md`). It needs the verifier
+under test and one valid proof for it: the repository's own test proof, or
+a proof made with the generator's toolchain only if that toolchain is
+already installed (never install it). Change one thing the verifier must
+reject and show that it accepts it:
+
+| Vector | Change | Accepted means |
+|---|---|---|
+| V-CV5 | public input `x` → `x + r` | inputs are not checked `< r` |
+| V-CV6 | proof coordinate `y` → `y + q`, or a point → `(0, 0)` | coordinates or identity points are not checked |
+| V-CV7 | append a word, or change the declared length | the encoding is malleable |
+| V-CV2, V-CV1 | a proof word outside the hashed range | the transcript does not bind it |
+| V-CV3, V-CV4 | a point off the curve, or a pairing input of another length | a failed precompile call is ignored |
+
+```solidity
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+import {CustomVerifier} from "../src/CustomVerifier.sol"; // the verifier under test
+
+contract PoC_<FindingID> {
+    CustomVerifier v;
+    uint256 constant R = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
+
+    function setUp() public { v = new CustomVerifier(); }
+
+    // the honest proof and its public inputs (from the repository's tests)
+    function proof() internal pure returns (uint256[8] memory p) { /* p[0] = 0x...; */ }
+    function inputs() internal pure returns (uint256[2] memory x) { /* x[0] = ...; */ }
+
+    function test_sanity() public view {
+        require(v.verifyProof(proof(), inputs()), "honest proof rejected");
+    }
+    function test_attack() public view {
+        uint256[2] memory shifted = inputs();
+        shifted[0] += R; // the changed value: another statement, same proof
+        require(v.verifyProof(proof(), shifted), "changed input rejected: no bug on this path");
+    }
+    function test_control() public view {
+        uint256[2] memory wrong = inputs();
+        wrong[0] += 1; // a change the verifier must reject, and does
+        require(!v.verifyProof(proof(), wrong), "verifier accepts anything: harness is wrong");
+    }
+}
+```
+
+Use try/catch instead of the returned bool for a verifier that reverts on
+failure. Run it like T-FOUNDRY-VERIFIER. Name the consumer that keys state on
+the changed value (a nullifier, a proof hash) in the finding; without one
+the impact is malleability only.
+
+## T-GADGET-HARNESS
+
+Use in library mode: the gadget is exported and no production circuit
+calls it, so there is no circuit to compile. Generate the wrapper into the
+PoC worktree:
+
+```bash
+{skill}/scripts/gnark-inventory harness --out <out> --gadget <G-id or pkg.Func>
+```
+
+`zkaudit_harness_<name>_test.go` holds `wrap<Name>` (inputs as witness
+fields, compile-time parameters as `gnark:"-"` fields, each output asserted
+equal to an `Out<i>` field), `new<Wrap>()` for the shape, and skipped
+skeletons of the honest control, the invalid assignment, one hint override
+per hint the gadget creates and the differential test. Then apply the usual
+template to the wrapper:
+
+```go
+// T-HINT-OVERRIDE through the wrapper: the doc of QuoRem promises 0 <= r < d
+bad := &wrapQuoRem{N: 23, D: 4, Out0: 4, Out1: 7} // r = 7 >= d
+evil := func(_ *big.Int, in, out []*big.Int) error {
+	out[0].SetInt64(4)
+	out[1].SetInt64(7)
+	return nil
+}
+ccs, _ := frontend.Compile(field, r1cs.NewBuilder, newWrapQuoRem())
+w, _ := frontend.NewWitness(bad, field)
+_, err := ccs.Solve(w, solver.OverrideHint(solver.GetHintID(quoRemHint), evil)) // attack: nil
+_, err = ccs.Solve(w)                                                           // control: error
+```
+
+- A promise about the representation (canonical, `< p`, reduced) needs
+  the output compared limb by limb (`out.Limbs[i]`): `Field.AssertIsEqual`
+  compares modulo p and hides the bug. Use the strict API
+  (`ReduceStrict`) in the same wrapper as the control.
+- A method gadget: the wrapper builds the object with `New<Type>(api)`;
+  add the later calls a caller makes on the same object.
+- A gnark std package (or any package that `gnark/test` imports)
+  import-cycles with an in-package test: rerun with `--external`. Hints
+  are then unexported; find them by name (T-HINT-OVERRIDE).
+- Keep the shape the library's callers use (bit widths, slice lengths):
+  `nbBits = 2` is a fine PoC only if callers may pass 2.
+
+## T-DIFFERENTIAL
+
+Use in library mode for every gadget with a native reference (the
+library's own Go function, `gnark-crypto`, `math/big`). It finds
+completeness and correctness bugs (an honest input the gadget gets wrong or
+cannot prove); it does not find under-constraint, which needs a malicious
+prover (T-GADGET-HARNESS).
+
+```go
+func TestDiff_LessThan(t *testing.T) {
+	field := ecc.BN254.ScalarField()
+	rng := rand.New(rand.NewSource(1))
+	cases := [][2]uint64{{0, 0}, {0, 1}, {1, 0}, {^uint64(0), ^uint64(0)}} // edges first
+	for i := 0; i < 64; i++ {
+		cases = append(cases, [2]uint64{rng.Uint64(), rng.Uint64()})
+	}
+	for _, c := range cases {
+		a := &wrapLessThan{X: c[0], Y: c[1], Out0: lessThanRef(c[0], c[1])}
+		if err := test.IsSolved(newWrapLessThan(), a, field); err != nil {
+			t.Fatalf("LessThan(%d, %d) disagrees with the reference: %v", c[0], c[1], err)
+		}
+	}
+}
+```
+
+- Inputs: random values inside the documented domain, then the edges (0,
+  1, every documented bound, `2^n - 1`, `r - 1`, the point at infinity).
+  An input outside the documented domain tests a precondition, not the
+  contract: report it under the precondition, not as a wrong result.
+- `test.IsSolved` runs the test engine (fast, no setup). Use
+  `test.NewAssert(t).ProverSucceeded(..., test.WithCurves(...))` once on a
+  few cases to cover the real builders.
+- Property tests: the same loop with a property instead of a reference
+  (`FromBinary(ToBinary(x)) == x`, `Mul(Inverse(x), x) == 1` for x ≠ 0).
+- **Mutants** (deep): copy the gadget into the worktree, delete one
+  constraint at a time (`Assert*`, a range check, a recomposition), and
+  rerun the harness and differential tests on each mutant. A mutant that
+  every test still accepts marks a constraint no test exercises: write the
+  PoC that needs it, or report the constraint as untested (hardening).
+- Evidence: a disagreement on an honest input is `POC` for a completeness
+  or correctness finding. Agreement is no evidence of soundness; record it
+  in the gadget's ledger unit notes only.
 
 ## T-DOS
 
@@ -266,6 +517,33 @@ and show that it is exceeded:
 ```
 
 Never run a memory-exhaustion PoC without a container or `ulimit -v` limit.
+
+## T-LINKAGE
+
+Use for privacy findings where a public value identifies the user or links
+two actions (V-PR1, V-PR2, V-PR3, V-PR7). Recompute the public value natively
+for every candidate in a small, realistic candidate set (the addresses or
+keys that interacted with the contract, the amounts in range, the decoys of a
+set) and show that exactly one candidate matches what the proof published:
+
+```go
+	// candidates: public data an observer has (addresses, public keys, amounts)
+	var matches []int
+	for i, c := range candidates {
+		if publicTag(c) == observedTag { // publicTag: the circuit's formula, computed natively
+			matches = append(matches, i)
+		}
+	}
+	if len(matches) != 1 || matches[0] != realIndex {
+		t.Fatalf("expected the tag to single out candidate %d, got %v", realIndex, matches)
+	}
+```
+
+The honest control is the fixed formula (the tag with the secret or the
+per-context input mixed in) for which no candidate matches. Compute the hash
+with the same gnark-crypto function the circuit uses and say so. When the
+link needs chain data (timing, fee values, relayer logs), write the
+correlation as `proof:` text and keep `evidence: ANALYSIS`.
 
 ## T-ANALYSIS
 

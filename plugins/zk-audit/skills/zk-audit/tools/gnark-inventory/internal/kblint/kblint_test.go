@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/advisory"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/calibration"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/inventory"
 )
 
@@ -105,5 +106,36 @@ func TestLintCatchesProblems(t *testing.T) {
 	rep, _ = Lint(writeSkill(t, "no vectors here\n"), inventory.RuleIDs())
 	if !strings.Contains(strings.Join(rep.Errors, "\n"), "zero vectors inspected") {
 		t.Errorf("zero vectors must fail: %v", rep.Errors)
+	}
+}
+
+// TestCalibrationLint checks that the calibration lint fires: anchors whose
+// vectors are missing from the catalog, an anchor absent from the human
+// table, and a JSON block that drifts from the embedded table.
+func TestCalibrationLint(t *testing.T) {
+	good := "**V-A1. Good**\n\n- **D:** d\n- **FP:** f\n- **Source:** https://github.com/Consensys/gnark/security/advisories/GHSA-498w-5j49-vqjg\n- **Seed:** FG-DIV-UNCHECKED\n- **PoC:** T-GOOD\n"
+	dir := writeSkill(t, good)
+	md := "| `SC-FORGE-ANY` |\n```json\n" + string(calibration.Raw()) + "```\n"
+	if err := os.WriteFile(filepath.Join(dir, "references", "severity-calibration.md"), []byte(md), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Lint(dir, inventory.RuleIDs())
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(rep.Errors, "\n")
+	for _, want := range []string{"SC-FORGE-ANY: vector V-H1 does not exist", "SC-HYGIENE: missing from the anchor table"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("want %q in:\n%s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "SC-FORGE-ANY: missing from the anchor table") || strings.Contains(joined, "ledger class") {
+		t.Errorf("false calibration errors:\n%s", joined)
+	}
+	drift := strings.Replace(md, `"SC-HYGIENE"`, `"SC-HYGIENE-X"`, 1)
+	os.WriteFile(filepath.Join(dir, "references", "severity-calibration.md"), []byte(drift), 0o644)
+	rep, _ = Lint(dir, inventory.RuleIDs())
+	if !strings.Contains(strings.Join(rep.Errors, "\n"), "json block differs") {
+		t.Errorf("drift not caught: %v", rep.Errors)
 	}
 }

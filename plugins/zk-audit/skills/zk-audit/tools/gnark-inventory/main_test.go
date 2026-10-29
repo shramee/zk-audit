@@ -184,9 +184,15 @@ func TestInventoryCommand(t *testing.T) {
 		}
 	}
 	bt, _ := os.ReadFile(filepath.Join(out, "binding-table.md"))
-	for _, want := range []string{"## Pool.withdraw → verifyProof", "| 1 | `nf` (`Nullifier`) | `nullifier` (L44)", "| 2 | `Recipient` (`Recipient`) | `uint256(uint160(recipient))` (L45) | ? | recipient |"} {
+	for _, want := range []string{"## Pool.withdraw → IVerifier.verifyProof", "Verifier: Verifier (contracts/Verifier.sol:6, matched by selector", "| 1 | `nf` (`Nullifier`) | `nullifier` (L44)", "| 2 | `Recipient` (`Recipient`) | `uint256(uint160(recipient))` (L45) | ? | recipient |"} {
 		if !strings.Contains(string(bt), want) {
 			t.Errorf("binding table lacks %q:\n%s", want, bt)
+		}
+	}
+	md, _ := os.ReadFile(filepath.Join(out, "inventory.md"))
+	for _, want := range []string{"### Privileged functions", "| `Pool.setVerifier` | contracts/Pool.sol:20 | `require(msg.sender == owner, \"owner\")` | owner | verifier | verifier |", "| `Pool.addRoot` | contracts/Pool.sol:25 |", "| `Pool.owner` | owner |"} {
+		if !strings.Contains(string(md), want) {
+			t.Errorf("inventory.md lacks %q", want)
 		}
 	}
 	if !strings.Contains(buf.String(), "circuits: 3") {
@@ -216,7 +222,7 @@ func TestAssembleCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Examined (covered or candidate): 0 of", "| Files reviewed | none recorded in the ledger |", "Inventory load mode: `syntax`", "gnark v0.14.0 (advisories: 3)"} {
+	for _, want := range []string{"Examined (covered): 0 of", "| Files reviewed | none recorded in the ledger |", "Inventory load mode: `syntax`", "gnark v0.14.0 (advisories: 3) · gnark-crypto v0.19.0 (advisories: 1)"} {
 		if !strings.Contains(string(rep), want) {
 			t.Errorf("REPORT.md lacks %q", want)
 		}

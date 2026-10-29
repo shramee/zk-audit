@@ -68,14 +68,29 @@ func TestGoldenFull(t *testing.T) {
 	}
 	for _, want := range []string{
 		"## 1. Scope", "## 2. Posture", "## 3. Findings", "## 4. Finding details", "## 5. Leads",
-		"## 6. Needs validation", "## 7. Hardening notes", "## 8. Coverage",
+		"## 6. Needs validation", "## 7. Trusted parties", "## 8. Privacy", "## 9. Hardening notes", "## 10. Coverage", "## 11. Not covered",
 		"\tcur := c.Path[0]\n", // verbatim quote from the source tree
 		"Option A — bind the note", "Option B — use std/accumulator/merkle",
 		"**Gates.**", // refuter said not_exploitable: both views are shown
 		"Rejected candidates: 1",
 		"Inventory load mode: `syntax` (1 load error)",
 		"GHSA-7fx8-hmgc-82jp (high, fixed v0.16.4)",
-		"Examined (covered or candidate): 3 of 6 applicable units (50%)",
+		"Examined (covered): 2 of 8 applicable units (25%)",
+		// trusted parties: an accepted risk leaves the needs-validation table
+		"1 trusted-party risk accepted in `zk-audit.md` is listed in section 7, not here.",
+		"| owner of Pool (owner) | adds any root; a fake tree mints withdrawals | soundness, funds | The owner posts only roots of the real deposit tree | accepted risk (`zk-audit.md:7`) | high |",
+		"| needs validation | high | Owner swaps the verifier at any time `contracts/Pool.sol:20-23` |",
+		"- **sequencer** — The sequencer orders withdrawals and can delay them. (`zk-audit.md:9`)",
+		"Trusted-party units examined: 1 of 2",
+		"· 2 needs validation · 1 accepted risk ·",
+		// privacy section from property and V-PR vectors; PR1 is not in quick
+		"| Prover-chosen fees fingerprint withdrawals | lead | – | `contracts/Pool.sol:35-36` | V-privacy |",
+		"The privacy lens (PR1) is not part of the `quick` profile",
+		// fixed and run-specific not-covered footer
+		"- formal verification: no property is proven.",
+		"- lenses not part of the `quick` profile: C2, C3, C4, C5, C6, I2, I3, I4, S1, PR1, V-contract, V-liveness, V-privacy, G1, G3, A1, F1;",
+		"- ledger units not examined: 6 of 8 applicable (section 10);",
+		"calibration SC-",
 		"`circuit:SigCircuit|crypto-gadgets` — planned — no reason recorded",
 		"Smells: api.IsZero(c.Recipient) result dropped; Recipient | appears in no AssertIsEqual.",
 		"Companions not available: circom-auditor, solidity-auditor",
@@ -110,7 +125,7 @@ func TestGoldenEmpty(t *testing.T) {
 		"The absence of confirmed findings does not mean the code is free of bugs.",
 		"The run recorded no findings: no candidate survived judging in the 2 covered units.",
 		"| Stack | not recorded (no stack.json) |",
-		"Examined (covered or candidate): 2 of 3 applicable units (66%)",
+		"Examined (covered): 2 of 3 applicable units (66%)",
 		"`circuit:Edge|field-arithmetic` — deferred — C3 is not in the quick profile",
 		"Absence of a finding is not\n> evidence of absence of bugs.",
 	} {
@@ -214,5 +229,35 @@ func TestQuoteStaysInRepo(t *testing.T) {
 	q, lang, ok := in.quote(Location{File: "circuit/transfer.go", Line: 1, EndLine: 200})
 	if !ok || lang != "go" || !strings.Contains(q, "truncated after 30 lines") {
 		t.Errorf("long quote not truncated: ok=%v lang=%s", ok, lang)
+	}
+}
+
+// TestQuoteSymlinkEscape: a symlink inside the repository that points
+// outside it is never quoted (x-ray G-13); one that stays inside is.
+func TestQuoteSymlinkEscape(t *testing.T) {
+	repo := t.TempDir()
+	outside := t.TempDir()
+	os.WriteFile(filepath.Join(outside, "id_rsa"), []byte("PRIVATE KEY\n"), 0o600)
+	os.MkdirAll(filepath.Join(repo, "c"), 0o755)
+	os.WriteFile(filepath.Join(repo, "c", "a.go"), []byte("package c\n"), 0o644)
+	if err := os.Symlink(filepath.Join(outside, "id_rsa"), filepath.Join(repo, "c", "key.go")); err != nil {
+		t.Skip(err)
+	}
+	os.Symlink(outside, filepath.Join(repo, "dirlink"))
+	os.Symlink(filepath.Join(repo, "c", "a.go"), filepath.Join(repo, "inner.go"))
+	in := &input{repo: repo}
+	for _, f := range []string{"c/key.go", "dirlink/id_rsa", "c"} {
+		if q, _, ok := in.quote(Location{File: f, Line: 1}); ok {
+			t.Errorf("%s quoted: %q", f, q)
+		}
+	}
+	if q, _, ok := in.quote(Location{File: "inner.go", Line: 1}); !ok || q != "package c" {
+		t.Errorf("in-repo symlink not quoted: %q %v", q, ok)
+	}
+	// a repository reached through a symlink still quotes its own files
+	alias := filepath.Join(t.TempDir(), "alias")
+	os.Symlink(repo, alias)
+	if q, _, ok := (&input{repo: alias}).quote(Location{File: "c/a.go", Line: 1}); !ok || q != "package c" {
+		t.Errorf("symlinked root: %q %v", q, ok)
 	}
 }

@@ -4,7 +4,9 @@ package gomod
 
 import (
 	"bufio"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -39,8 +41,13 @@ func ParseFile(path string) (*File, error) {
 		return nil, err
 	}
 	defer f.Close()
+	return Parse(f)
+}
+
+// Parse parses go.mod content.
+func Parse(r io.Reader) (*File, error) {
 	out := &File{}
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 1024*1024), 1024*1024)
 	block := ""
 	for sc.Scan() {
@@ -137,4 +144,24 @@ func (f *File) Version(path string) (version string, replacedBy string, ok bool)
 		return r.NewVersion, r.New, true
 	}
 	return version, "", ok
+}
+
+// Enclosing returns the go.mod of the module that contains dir when dir
+// itself has none: its absolute path and its path relative to dir
+// ("../../go.mod"), or "" when no parent directory holds one.
+func Enclosing(dir string) (abs, rel string) {
+	d := filepath.Clean(dir)
+	up := ""
+	for {
+		parent := filepath.Dir(d)
+		if parent == d {
+			return "", ""
+		}
+		d = parent
+		up = filepath.Join(up, "..")
+		p := filepath.Join(d, "go.mod")
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p, filepath.ToSlash(filepath.Join(up, "go.mod"))
+		}
+	}
 }

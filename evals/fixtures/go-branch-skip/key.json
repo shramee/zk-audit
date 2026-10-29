@@ -1,0 +1,7 @@
+{"schema_version":"1","case":"go-branch-skip","fixture":"go-branch-skip",
+ "items":[{"id":"S1","class":"soundness","critical":true,
+  "title":"Quorum check gated by a compile-time Go branch; the deployed shape drops it",
+  "ranges":[{"file":"circuit/circuit.go","anchors":["if len(c.Approvals) > 0 {","api.AssertIsEqual(c.Granted, 1)"]}],
+  "match":"(?i)go (if|branch|loop)|compile.?time|len\\(|quorum|approval|empty|slice|dropped|skipped|unconstrained",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["high","critical","medium"]}],
+ "decoys":[],"other":[]}

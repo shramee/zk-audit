@@ -1,0 +1,7 @@
+{"schema_version":"1","case":"limb-unchecked","fixture":"limb-unchecked",
+ "items":[{"id":"H1","class":"soundness","critical":true,
+  "title":"High limb never range-checked, so the recomposed amount is unbounded",
+  "ranges":[{"file":"circuit/circuit.go","anchors":["api.AssertIsEqual(c.Amount, api.Add(limbs[0], api.Mul(limbs[1], 1<<32)))"]}],
+  "match":"(?i)limb|range.?check|high|unbounded|unconstrained|recompos|tobinary|32.?bit|hint",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["high","critical","medium"]}],
+ "decoys":[],"other":[]}

@@ -1,0 +1,7 @@
+{"schema_version":"1","case":"cross-domain-replay","fixture":"cross-domain-replay",
+ "items":[{"id":"I1","class":"integration","critical":true,
+  "title":"No chain id or contract address in the statement (cross-deployment replay)",
+  "ranges":[{"file":"contracts/Mixer.sol","anchors":["uint256[4] memory input = [root, nullifier, uint256(uint160(address(recipient))), value];","recipient.transfer(value);"]}],
+  "match":"(?i)chain|contract address|address\\(this\\)|cross.?domain|cross.?deploy|replay|domain sep|deployment",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["high","critical","medium"]}],
+ "decoys":[],"other":[{"id":"O1","title":"roots set by owner","ranges":[{"file":"contracts/Mixer.sol","anchors":["function addRoot"]}],"match":"(?i)owner|addroot|trusted"}]}

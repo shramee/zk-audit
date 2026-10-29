@@ -1,0 +1,7 @@
+{"schema_version":"1","case":"onehot-nonunique","fixture":"onehot-nonunique",
+ "items":[{"id":"G1","class":"soundness","critical":true,
+  "title":"One-hot selector sum not constrained to 1, so several rows select at once",
+  "ranges":[{"file":"circuit/circuit.go","anchors":["api.AssertIsEqual(c.Out, out)"]}],
+  "match":"(?i)one.?hot|selector|sum|unique|== ?1|multiple|several|mux|table",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["high","critical","medium"]}],
+ "decoys":[],"other":[]}

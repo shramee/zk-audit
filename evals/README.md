@@ -62,8 +62,18 @@ verifier, a public audit **report**, or Phase-0 **version** detection.
 | merkle-sentinel | empty-slot sentinel leaf accepted as a member (V-PS3) | – | Go |
 | unused-public | public input no constraint uses (V-PI2) | – | Go |
 | boolean-missing | boolean algebra without `AssertIsBoolean` (V-G2) | – | Go |
+| go-branch-skip | quorum check gated by a compile-time Go branch (V-S1) | – | Go |
+| limb-unchecked | high limb not range-checked, amount unbounded (V-H2) | – | Go |
+| onehot-nonunique | one-hot selector sum not pinned to 1 (V-G3) | – | Go |
+| point-oncurve | public key used without an on-curve check (V-E4) | – | Go |
+| range-partition | low/high split ranges overlap, high part free (V-R6) | – | Go |
+| vk-recursion | inner verifying key is a free witness (V-CM4) | – | review¹ |
 | ci-smoke | square-root hint output unconstrained (the CI case) | – | Go |
 | pool | multi-bug shielded-pool fixture (see its answer key) | yes | Go |
+
+¹ `vk-recursion` is a valid in-circuit Groth16 verifier; compiling the recursive
+R1CS and forging a second VK is too heavy for the harness, so the under-constraint
+is located structurally and confirmed by review rather than an executed PoC.
 
 ### Planted — integration (Foundry)
 
@@ -75,6 +85,7 @@ verifier, a public audit **report**, or Phase-0 **version** detection.
 | input-ge-r | nullifier keyed without a `< r` check, aliasing (V-PI3) | yes | forge |
 | missing-root-check | withdraw never checks `knownRoots[root]` (V-VC/M4) | yes | forge |
 | input-order | verifier input array order ≠ public-witness order (V-PI1) | yes | forge |
+| cross-domain-replay | no chain/contract binding, proof replays across deployments (V-PI5) | yes | forge |
 
 ### Advisory replays (dependency)
 

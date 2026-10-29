@@ -1,0 +1,7 @@
+{"schema_version":"1","case":"vk-recursion","fixture":"vk-recursion",
+ "items":[{"id":"CM1","class":"soundness","critical":true,
+  "title":"Inner verifying key is a free witness, not bound to a trusted key",
+  "ranges":[{"file":"circuit/circuit.go","anchors":["v.AssertProof(c.VerifyingKey, c.Proof, c.InnerWitness)"]}],
+  "match":"(?i)verifying key|\\bvk\\b|recursion|witness|trusted|free|hardcoded|commitment|inner",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["critical","high"]}],
+ "decoys":[],"other":[]}

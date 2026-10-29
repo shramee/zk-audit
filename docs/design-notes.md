@@ -128,12 +128,15 @@ left open, it is recorded here with the reason.
   `evals/run-foundry-pocs` (`make eval-pocs`, `make eval-foundry-pocs`, CI). Both
   take `all` to run every fixture that has a PoC of that kind. They pin the
   templates in `poc-templates.md` to working code.
-- **The corpus.** `evals/README.md` has the full table. ~18 planted fixtures
-  (12 circuit-only, 6 Foundry integration) each plant one bug across the vector
+- **The corpus.** `evals/README.md` has the full table. ~25 planted fixtures
+  (18 circuit-only, 7 Foundry integration) each plant one bug across the vector
   families (hints, field arithmetic, range/bits, selectors, hash/merkle,
-  public-inputs/integration); each soundness bug is shown real by an executed
-  PoC (a Go `test.IsSolved`/`ccs.Solve` override, or a `forge` test against a
-  mock verifier, no forge-std). Ten all-safe fixtures are the correctly
+  curves/signatures, commitments/recursion, public-inputs/integration); each
+  soundness bug is shown real by an executed PoC (a Go `test.IsSolved`/`ccs.Solve`
+  override, or a `forge` test against a mock verifier, no forge-std). The one
+  exception is `vk-recursion` (inner VK as a free witness, V-CM4): compiling an
+  in-circuit Groth16 verifier and forging a VK is too heavy for the harness, so
+  it is located structurally and confirmed by review. Ten all-safe fixtures are the correctly
   constrained counterparts; their keys plant no items, so recall is undefined
   and any `confirmed`/`needs_validation` record is a false positive, and each
   ships a test showing the counterpart attack is rejected.

@@ -1,3 +1,4 @@
 .cache/
 evals/results/
 /plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/gnark-inventory
+coverage/

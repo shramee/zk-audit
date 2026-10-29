@@ -257,20 +257,33 @@ plugins/zk-audit/
     agents/                         poc-builder and refuter briefs (canonical copy)
     tools/gnark-inventory/          Go tool: detect, inventory, bundle, validate, assemble, lint-kb
     scripts/                        thin wrappers around the tool
-    schemas/                        findings, ledger and stack JSON schemas
-  commands/                         /zk-audit:setup, /zk-audit:recon, /zk-audit:diff (thin wrappers)
+    schemas/                        findings, ledger, stack and threat-model JSON schemas
+    templates/                      zk-audit.md, the threat-model template
+  commands/                         /zk-audit:setup, /zk-audit:recon, /zk-audit:diff, /zk-audit:resume (thin wrappers)
   agents/                           plugin agent definitions (copies of skills/zk-audit/agents/)
 evals/                              eval answer keys, PoCs and the sanitizer (not installed)
 testdata/                           tool test fixtures and golden reports (not installed)
-docs/                               research notes and design notes
+scripts/                            release-check and release-notes (repository only)
+docs/                               research notes, design notes, licence options, pilot protocol
+CHANGELOG.md                        Keep a Changelog; the release notes come from it
 PLAN.md                             the design
 ```
 
 ## Development
 
 ```bash
-make check     # go vet, go test, JSON parse, knowledge-base lint
+make check            # go vet, go test, JSON parse, knowledge-base lint, standalone install, scorer
+make fmt-check        # gofmt over every Go file (vendored code excluded)
+make test-types       # typed-mode tests against the gnark fixtures (downloads them)
+make cover            # coverage of the tool and the scorer, with a floor (COVER_MIN)
+make eval-pocs        # the eval PoCs, in the sandbox, offline
+make validate-plugin  # claude plugin validate (Claude Code CLI, no API key)
+make release-check    # versions agree and CHANGELOG.md is in shape
 ```
+
+CI runs all of them. A release is a `zk-audit--vX.Y.Z` tag made with
+`claude plugin tag plugins/zk-audit --push`; the release workflow checks it
+and publishes the version's `CHANGELOG.md` section.
 
 ## License
 

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Prints the CHANGELOG.md section of one version (Keep a Changelog format),
+# without its heading: the body of the GitHub release.
+#
+# Usage: scripts/release-notes VERSION   (or Unreleased)
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+v="${1:?usage: release-notes VERSION}"
+awk -v v="$v" '
+  /^## \[/ { if (on) exit; if (index($0, "## [" v "]") == 1) { on = 1; next } }
+  /^\[[^]]+\]: / { if (on) exit }
+  on && !started && /^[[:space:]]*$/ { next }
+  on { started = 1; print }
+' "$root/CHANGELOG.md" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'

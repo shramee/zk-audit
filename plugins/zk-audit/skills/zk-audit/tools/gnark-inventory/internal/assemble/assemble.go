@@ -199,8 +199,8 @@ func (in *input) loadRun(out string) error {
 	if l, ok, err := budget.Load(out); err != nil {
 		return err
 	} else if ok {
-		if in.run != nil && in.run.BudgetUSD > 0 {
-			l.BudgetUSD = in.run.BudgetUSD
+		if in.run != nil {
+			l.ApplyBudget(in.run.BudgetUSD)
 		}
 		in.spend = l
 	}

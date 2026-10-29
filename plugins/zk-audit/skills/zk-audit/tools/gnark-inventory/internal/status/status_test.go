@@ -85,8 +85,8 @@ func TestResumeFromAnInterruptedHunt(t *testing.T) {
 	}
 	// a budget stop sends the run to the report
 	l, _, _ = budget.Load(out)
-	l.BudgetUSD = 1
-	l.Check("targeted wave", budget.Wave{"wave": 1}, 0)
+	l.BudgetUSD = 50
+	l.Check("targeted wave", budget.Wave{"hunter": 100}, 0)
 	l.Save(out)
 	os.Remove(filepath.Join(out, "REPORT.md"))
 	s, _ = Read(out)

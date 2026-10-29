@@ -69,6 +69,22 @@ type Ledger struct {
 	Entries       []Entry `json:"entries"`
 	Checks        []Check `json:"checks"`
 	Stopped       *Stop   `json:"stopped,omitempty"`
+	// Lifted lists stops a raised budget lifted (`/zk-audit resume --budget`).
+	Lifted []Stop `json:"lifted,omitempty"`
+}
+
+// ApplyBudget sets the ceiling from run.json. A ceiling above the one a
+// stop was recorded under lifts the stop (the user raised the budget on
+// resume); the stop stays on record in Lifted.
+func (l *Ledger) ApplyBudget(b float64) {
+	if b <= 0 {
+		return
+	}
+	l.BudgetUSD = b
+	if l.Stopped != nil && b > l.Stopped.BudgetUSD {
+		l.Lifted = append(l.Lifted, *l.Stopped)
+		l.Stopped = nil
+	}
 }
 
 // Load reads <out>/spend.json; ok is false when it does not exist.

@@ -305,8 +305,8 @@ func Read(out string) (*Status, error) {
 
 	// spend
 	if l, ok, err := budget.Load(out); err == nil && ok {
-		if r, err := args.Load(out); err == nil && r.BudgetUSD > 0 {
-			l.BudgetUSD = r.BudgetUSD
+		if r, err := args.Load(out); err == nil {
+			l.ApplyBudget(r.BudgetUSD)
 		}
 		s.Spend = l.Summary()
 		if l.Stopped != nil {

@@ -90,3 +90,22 @@ func TestRoleOf(t *testing.T) {
 		}
 	}
 }
+
+func TestRaisedBudgetLiftsTheStop(t *testing.T) {
+	l := &Ledger{Profile: "quick", BudgetUSD: 1}
+	l.Record(Entry{ID: "C1", Tokens: 49000})
+	if d := l.Check("hunt", Wave{"hunter": 10}, 0); !d.Stop {
+		t.Fatal("no stop")
+	}
+	l.ApplyBudget(1) // the same ceiling keeps it
+	if l.Stopped == nil {
+		t.Fatal("same budget lifted the stop")
+	}
+	l.ApplyBudget(50)
+	if l.Stopped != nil || len(l.Lifted) != 1 || l.BudgetUSD != 50 {
+		t.Fatalf("raised budget: %+v", l)
+	}
+	if d := l.Check("hunt", Wave{"hunter": 10}, 0); d.Stop {
+		t.Errorf("after the raise: %+v", d)
+	}
+}

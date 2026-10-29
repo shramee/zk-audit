@@ -20,9 +20,7 @@ func loadSpend(out string) (*budget.Ledger, error) {
 		if l.Profile == "" {
 			l.Profile = r.Profile
 		}
-		if r.BudgetUSD > 0 {
-			l.BudgetUSD = r.BudgetUSD
-		}
+		l.ApplyBudget(r.BudgetUSD)
 	}
 	return l, nil
 }
@@ -104,9 +102,7 @@ func cmdBudget(argv []string, stdout io.Writer) (int, error) {
 		if err != nil {
 			return 2, err
 		}
-		if ceiling > 0 {
-			l.BudgetUSD = ceiling
-		}
+		l.ApplyBudget(ceiling)
 		d := l.Check(before, w, ceiling)
 		if err := l.Save(*out); err != nil {
 			return 2, err

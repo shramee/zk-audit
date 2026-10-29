@@ -52,6 +52,7 @@ Usage:
   gnark-inventory agents    save --out DIR --id ID [--from FILE] [--status done|blocked|failed|refused] [--reason R]
   gnark-inventory agents    list --out DIR
   gnark-inventory verifier  abi|diff|vk|bytecode|regen|ceremony [flags]   (gnark-inventory verifier help)
+  gnark-inventory convert   pashov --in PATH --out FILE [--inventory FILE]
   gnark-inventory sandbox   [--rw DIR]... [--ro DIR]... [--cwd DIR] [--timeout SEC] [--mem MB] [--allow-network] [--engine E] [--require] [--check] -- CMD [ARGS...]
   gnark-inventory lint-kb   [--gnark-src DIR] SKILL_DIR
   gnark-inventory advisories [--version vX.Y.Z]
@@ -108,6 +109,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		code, err = cmdSandbox(args[1:], stdout, stderr)
 	case "verifier":
 		code, err = cmdVerifier(args[1:], stdout, stderr)
+	case "convert":
+		code, err = cmdConvert(args[1:], stdout)
 	case "profiles":
 		code, err = cmdProfiles(args[1:], stdout)
 	case "rules":

@@ -312,3 +312,32 @@ func TestVerifierCommands(t *testing.T) {
 		t.Errorf("verifier regen into the repository: %d %s", code, errb.String())
 	}
 }
+
+func TestConvertCommand(t *testing.T) {
+	repo := fixture.Dir(t, "sol-inherit")
+	out := t.TempDir()
+	var o, e bytes.Buffer
+	if code := run([]string{"inventory", "--repo", repo, "--out", out, "--syntax-only"}, &o, &e); code != 0 {
+		t.Fatalf("inventory: %d %s", code, e.String())
+	}
+	o.Reset()
+	dst := filepath.Join(out, "companions", "solidity-auditor.json")
+	runs := fixture.Dir(t, "pashov-runs", "20261029-120000")
+	if code := run([]string{"convert", "pashov", "--in", runs, "--out", dst, "--inventory", filepath.Join(out, "inventory.json")}, &o, &e); code != 0 {
+		t.Fatalf("convert: %d %s %s", code, o.String(), e.String())
+	}
+	if !strings.Contains(o.String(), "3 records (1 companion findings, 2 leads, all as leads for judging), 1 unresolved") {
+		t.Errorf("convert output: %s", o.String())
+	}
+	b, err := os.ReadFile(dst)
+	if err != nil || !strings.Contains(string(b), `"detected_by": [`) {
+		t.Fatalf("records file: %v %s", err, b)
+	}
+	e.Reset()
+	if code := run([]string{"convert", "pashov", "--in", runs, "--out", filepath.Join(repo, "x.json"), "--inventory", filepath.Join(out, "inventory.json")}, &o, &e); code != 2 || !strings.Contains(e.String(), "inside the audited repository") {
+		t.Errorf("convert into the repository: %d %s", code, e.String())
+	}
+	if code := run([]string{"convert", "slither"}, &o, &e); code != 2 {
+		t.Errorf("unknown companion: %d", code)
+	}
+}

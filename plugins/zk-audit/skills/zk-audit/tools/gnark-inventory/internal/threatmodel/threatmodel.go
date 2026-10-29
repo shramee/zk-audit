@@ -114,7 +114,7 @@ func (e *Error) Error() string { return strings.Join(e.Problems, "; ") }
 // sections maps a normalised heading to its key.
 var sections = map[string]string{
 	"scope": "scope", "in scope": "scope",
-	"out of scope": "out",
+	"out of scope":    "out",
 	"trusted parties": "parties", "trust": "parties", "trusted party": "parties",
 	"properties": "properties", "properties that must hold": "properties", "invariants": "properties",
 	"accepted risks": "risks", "accepted risk": "risks",

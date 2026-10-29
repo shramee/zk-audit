@@ -689,6 +689,54 @@ fixtures, so Foundry PoCs declare the cheatcodes they use.
   reports is recorded with `--model`. The report lists blocked agents
   under "Not covered".
 
+## Threat-model file (`zk-audit.md`)
+
+- **A file people write, parsed by the tool.** `templates/zk-audit.md` is
+  Markdown with fixed level-2 headings and table headers, so a reviewer can
+  edit it in any editor and a diff reads well. `gnark-inventory
+  threat-model` parses it into `threat-model.json` (schema
+  `schemas/threat-model.schema.json`) and keeps every entry's line, because
+  judging cites `zk-audit.md:<line>` in `trust.source`. YAML front matter
+  was the alternative: easier to parse, but the file is mostly prose and
+  tables, and line numbers inside front matter are less useful to cite.
+- **Trust levels.** `trusted` (powers are accepted risks), `bounded`
+  (trusted within a stated limit; going past it is a finding), `untrusted`
+  (an attacker). The T1 lens and Gate 3 already distinguished "the guidance
+  file trusts the party" from "the code limits the party"; `bounded` makes
+  the middle case explicit. An accepted risk from an untrusted party is a
+  parse error, and `validate findings --out` refuses `trust.accepted` with a
+  line that is neither an accepted risk nor a trusted party.
+- **Where it is used.** Every bundle inlines it (section 3a) with the
+  sentence that it never excuses a missing constraint; prior findings are
+  listed there for `KNOWN:` answers, and a `fixed` one that comes back is
+  reported in full. The report renders its scope, deployment facts (marked
+  "not checked"), out-of-scope paths, the accepted risks no record cites,
+  and whether each prior finding was raised again. It is not merged into
+  loop memory: memory is per run and tool-held, while prior findings are
+  the repository's own record; the fingerprint match in the report is the
+  link between them.
+- **Drafting.** Recon drafts the file from the template only after the user
+  says yes (hard rule 1), filling only what the code supports and leaving
+  trust levels, accepted risks and properties for the user.
+
+## Report: partial runs and the not-covered footer
+
+- **What the lenses section already did** (shramee/zk-audit#13): Trusted
+  parties (7), Privacy (8) and Not covered (11) with a fixed list and the
+  run-specific lenses outside the profile, units not examined and missing
+  companions.
+- **Gaps filled here.** With the output directory the assembler also reads
+  `run.json`, `spend.json`, `agents/index.json`, `bundles/index.json` and
+  `threat-model.json`, and "Not covered" adds: library mode (what does not
+  apply), lenses of the profile skipped because their `when` condition did
+  not hold or their shard was empty, a budget stop, agents that did not
+  finish (with a model fallback), and `--no-poc`. A budget stop also opens
+  the posture with "Partial report". A raised `--budget` on resume lifts a
+  recorded stop (it stays in `spend.json` under `lifted`). Without the
+  output directory (the older goldens) the report is unchanged; a new
+  golden (`testdata/assemble/partial`) is an output directory, and a test
+  checks that the footer closes every report.
+
 ## Critic with teeth
 
 - **The tool lists what it can compute** (measurement finding 10: both

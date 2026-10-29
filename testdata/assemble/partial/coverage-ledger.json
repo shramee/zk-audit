@@ -1,0 +1,211 @@
+{
+  "schema_version": "1",
+  "repo": "/home/auditor/src/pool",
+  "run_id": "20261029-120000",
+  "profile": "standard",
+  "generated_by": "gnark-inventory test",
+  "units": [
+    {
+      "id": "circuit:TransferCircuit|hint-soundness",
+      "kind": "circuit",
+      "subject": "TransferCircuit",
+      "class": "hint-soundness",
+      "lenses": [
+        "C1",
+        "V"
+      ],
+      "paths": [
+        "circuit/transfer.go:43"
+      ],
+      "status": "candidate",
+      "agent_ids": [
+        "C1",
+        "V-hints"
+      ],
+      "reviewed_paths": [
+        "circuit/transfer.go",
+        "circuit/hints.go"
+      ],
+      "result_fingerprints": [
+        "TransferCircuit|res[1]|hint-output-unconstrained",
+        "TransferCircuit|Path[0]|merkle-leaf-unbound"
+      ]
+    },
+    {
+      "id": "circuit:TransferCircuit|range-decomposition",
+      "kind": "circuit",
+      "subject": "TransferCircuit",
+      "class": "range-decomposition",
+      "lenses": [
+        "C2",
+        "V"
+      ],
+      "paths": [
+        "circuit/transfer.go:43"
+      ],
+      "status": "covered",
+      "agent_ids": [
+        "V-range"
+      ],
+      "reviewed_paths": [
+        "circuit/transfer.go"
+      ],
+      "result_fingerprints": []
+    },
+    {
+      "id": "circuit:TransferCircuit|spec-invariant",
+      "kind": "circuit",
+      "subject": "TransferCircuit",
+      "class": "spec-invariant",
+      "lenses": [
+        "C6",
+        "V"
+      ],
+      "paths": [
+        "circuit/transfer.go:43"
+      ],
+      "status": "deferred",
+      "agent_ids": [],
+      "reviewed_paths": [],
+      "result_fingerprints": [],
+      "reason": "C6 is not in the quick profile"
+    },
+    {
+      "id": "circuit:SigCircuit|crypto-gadgets",
+      "kind": "circuit",
+      "subject": "SigCircuit",
+      "class": "crypto-gadgets",
+      "lenses": [
+        "C5",
+        "V"
+      ],
+      "paths": [
+        "circuit/sig.go:21"
+      ],
+      "status": "deferred",
+      "agent_ids": [],
+      "reviewed_paths": [],
+      "result_fingerprints": [],
+      "reason": "budget: targeted wave not run"
+    },
+    {
+      "id": "public-input:TransferCircuit.Recipient|public-input-binding",
+      "kind": "public-input",
+      "subject": "TransferCircuit.Recipient",
+      "class": "public-input-binding",
+      "lenses": [
+        "I1",
+        "G2"
+      ],
+      "paths": [
+        "circuit/transfer.go:29"
+      ],
+      "status": "candidate",
+      "agent_ids": [
+        "I1",
+        "G2"
+      ],
+      "reviewed_paths": [
+        "circuit/transfer.go",
+        "contracts/Pool.sol"
+      ],
+      "result_fingerprints": [
+        "Pool|withdraw|recipient-not-constrained",
+        "Pool|withdraw|missing-fingerprint"
+      ]
+    },
+    {
+      "id": "contract-fn:Pool.withdraw|protocol-state",
+      "kind": "contract-fn",
+      "subject": "Pool.withdraw",
+      "class": "protocol-state",
+      "lenses": [
+        "I3",
+        "G2"
+      ],
+      "paths": [
+        "contracts/Pool.sol:50"
+      ],
+      "status": "blocked",
+      "agent_ids": [
+        "I3"
+      ],
+      "reviewed_paths": [],
+      "result_fingerprints": [],
+      "reason": "agent hit its turn limit"
+    },
+    {
+      "id": "prover:cmd/setup/main.go|prover-service",
+      "kind": "prover",
+      "subject": "cmd/setup/main.go",
+      "class": "prover-service",
+      "lenses": [
+        "I4"
+      ],
+      "paths": [
+        "cmd/setup/main.go"
+      ],
+      "status": "not_applicable",
+      "agent_ids": [],
+      "reviewed_paths": [],
+      "result_fingerprints": [],
+      "reason": "no prover service in the repository"
+    },
+    {
+      "id": "verifier:Verifier|verifier-contract",
+      "kind": "verifier",
+      "subject": "Verifier",
+      "class": "verifier-contract",
+      "lenses": [
+        "I2"
+      ],
+      "paths": [
+        "contracts/Verifier.sol:6"
+      ],
+      "status": "out_of_scope",
+      "agent_ids": [],
+      "reviewed_paths": [],
+      "result_fingerprints": [],
+      "reason": "stub verifier"
+    },
+    {
+      "id": "contract-fn:Pool.setVerifier|trusted-party",
+      "kind": "contract-fn",
+      "subject": "Pool.setVerifier",
+      "class": "trusted-party",
+      "lenses": [
+        "T1"
+      ],
+      "paths": [
+        "contracts/Pool.sol:20"
+      ],
+      "status": "covered",
+      "agent_ids": [
+        "T1"
+      ],
+      "reviewed_paths": [
+        "contracts/Pool.sol"
+      ],
+      "result_fingerprints": [
+        "Pool|setVerifier|trusted-verifier-swap"
+      ]
+    },
+    {
+      "id": "role:Pool.owner|trusted-party",
+      "kind": "role",
+      "subject": "Pool.owner",
+      "class": "trusted-party",
+      "lenses": [
+        "T1"
+      ],
+      "paths": [
+        "contracts/Pool.sol:13"
+      ],
+      "status": "deferred",
+      "agent_ids": [],
+      "reviewed_paths": [],
+      "result_fingerprints": [],
+      "reason": "budget: targeted wave not run"
+    }
+  ]
+}

@@ -17,7 +17,11 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/agents"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/args"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/budget"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/detect"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/threatmodel"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/validate"
 )
 
@@ -134,6 +138,11 @@ func Assemble(opt Options) (*Result, error) {
 	if p := checkClaims(&in.f); len(p) > 0 {
 		return nil, &InvalidError{Problems: p}
 	}
+	if opt.Out != "" {
+		if err := in.loadRun(opt.Out); err != nil {
+			return nil, err
+		}
+	}
 	in.repo = opt.Repo
 	if in.repo == "" && in.s != nil {
 		if st, err := os.Stat(in.s.Repo); err == nil && st.IsDir() {
@@ -155,6 +164,67 @@ type input struct {
 	s    *detect.Stack
 	inv  *Inventory
 	repo string
+
+	// from the output directory, when Options.Out is set
+	run     *args.Run        // run.json: flags of the invocation
+	spend   *budget.Ledger   // spend.json: spend and a budget stop
+	agents  []agents.Entry   // agents/index.json: agents that did not finish
+	skipped []skippedLens    // bundles/index.json: lenses of the profile with no bundle
+	tm      *threatmodel.Doc // threat-model.json: zk-audit.md, parsed
+	haveOut bool
+}
+
+// skippedLens is a lens of the profile that got no bundle.
+type skippedLens struct {
+	Agent  string `json:"agent"`
+	Status string `json:"status"`
+	Reason string `json:"reason"`
+}
+
+// loadRun reads the run's own records from the output directory: the
+// invocation, the spend ledger, the agents that did not finish and the
+// lenses skipped by a condition or an empty shard. Each is optional.
+func (in *input) loadRun(out string) error {
+	in.haveOut = true
+	if r, err := args.Load(out); err == nil {
+		in.run = r
+	}
+	if b, err := os.ReadFile(filepath.Join(out, threatmodel.OutName)); err == nil {
+		var d threatmodel.Doc
+		if err := json.Unmarshal(b, &d); err != nil {
+			return &InvalidError{Problems: []string{threatmodel.OutName + ": " + err.Error()}}
+		}
+		in.tm = &d
+	}
+	if l, ok, err := budget.Load(out); err != nil {
+		return err
+	} else if ok {
+		if in.run != nil && in.run.BudgetUSD > 0 {
+			l.BudgetUSD = in.run.BudgetUSD
+		}
+		in.spend = l
+	}
+	idx, err := agents.Load(out)
+	if err != nil {
+		return err
+	}
+	for _, e := range idx.Agents {
+		if e.Status != "done" {
+			in.agents = append(in.agents, e)
+		}
+	}
+	if b, err := os.ReadFile(filepath.Join(out, "bundles", "index.json")); err == nil {
+		var rows []skippedLens
+		if err := json.Unmarshal(b, &rows); err != nil {
+			return fmt.Errorf("bundles/index.json: %w", err)
+		}
+		for _, r := range rows {
+			if r.Status == "skipped" && !strings.HasPrefix(r.Reason, "not in profile") {
+				in.skipped = append(in.skipped, r)
+			}
+		}
+	}
+	return nil
 }
 
 func checkClaims(f *Findings) []string {

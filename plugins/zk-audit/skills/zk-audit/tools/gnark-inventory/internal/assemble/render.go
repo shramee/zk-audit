@@ -306,6 +306,9 @@ func (in *input) writeScope(b *strings.Builder) {
 		}
 	}
 
+	if in.spend != nil {
+		w("| Spend (estimate) | %s |\n", cell(in.spend.Summary()))
+	}
 	if c := in.f.Companions; c == nil {
 		w("| Companions | not recorded |\n")
 	} else {
@@ -349,7 +352,19 @@ func (in *input) writeScope(b *strings.Builder) {
 		w("| Other sources | %s |\n", cell(strings.Join(other, ", ")))
 	}
 
+	if in.haveOut {
+		in.writeThreatRows(b)
+	}
 	oos := append([]string(nil), in.f.OutOfScope...)
+	if in.tm != nil {
+		for _, o := range in.tm.Scope.Out {
+			x := code(o.Path)
+			if o.Reason != "" {
+				x += " (" + o.Reason + ")"
+			}
+			oos = append(oos, x+fmt.Sprintf(" `zk-audit.md:%d`", o.Line))
+		}
+	}
 	n := 0
 	for _, u := range in.l.Units {
 		if u.Status == "out_of_scope" {
@@ -369,6 +384,9 @@ func (in *input) writeScope(b *strings.Builder) {
 func (in *input) writePosture(b *strings.Builder, confirmed, needs, leads, rejected []*Record) {
 	w := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
 	w("## 2. Posture\n\n")
+	if st := in.stopped(); st != nil {
+		w("**Partial report.** The run stopped at the budget ceiling before %s: %s. Units it did not reach are listed as not examined in section %d.\n\n", inline(st.Before), strings.TrimSuffix(inline(st.Reason), "."), secCoverage)
+	}
 	if in.f.Posture != "" {
 		w("%s\n\n", strings.TrimSpace(in.f.Posture))
 	} else {
@@ -493,6 +511,9 @@ func (in *input) writeDetail(b *strings.Builder, n int, r *Record) {
 func plural(n int, noun string) string {
 	if n == 1 {
 		return fmt.Sprintf("1 %s", noun)
+	}
+	if strings.HasSuffix(noun, "y") && len(noun) > 1 && !strings.ContainsRune("aeiou", rune(noun[len(noun)-2])) {
+		return fmt.Sprintf("%d %sies", n, noun[:len(noun)-1])
 	}
 	return fmt.Sprintf("%d %ss", n, noun)
 }
@@ -673,6 +694,7 @@ func (in *input) writeCoverage(b *strings.Builder, rejected int) {
 	}
 	in.writeGadgets(b)
 	w("Rejected candidates: %d (kept in `findings.json` so a later run does not raise them again).\n\n", rejected)
+	in.writePrior(b)
 	if c := in.f.Companions; c == nil {
 		w("Companions: not recorded.\n\n")
 	} else if len(c.Missing) == 0 {

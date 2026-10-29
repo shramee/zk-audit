@@ -284,8 +284,13 @@ func (l *Ledger) Check(before string, w Wave, budget float64) Decision {
 func (l *Ledger) Summary() string {
 	t := l.Totals()
 	var roles []string
+	nouns := map[string]string{"hunter": "hunter", "poc": "PoC builder", "refuter": "refuter", "critic": "critic", "wave": "wave agent", "companion": "companion", "other": "other agent"}
 	for r, n := range t.ByRole {
-		roles = append(roles, fmt.Sprintf("%d %s", n, r))
+		noun := nouns[r]
+		if n != 1 {
+			noun += "s"
+		}
+		roles = append(roles, fmt.Sprintf("%d %s", n, noun))
 	}
 	sort.Strings(roles)
 	s := fmt.Sprintf("about %.2f USD (range %.2f-%.2f) for %d agents (%s; %d attempts), %.2fM tokens of which %.2fM reported by the runtime and %.2fM estimated",

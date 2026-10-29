@@ -1,0 +1,68 @@
+{
+  "agents": [
+    {
+      "id": "C1",
+      "file": "agents/C1.md",
+      "status": "done",
+      "findings": 1,
+      "leads": 0,
+      "bytes": 71,
+      "attempts": 1
+    },
+    {
+      "id": "G2",
+      "file": "agents/G2.md",
+      "status": "done",
+      "findings": 1,
+      "leads": 0,
+      "bytes": 71,
+      "attempts": 1
+    },
+    {
+      "id": "I1",
+      "file": "agents/I1.md",
+      "status": "done",
+      "findings": 1,
+      "leads": 0,
+      "bytes": 71,
+      "attempts": 1
+    },
+    {
+      "id": "I3",
+      "status": "blocked",
+      "reason": "I3 refused twice: safety classifier",
+      "findings": 0,
+      "leads": 0,
+      "bytes": 0,
+      "attempts": 2,
+      "model": "claude-opus-4-8"
+    },
+    {
+      "id": "T1",
+      "file": "agents/T1.md",
+      "status": "done",
+      "findings": 1,
+      "leads": 0,
+      "bytes": 71,
+      "attempts": 1
+    },
+    {
+      "id": "V-hints",
+      "file": "agents/V-hints.md",
+      "status": "done",
+      "findings": 1,
+      "leads": 0,
+      "bytes": 76,
+      "attempts": 1
+    },
+    {
+      "id": "V-range",
+      "file": "agents/V-range.md",
+      "status": "done",
+      "findings": 1,
+      "leads": 0,
+      "bytes": 76,
+      "attempts": 1
+    }
+  ]
+}

@@ -5,7 +5,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/budget"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/threatmodel"
 )
 
 // Section numbers after the fixed sections 1-6.
@@ -89,7 +91,7 @@ func (in *input) writeTrusted(b *strings.Builder) {
 		}
 	}
 	sortRanked(rs)
-	if len(rs) == 0 && len(in.f.AcceptedRisks) == 0 {
+	if len(rs) == 0 && len(in.f.AcceptedRisks) == 0 && len(in.unrecordedRisks()) == 0 {
 		w("No trusted-party power was recorded.\n\n")
 	} else {
 		w("Powers that a trusted party holds over soundness, funds, liveness or privacy. Each is an assumption users carry, not a defect the code can fix alone.\n\n")
@@ -118,10 +120,14 @@ func (in *input) writeTrusted(b *strings.Builder) {
 		}
 		w("\n")
 	}
-	if len(in.f.AcceptedRisks) > 0 {
+	unrecorded := in.unrecordedRisks()
+	if len(in.f.AcceptedRisks) > 0 || len(unrecorded) > 0 {
 		w("Accepted in `zk-audit.md` without a record:\n\n")
 		for _, a := range in.f.AcceptedRisks {
 			w("- **%s** — %s (%s)\n", inline(a.Party), endSentence(inline(a.Risk)), code(a.Source))
+		}
+		for _, r := range unrecorded {
+			w("- **%s** — %s (%s, %s)\n", inline(r.Party), endSentence(inline(r.Risk)), r.ID, code(fmt.Sprintf("zk-audit.md:%d", r.Line)))
 		}
 		w("\n")
 	}
@@ -230,6 +236,25 @@ func (in *input) writeNotCovered(b *strings.Builder) {
 	} else {
 		w("- the `%s` run has no fixed lens set; section 1 lists the agents that ran;\n", in.f.Profile)
 	}
+	if in.f.Profile == "library" {
+		w("- library mode: the repository has no production circuit and no verifier contract, so public-input binding, verifier contracts, protocol state, the prover service, trusted parties and privacy were not examined;\n")
+	}
+	for _, sk := range in.skipped {
+		w("- %s had nothing to examine: %s;\n", sk.Agent, strings.TrimSuffix(inline(sk.Reason), "."))
+	}
+	if st := in.stopped(); st != nil {
+		w("- the run stopped at the budget ceiling (%.2f USD) before %s; what it did not reach is deferred;\n", st.BudgetUSD, inline(st.Before))
+	}
+	for _, a := range in.agents {
+		model := ""
+		if a.Model != "" {
+			model = ", ran on " + a.Model
+		}
+		w("- agent %s did not finish (%s after %s%s): %s;\n", a.ID, a.Status, plural(a.Attempts, "attempt"), model, strings.TrimSuffix(inline(a.Reason), "."))
+	}
+	if in.run != nil && !in.run.PoC {
+		w("- PoCs were not run (`--no-poc`): no finding has a PoC from this run;\n")
+	}
 	open := 0
 	for _, u := range in.l.Units {
 		switch u.Status {
@@ -246,4 +271,94 @@ func (in *input) writeNotCovered(b *strings.Builder) {
 	} else {
 		w("- companions not available: %s.\n\n", strings.Join(c.Missing, ", "))
 	}
+}
+
+// stopped returns the budget stop recorded in spend.json, or nil.
+func (in *input) stopped() *budget.Stop {
+	if in.spend == nil {
+		return nil
+	}
+	return in.spend.Stopped
+}
+
+// unrecordedRisks are the accepted risks of zk-audit.md that no record
+// (trust.source) and no findings.json accepted_risks entry cites.
+func (in *input) unrecordedRisks() []threatmodel.Risk {
+	if in.tm == nil {
+		return nil
+	}
+	cited := map[string]bool{}
+	for _, r := range in.f.Records {
+		if r.Trust != nil && r.Trust.Source != "" {
+			cited[r.Trust.Source] = true
+		}
+	}
+	for _, a := range in.f.AcceptedRisks {
+		cited[a.Source] = true
+	}
+	var out []threatmodel.Risk
+	for _, r := range in.tm.AcceptedRisks {
+		if !cited[fmt.Sprintf("zk-audit.md:%d", r.Line)] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// writeThreatRows adds the threat-model rows to the scope table.
+func (in *input) writeThreatRows(b *strings.Builder) {
+	w := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
+	d := in.tm
+	if d == nil {
+		w("| Threat model | none: no `zk-audit.md` was parsed (`threat-model.json`); trust assumptions come from the code alone |\n")
+		return
+	}
+	w("| Threat model | `zk-audit.md` (sha256 %s): %s, %s, %s, %s |\n", d.SHA256[:12], plural(len(d.TrustedParties), "trusted party"),
+		plural(len(d.AcceptedRisks), "accepted risk"), plural(len(d.Properties), "property"), plural(len(d.PriorFindings), "prior finding"))
+	if len(d.Scope.In) > 0 {
+		var ps []string
+		for _, p := range d.Scope.In {
+			ps = append(ps, code(p.Path))
+		}
+		w("| Scope in `zk-audit.md` | %s |\n", cell(strings.Join(ps, " · ")))
+	}
+	if len(d.Deployment) > 0 {
+		var fs []string
+		for _, f := range d.Deployment {
+			fs = append(fs, f.Fact+": "+f.Value)
+		}
+		w("| Deployment (`zk-audit.md`, not checked) | %s |\n", cell(strings.Join(fs, " · ")))
+	}
+}
+
+// writePrior says, for each prior finding of zk-audit.md, whether this run
+// raised it again: a fixed one raised again is a regression to check.
+func (in *input) writePrior(b *strings.Builder) {
+	if in.tm == nil || len(in.tm.PriorFindings) == 0 {
+		return
+	}
+	w := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
+	byFP := map[string]*Record{}
+	for i := range in.f.Records {
+		byFP[in.f.Records[i].Fingerprint] = &in.f.Records[i]
+	}
+	w("Prior findings in `zk-audit.md`:\n\n")
+	for _, p := range in.tm.PriorFindings {
+		r := byFP[p.Fingerprint]
+		var now string
+		switch {
+		case r == nil:
+			now = "not raised in this run"
+		case p.Status == "fixed" && r.Verdict != "rejected":
+			now = "raised again as " + strings.ReplaceAll(r.Verdict, "_", " ") + ": the fix may not hold"
+		default:
+			now = "raised again as " + strings.ReplaceAll(r.Verdict, "_", " ")
+		}
+		title := ""
+		if p.Title != "" {
+			title = " " + inline(p.Title)
+		}
+		w("- %s%s %s (%s) — %s\n", p.ID, title, code(p.Fingerprint), p.Status, now)
+	}
+	w("\n")
 }

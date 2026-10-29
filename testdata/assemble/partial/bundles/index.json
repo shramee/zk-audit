@@ -1,0 +1,25 @@
+[
+  {
+    "agent": "C1",
+    "shard": "circuit",
+    "status": "written"
+  },
+  {
+    "agent": "V-custom",
+    "shard": "integration",
+    "status": "skipped",
+    "reason": "no verifier that gnark did not generate (contracts.verifiers[].generator) and no call to an SP1 or RISC Zero gateway in the inventory"
+  },
+  {
+    "agent": "I4",
+    "shard": "prover",
+    "status": "skipped",
+    "reason": "empty prover shard"
+  },
+  {
+    "agent": "L1",
+    "shard": "circuit",
+    "status": "skipped",
+    "reason": "not in profile standard"
+  }
+]

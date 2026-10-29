@@ -2,14 +2,14 @@ package detect
 
 import (
 	"encoding/json"
-	"path/filepath"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fixture"
 	"testing"
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/validate"
 )
 
 func TestDetectPool(t *testing.T) {
-	st, err := Detect(filepath.Join("..", "..", "testdata", "pool"), "test")
+	st, err := Detect(fixture.Dir(t, "pool"), "test")
 	if err != nil {
 		t.Fatal(err)
 	}

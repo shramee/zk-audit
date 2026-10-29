@@ -1,6 +1,7 @@
 package inventory
 
 import (
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fixture"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,18 +12,18 @@ import (
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/load"
 )
 
-func build(t *testing.T, fixture string, syntax bool) *Inventory {
+func build(t *testing.T, fixtureName string, syntax bool) *Inventory {
 	t.Helper()
-	root := filepath.Join("..", "..", "testdata", fixture)
+	root := fixture.Dir(t, fixtureName)
 	prog, err := load.Load(root, load.Options{SyntaxOnly: syntax})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !syntax && prog.Mode != "types" {
 		if os.Getenv("ZK_INVENTORY_REQUIRE_TYPES") != "" {
-			t.Fatalf("type loading failed for %s (mode %s): %v", fixture, prog.Mode, prog.Errors)
+			t.Fatalf("type loading failed for %s (mode %s): %v", fixtureName, prog.Mode, prog.Errors)
 		}
-		t.Skipf("type loading unavailable for %s (run `make fixtures` to download gnark into the module cache): %v", fixture, prog.Errors)
+		t.Skipf("type loading unavailable for %s (run `make fixtures` to download gnark into the module cache): %v", fixtureName, prog.Errors)
 	}
 	inv, err := Build(prog, Options{ToolVersion: "test"})
 	if err != nil {

@@ -33,7 +33,7 @@ for f in SKILL.md VERSION agents/poc-builder.md agents/refuter.md references/mod
 done
 
 gi="$skill/scripts/gnark-inventory"
-fixture="$skill/tools/gnark-inventory/testdata/pool"
+fixture="$root/testdata/pool"
 out="$work/out"
 mkdir -p "$out"
 

@@ -57,6 +57,9 @@ func pluginDocs(t *testing.T) map[string]string {
 	return docs
 }
 
+// actionSubcommands take an action word before their flags.
+var actionSubcommands = map[string]bool{"ledger": true, "agents": true, "memory": true}
+
 // TestDocumentedCommandsExist fails when the skill, a command or an agent
 // tells the model to run a script, subcommand, flag, validate kind, reference
 // file or plugin agent that does not exist.
@@ -94,11 +97,17 @@ func TestDocumentedCommandsExist(t *testing.T) {
 				}
 				continue
 			}
+			probe := []string{sub}
+			if actionSubcommands[sub] {
+				if fields := strings.Fields(rest); len(fields) > 0 && !strings.HasPrefix(fields[0], "-") && !strings.HasPrefix(fields[0], "<") {
+					probe = append(probe, fields[0])
+				}
+			}
 			for _, f := range reFlag.FindAllStringSubmatch(rest, -1) {
 				// Probe: set the flag, then -h stops before any work is done.
 				stdout.Reset()
 				stderr.Reset()
-				run([]string{sub, "--" + f[1] + "=x", "-h"}, &stdout, &stderr)
+				run(append(append([]string{}, probe...), "--"+f[1]+"=x", "-h"), &stdout, &stderr)
 				if strings.Contains(stderr.String(), "flag provided but not defined") {
 					t.Errorf("%s runs `gnark-inventory %s --%s`: no such flag", name, sub, f[1])
 				}

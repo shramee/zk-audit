@@ -198,3 +198,79 @@ func TestAssemblePoCManifest(t *testing.T) {
 		t.Errorf("orphan entry: %+v", man.PoCs[1])
 	}
 }
+
+// TestLedgerAndAgentsCommands: agents save writes the output and the index;
+// ledger mark refuses to mark a unit covered by an agent with no saved
+// output, then accepts it; ledger add appends a critic's unit.
+func TestLedgerAndAgentsCommands(t *testing.T) {
+	out := t.TempDir()
+	var buf bytes.Buffer
+	if err := cmdInventory([]string{"--repo", fixture.Dir(t, "pool"), "--out", out, "--syntax-only"}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	unit := "circuit:TransferCircuit|hint-soundness"
+	buf.Reset()
+	code, err := cmdLedger([]string{"mark", "--out", out, "--unit", unit, "--status", "covered", "--agent", "C1", "--reviewed", "circuit/transfer.go"}, &buf)
+	if code != 1 || err != nil || !strings.Contains(buf.String(), "agent C1 has no saved output") {
+		t.Fatalf("mark without output: %d %v %s", code, err, buf.String())
+	}
+	buf.Reset()
+	ret := "FINDING | layer: circuit | scope: X | local: y | bug_class: z | group_key: a | b | z\nLEAD | layer: circuit\n"
+	if code, err := cmdAgents([]string{"save", "--out", out, "--id", "C1"}, &buf, strings.NewReader(ret)); code != 0 || err != nil {
+		t.Fatalf("agents save: %d %v %s", code, err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "C1: done · 1 findings, 1 leads · attempt 1") {
+		t.Errorf("save summary: %s", buf.String())
+	}
+	buf.Reset()
+	if code, _ := cmdAgents([]string{"save", "--out", out, "--id", "I3", "--status", "refused"}, &buf, strings.NewReader("")); code != 1 {
+		t.Errorf("refused without a reason accepted: %s", buf.String())
+	}
+	buf.Reset()
+	if code, _ := cmdAgents([]string{"save", "--out", out, "--id", "I3", "--status", "refused", "--reason", "stopped by a safety classifier; retried once"}, &buf, strings.NewReader("")); code != 0 {
+		t.Errorf("refused with a reason: %s", buf.String())
+	}
+	if code, _ := cmdAgents([]string{"save", "--out", out, "--id", "../x"}, &buf, strings.NewReader("x")); code != 1 {
+		t.Error("path-like agent id accepted")
+	}
+	buf.Reset()
+	code, err = cmdLedger([]string{"mark", "--out", out, "--unit", unit, "--status", "covered", "--agent", "C1", "--reviewed", "circuit/transfer.go"}, &buf)
+	if code != 0 || err != nil {
+		t.Fatalf("mark: %d %v %s", code, err, buf.String())
+	}
+	buf.Reset()
+	if code, _ := cmdLedger([]string{"mark", "--out", out, "--lens", "I3", "--status", "blocked"}, &buf); code != 1 || !strings.Contains(buf.String(), "needs a reason") {
+		t.Errorf("blocked without reason: %s", buf.String())
+	}
+	buf.Reset()
+	if code, _ := cmdLedger([]string{"mark", "--out", out, "--lens", "I3", "--status", "blocked", "--reason", "I3 refused twice"}, &buf); code != 0 {
+		t.Errorf("blocked with reason: %s", buf.String())
+	}
+	if code, _ := cmdLedger([]string{"mark", "--out", out, "--match", "NoSuchThing", "--status", "covered"}, &buf); code != 1 {
+		t.Error("empty selection accepted")
+	}
+	buf.Reset()
+	if code, _ := cmdLedger([]string{"add", "--out", out, "--kind", "circuit", "--subject", "testCircuit", "--class", "spec-invariant", "--lens", "C6", "--path", "circuit/transfer.go:9", "--notes", "coverage critic"}, &buf); code != 0 {
+		t.Fatalf("add: %s", buf.String())
+	}
+	if code, _ := cmdLedger([]string{"add", "--out", out, "--kind", "circuit", "--subject", "testCircuit", "--class", "spec-invariant", "--lens", "C6"}, &buf); code != 1 {
+		t.Error("duplicate add accepted")
+	}
+	led, err := os.ReadFile(out + "/coverage-ledger.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"id": "circuit:testCircuit|spec-invariant"`, `"reason": "I3 refused twice"`} {
+		if !strings.Contains(string(led), want) {
+			t.Errorf("ledger lacks %s", want)
+		}
+	}
+	var vb bytes.Buffer
+	if code, _ := cmdValidate([]string{"ledger", out + "/coverage-ledger.json", "--out", out}, &vb); code != 0 {
+		t.Errorf("edited ledger does not validate: %s", vb.String())
+	}
+	idx, _ := os.ReadFile(out + "/agents/index.json")
+	if !strings.Contains(string(idx), `"status": "refused"`) || !strings.Contains(string(idx), `"file": "agents/C1.md"`) {
+		t.Errorf("index: %s", idx)
+	}
+}

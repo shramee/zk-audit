@@ -246,6 +246,22 @@ tables and `gnark-inventory profiles` all follow the entry.
 - **Agents row.** Ids that are no lens or critic (orchestrator phases, wave
   labels) go to an "Other sources" row instead of being listed as agents.
 
+## Ledger and agent outputs through the tool
+
+- **`ledger mark` / `ledger add` / `ledger show`** and **`agents save` /
+  `agents list`** replace hand edits. The 2026-10-29 runs rewrote the 17 KB
+  ledger with Write after every update (a shell `jq` was refused), saved
+  agent outputs inconsistently and listed phase labels as agents
+  (shramee/zk-audit#10). `ledger mark` selects units (id, id substring,
+  lens, kind, class, current status), appends evidence, and validates the
+  whole ledger with the `--out` checks before an atomic write, so a unit
+  cannot be marked covered by an agent whose output was never saved.
+- **Stopped or refused agents.** `agents save --status refused|failed|blocked
+  --reason` records them in `agents/index.json` with an attempt count; the
+  orchestration rule is one plain-worded retry, then `blocked` units with the
+  reason, so the report shows them as not examined instead of silently
+  dropping them.
+
 ## Invocation parsing
 
 - **`gnark-inventory args`** turns the words after `/zk-audit` into JSON

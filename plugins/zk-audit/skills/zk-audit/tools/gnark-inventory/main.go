@@ -43,6 +43,11 @@ Usage:
   gnark-inventory profiles  [--profile P] [--markdown] [--check-docs SKILL_DIR] [--sync-docs SKILL_DIR]
   gnark-inventory validate  findings|ledger|stack FILE [--out DIR]
   gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F] [--file-output]
+  gnark-inventory ledger    mark --out DIR (--unit ID|--match S|--lens L|--kind K|--class C)... [--from STATUS] [--status S] [--agent A]... [--reviewed P]... [--fingerprint F]... [--reason R] [--notes T] [--wave N]
+  gnark-inventory ledger    add  --out DIR --kind K --subject S --class C --lens L [--path FILE:LINE] [--notes T]
+  gnark-inventory ledger    show --out DIR
+  gnark-inventory agents    save --out DIR --id ID [--from FILE] [--status done|blocked|failed|refused] [--reason R]
+  gnark-inventory agents    list --out DIR
   gnark-inventory sandbox   [--rw DIR]... [--ro DIR]... [--cwd DIR] [--timeout SEC] [--mem MB] [--allow-network] [--engine E] [--require] [--check] -- CMD [ARGS...]
   gnark-inventory lint-kb   [--gnark-src DIR] SKILL_DIR
   gnark-inventory advisories [--version vX.Y.Z]
@@ -87,6 +92,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = cmdAdvisories(args[1:], stdout)
 	case "args":
 		code, err = cmdArgs(args[1:], stdout)
+	case "ledger":
+		code, err = cmdLedger(args[1:], stdout)
+	case "agents":
+		code, err = cmdAgents(args[1:], stdout, os.Stdin)
 	case "sandbox":
 		code, err = cmdSandbox(args[1:], stdout, stderr)
 	case "profiles":

@@ -287,8 +287,11 @@ deep also runs a final-clean critic. Units left open stay `planned` or
    derive: `posture` (three to six sentences), `out_of_scope`, `companions`
    (`present` / `missing`) and `hardening`. With zero records, set
    `no_findings: true` and a `no_findings_reason` that says what was examined.
-2. Close the ledger: every unit still `planned` or `in_progress` becomes
-   `deferred` or `blocked` with a `reason`.
+2. Close the ledger with the tool, never by rewriting the file: every unit
+   still `planned` or `in_progress` becomes `deferred` or `blocked` with a
+   `reason`, and every `candidate` unit is judged and becomes `covered`
+   (`{skill}/scripts/gnark-inventory ledger mark --out <out> --from planned --status deferred --reason "<why>"`;
+   `ledger show --out <out>` prints the counts).
 3. Validate both files and fix every error. `--out` checks the evidence on
    disk: every `poc.path` under `<out>/pocs/`, and an output in
    `<out>/agents/` for every agent of a `covered` unit:

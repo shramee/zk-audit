@@ -26,6 +26,7 @@ type Unit struct {
 	ReviewedPaths      []string `json:"reviewed_paths"`
 	ResultFingerprints []string `json:"result_fingerprints"`
 	Wave               int      `json:"wave"`
+	Reason             string   `json:"reason,omitempty"`
 	Notes              string   `json:"notes,omitempty"`
 }
 

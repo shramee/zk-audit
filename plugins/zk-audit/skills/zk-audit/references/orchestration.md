@@ -4,7 +4,9 @@
 
 Use this when the runtime can spawn subagents (Claude Code `Agent`). With
 `--local`, or without subagents, run the same lenses one after another in this
-context and skip the progress console.
+context and skip the progress console; save each lens's FINDING / LEAD blocks
+with `agents save --id <lens id>` and mark its units as below, exactly as for
+a subagent.
 
 Write the prompts in plain, runtime-neutral language. Never ask an agent to
 install, write into the target repo, or use the network.
@@ -150,18 +152,37 @@ The bundle names the gnark std directory at the pinned version, or says it is
 not in the module cache (the hunter then writes LEADs instead of reasoning
 about std from memory).
 
-After each agent returns:
+After each agent returns, record it with the tool; never hand-edit
+`coverage-ledger.json` or `agents/`:
 
-1. Save its raw return to `<out>/agents/<ID>.md` (the critic and the judge
-   read these).
-2. Update the ledger units it owned: `covered` (with `agent_ids` and
-   `reviewed_paths`), `candidate` (with `result_fingerprints`), or `blocked`
-   (with a reason).
+1. Save its raw return. Write it to `<out>/raw/<ID>.md`, then
+   `{skill}/scripts/gnark-inventory agents save --out <out> --id <ID> --from <out>/raw/<ID>.md`.
+   This writes `<out>/agents/<ID>.md` (the critic, the judge and the ledger
+   check read it) and `agents/index.json`, and prints the FINDING / LEAD
+   counts for the progress table.
+2. Mark the ledger units it owned:
+   `{skill}/scripts/gnark-inventory ledger mark --out <out> --lens <lens> --from planned --status covered --agent <ID> --reviewed <file>`
+   (one `--reviewed` per file it read; `--unit <id>` for single units). Units
+   it raised something on become `candidate` with `--fingerprint <group_key>`.
+   The tool refuses `covered` for an agent with no saved output, and
+   reviewed paths that miss the unit's own file.
+
+**An agent that is stopped or refused** (a safety classifier, an API error,
+a turn limit): retry it once with the same bundle and a plainly worded
+prompt. If the retry also fails, record it, and its units, instead of
+dropping them:
+`agents save --out <out> --id <ID> --status refused --reason "<what happened, retried once>"`
+and `ledger mark --out <out> --lens <lens> --from planned --status blocked --reason "<ID> refused twice"`.
+The report then lists those units as not examined, with the reason. If the
+runtime switched the agent to another model, say so in the reason.
 
 ## Turn 5 — Judge
 
 Follow `judging.md`: dedup, completeness line, four gates, severity and
 confidence, lead promotion. Write draft records to `<out>/findings.json`.
+Then close every `candidate` unit: `ledger mark --out <out> --from candidate
+--unit <id> --status covered --reviewed <file>` (its fingerprints stay).
+A candidate unit is not counted as examined.
 
 ## Turn 6 — Prove and refute
 
@@ -196,7 +217,14 @@ with `{skill}/agents/critic.md` and told to use only Read, Grep and Glob:
 Role: coverage. The audit output directory is <out>.
 ```
 
-It returns `{"missing_units": [...]}` per its brief.
+It returns `{"missing_units": [...]}` per its brief. Save it like a hunter
+(`agents save --id critic`). Record a decision for **every** missing unit:
+a unit that is not in the ledger yet is added
+(`ledger add --out <out> --kind <kind> --subject <subject> --class <class> --lens <lens> --path <file:line> --notes "coverage critic"`);
+then it either goes to the targeted wave or is marked `deferred` with the
+reason it was left (`ledger mark ... --status deferred --reason "..."`).
+Wave agents use the lens id they run (`C1`, `I3`), never a wave label, and
+are saved and marked like hunters with `--wave <n>`.
 
 Standard: run one targeted wave (agents for the missing units only, same pool
 rules), then judge and prove their output. Deep: also run a final-clean critic
@@ -209,10 +237,10 @@ profile's critics and targeted waves. Every unit still open gets `deferred` with
 
 1. Fill the report-only fields of `findings.json` (`posture`,
    `out_of_scope`, `companions`, `hardening`) and close every open ledger unit
-   (`deferred` or `blocked`, with a reason).
+   with `ledger mark` (`deferred` or `blocked`, with a reason).
 2. Validate:
-   `gnark-inventory validate findings <out>/findings.json` and
-   `gnark-inventory validate ledger <out>/coverage-ledger.json`. Fix errors and
+   `gnark-inventory validate findings <out>/findings.json --out <out>` and
+   `gnark-inventory validate ledger <out>/coverage-ledger.json --out <out>`. Fix errors and
    rerun until both pass.
 3. Render: `{skill}/scripts/gnark-inventory assemble --out <out> --repo <repo>`.
    It writes `<out>/REPORT.md` per `report-format.md`, or exits 1 and writes

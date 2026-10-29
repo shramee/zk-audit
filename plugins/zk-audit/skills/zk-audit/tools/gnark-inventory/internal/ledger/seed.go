@@ -169,6 +169,57 @@ func Seed(inv *inventory.Inventory, stack *detect.Stack, tool string) *Ledger {
 				add("setup", f, cc.class, cc.lenses, []string{setup[f]}, "who runs this setup, and are its keys the deployed ones?")
 			}
 		}
+		// key and ceremony files, and MPC ceremony code, from the
+		// provenance scan
+		if p := inv.Provenance; p != nil && p.Ceremony != nil {
+			for _, sc := range p.Ceremony.Setups {
+				if sc.InTest || sc.Kind == "single-party" {
+					continue // single-party sites come from FG-DEV-SETUP above
+				}
+				for _, cc := range priv {
+					add("setup", sc.File, cc.class, cc.lenses, []string{fmt.Sprintf("%s:%d", sc.File, sc.Line)},
+						sc.Kind+" setup code: how many independent contributors, is the transcript verified, and are its keys the deployed ones?")
+				}
+			}
+			for _, a := range p.Ceremony.Artifacts {
+				n := "contributions not recorded in the file"
+				if a.Contributions >= 0 {
+					n = fmt.Sprintf("%d contribution(s) recorded", a.Contributions)
+				}
+				for _, cc := range priv {
+					add("setup", a.File, cc.class, cc.lenses, []string{a.File},
+						a.Kind+", "+n+": who generated it, and is it the deployed key? (setup provenance: "+p.Ceremony.Verdict+")")
+				}
+			}
+		}
+	}
+	// the ABI check's result on each checked call site's verifier-contract unit
+	if p := inv.Provenance; p != nil && p.ABI != nil {
+		for _, c := range p.ABI.Calls {
+			if c.Status != "mismatch" {
+				continue
+			}
+			var st []string
+			for _, a := range c.Against {
+				if a.Status != "match" && a.Status != "unknown" {
+					st = append(st, a.Status+" vs "+a.Name)
+				}
+			}
+			for i := range l.Units {
+				u := &l.Units[i]
+				if u.Kind == "contract-fn" && u.Subject == c.Caller && u.Class == "verifier-contract" {
+					u.Notes = joinNotes(u.Notes, "ABI check ("+c.Site+"): "+strings.Join(st, "; "))
+				}
+			}
+		}
+		for _, v := range p.ABI.Verifiers {
+			for i := range l.Units {
+				u := &l.Units[i]
+				if u.Kind == "verifier" && u.Subject == v.Verifier {
+					u.Notes = joinNotes(u.Notes, "template check: "+v.Status+" ("+v.Detail+")")
+				}
+			}
+		}
 	}
 	// prover-service: non-test files that touch backends or deserialization
 	prover := map[string]bool{}
@@ -197,6 +248,13 @@ func Seed(inv *inventory.Inventory, stack *detect.Stack, tool string) *Ledger {
 		}
 	}
 	return l
+}
+
+func joinNotes(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a + "; " + b
 }
 
 func lenStr(n int) string {

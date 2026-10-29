@@ -1,0 +1,53 @@
+{
+  "$comment": "The ABI of the BN254 Solidity verifiers gnark exports (vk.ExportSolidity), per gnark version range [from, to). Read from the templates in the gnark module at v0.8.0, v0.9.0, v0.9.1, v0.10.0, v0.11.0, v0.12.0, v0.13.0, v0.14.0, v0.15.0, v0.16.0 and v0.16.4 (paths in `source`). N is the number of public inputs without commitment wires; K the number of commitments. `gnark-inventory verifier abi` compares a caller's interface with these.",
+  "schema_version": "1",
+  "templates": [
+    {
+      "backend": "groth16", "from": "v0.0.0", "to": "v0.9.0", "contract": "Verifier",
+      "function": "verifyProof", "params": ["uint256[2]", "uint256[2][2]", "uint256[2]", "uint256[N]"], "returns": ["bool"],
+      "on_failure": "returns false for a failed pairing; reverts for inputs >= r",
+      "commitments": "not supported by the template",
+      "source": "gnark/internal/backend/bn254/groth16/solidity.go (v0.8.0)"
+    },
+    {
+      "backend": "groth16", "from": "v0.9.0", "to": "v0.10.0", "contract": "Verifier",
+      "function": "verifyProof", "params": ["uint256[8]", "uint256[N]"], "returns": [],
+      "compressed": { "function": "verifyCompressedProof", "params": ["uint256[4]", "uint256[N]"] },
+      "on_failure": "reverts (ProofInvalid, PublicInputNotInField); no return value",
+      "commitments": "not supported by the template",
+      "source": "gnark/backend/groth16/bn254/solidity.go (v0.9.0, v0.9.1)"
+    },
+    {
+      "backend": "groth16", "from": "v0.10.0", "to": "v0.15.0", "contract": "Verifier",
+      "function": "verifyProof", "params": ["uint256[8]", "uint256[N]"], "returns": [],
+      "with_commitments": ["uint256[8]", "uint256[2K]", "uint256[2]", "uint256[N]"],
+      "compressed": { "function": "verifyCompressedProof", "params": ["uint256[4]", "uint256[N]"], "with_commitments": ["uint256[4]", "uint256[K]", "uint256", "uint256[N]"] },
+      "on_failure": "reverts (ProofInvalid, PublicInputNotInField, CommitmentInvalid); no return value",
+      "commitments": "commitments and their proof of knowledge are separate arguments",
+      "source": "gnark/backend/groth16/bn254/solidity.go (v0.10.0 to v0.14.0)"
+    },
+    {
+      "backend": "groth16", "from": "v0.15.0", "to": "", "contract": "Verifier",
+      "function": "verifyProof", "params": ["bytes", "uint256[N]"], "returns": [],
+      "with_commitments": ["bytes", "uint256[N]"],
+      "compressed": { "function": "verifyCompressedProof", "params": ["uint256[4]", "uint256[N]"], "with_commitments": ["uint256[4]", "uint256[K]", "uint256", "uint256[N]"] },
+      "on_failure": "reverts (ProofInvalid, PublicInputNotInField, CommitmentInvalid, \"invalid proof length\"); no return value",
+      "commitments": "packed in the proof bytes: 256 + 64*(K+1) bytes",
+      "source": "gnark/backend/groth16/bn254/solidity.go (v0.15.0 to v0.16.4)"
+    },
+    {
+      "backend": "plonk", "from": "v0.0.0", "to": "v0.9.0", "contract": "PlonkVerifier",
+      "function": "verify_serialized_proof", "params": ["uint256[]", "uint256[]"], "returns": ["bool"],
+      "on_failure": "returns false; affected by GHSA-7p92-x423-vwj6",
+      "commitments": "not supported by the template",
+      "source": "gnark/internal/backend/bn254/plonk/solidity.go (v0.8.0)"
+    },
+    {
+      "backend": "plonk", "from": "v0.9.0", "to": "", "contract": "PlonkVerifier",
+      "function": "Verify", "params": ["bytes", "uint256[]"], "returns": ["bool"],
+      "on_failure": "returns false when the final pairing check fails; reverts on malformed input (the caller must check the bool)",
+      "commitments": "packed in the proof bytes",
+      "source": "gnark/backend/plonk/bn254/solidity.go (v0.9.0 to v0.16.4; v0.9.0 is affected by GHSA-7p92-x423-vwj6)"
+    }
+  ]
+}

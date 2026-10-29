@@ -4,6 +4,7 @@ package inventory
 
 import (
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/solidity"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/verifier"
 )
 
 // Pos is a source position.
@@ -25,7 +26,10 @@ type Inventory struct {
 	HintFuncs     []*HintFunc      `json:"hint_functions"`
 	Footguns      []*Footgun       `json:"footguns"`
 	Contracts     *solidity.Result `json:"contracts"`
-	Summary       Summary          `json:"summary"`
+	// Provenance holds the static verifier-provenance checks (ABI check,
+	// ceremony scan); the inventory command fills it after stack detection.
+	Provenance *verifier.Provenance `json:"provenance,omitempty"`
+	Summary    Summary              `json:"summary"`
 }
 
 // Summary holds counts for quick display and for the ledger seed.

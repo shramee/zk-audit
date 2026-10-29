@@ -152,10 +152,3 @@ func precompilesOf(body string) []string {
 	}
 	return out
 }
-
-// verifierInterfaces are well-known verifier interfaces; a call through one
-// of them reaches a verifier deployed elsewhere (a gateway or a router).
-var verifierInterfaces = map[string]string{
-	"ISP1Verifier": "sp1", "ISP1VerifierWithHash": "sp1", "IRiscZeroVerifier": "risc0",
-	"IUltraVerifier": "noir-barretenberg", "IVerifier": "", "IPlonkVerifier": "", "IGroth16Verifier": "",
-}

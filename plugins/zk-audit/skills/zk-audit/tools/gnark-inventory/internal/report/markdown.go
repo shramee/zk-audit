@@ -10,6 +10,7 @@ import (
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/inventory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/solidity"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/verifier"
 )
 
 func esc(s string) string {
@@ -118,6 +119,19 @@ func Inventory(inv *inventory.Inventory) string {
 
 	w("## Contracts\n\n")
 	writeContracts(&b, inv.Contracts)
+
+	if p := inv.Provenance; p != nil {
+		w("## Verifier provenance\n\n")
+		w("Static checks (no network, no target code run). The ABI check compares each verification call's selector and return value with the verifiers in the repository and with the verifier the pinned gnark version exports; `gnark-inventory verifier regen` and `verifier bytecode` go further when the profile or the user allows.\n\n")
+		if p.ABI != nil {
+			w("### ABI check\n\n")
+			b.WriteString(verifier.ABIText(p.ABI, abiGnark(inv)))
+		}
+		if p.Ceremony != nil {
+			w("### Keys and setup ceremony\n\n")
+			b.WriteString(verifier.CeremonyText(p.Ceremony))
+		}
+	}
 
 	if len(inv.LoadErrors) > 0 {
 		w("## Load errors\n\n")
@@ -603,6 +617,43 @@ func inputsFor(c *solidity.Result, vc solidity.VerifyCall) map[int]solidity.Inpu
 		}
 	}
 	return out
+}
+
+// abiGnark recovers the pinned versions shown in the ABI section from the
+// template comparisons.
+func abiGnark(inv *inventory.Inventory) verifier.Gnark {
+	g := verifier.Gnark{}
+	seen := map[string]bool{}
+	for _, v := range inv.Provenance.ABI.Verifiers {
+		if v.Pinned != "" && !seen[v.Pinned] {
+			seen[v.Pinned] = true
+			g.Versions = append(g.Versions, v.Pinned)
+		}
+	}
+	for _, c := range inv.Provenance.ABI.Calls {
+		for _, a := range c.Against {
+			if a.Against == "gnark-template" {
+				f := strings.Fields(a.Name)
+				if len(f) >= 3 && !seen[f[1]] {
+					seen[f[1]] = true
+					g.Versions = append(g.Versions, f[1])
+				}
+				if len(f) >= 3 && !contains(g.Backends, f[2]) {
+					g.Backends = append(g.Backends, f[2])
+				}
+			}
+		}
+	}
+	return g
+}
+
+func contains(xs []string, x string) bool {
+	for _, y := range xs {
+		if y == x {
+			return true
+		}
+	}
+	return false
 }
 
 // SortedIDs is a helper for deterministic output in callers.

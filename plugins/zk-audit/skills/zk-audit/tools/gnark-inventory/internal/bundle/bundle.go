@@ -346,6 +346,37 @@ func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, per
 			}
 		}
 	}
+	if p := inv.Provenance; p != nil {
+		if p.ABI != nil {
+			for _, c := range p.ABI.Calls {
+				file := c.Site
+				if i := strings.LastIndex(file, ":"); i > 0 {
+					file = file[:i]
+				}
+				if !in[file] {
+					continue
+				}
+				for _, a := range c.Against {
+					w("- verifier ABI %s at `%s` (%s): caller sends `%s`, %s has `%s` — %s\n", a.Status, c.Site, c.Caller, c.Signature, a.Name, a.Signature, a.Detail)
+					n++
+				}
+			}
+			for _, v := range p.ABI.Verifiers {
+				file := v.Site
+				if i := strings.LastIndex(file, ":"); i > 0 {
+					file = file[:i]
+				}
+				if in[file] {
+					w("- verifier template %s for `%s` at `%s`: %s\n", v.Status, v.Verifier, v.Site, v.Detail)
+					n++
+				}
+			}
+		}
+		if p.Ceremony != nil && (sh.Kind == "all" || sh.Kind == "prover") {
+			w("- setup provenance: %s — %s\n", p.Ceremony.Verdict, p.Ceremony.Detail)
+			n++
+		}
+	}
 	if n == 0 {
 		w("_none_\n")
 	}

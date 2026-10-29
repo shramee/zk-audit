@@ -13,7 +13,7 @@ test:
 	cd $(TOOL) && go test ./...
 
 ## fixtures: download gnark for the test fixtures (network), then run the
-## typed-mode tests that are otherwise skipped
+## typed-mode and verifier-regeneration tests that are otherwise skipped
 fixtures:
 	cd testdata/pool && go mod download
 	cd testdata/edge && go mod download
@@ -23,7 +23,7 @@ fixtures:
 	cd testdata/sol-gnark-abi && go vet ./...
 
 test-types: fixtures
-	cd $(TOOL) && ZK_INVENTORY_REQUIRE_TYPES=1 go test -count=1 ./internal/inventory/
+	cd $(TOOL) && ZK_INVENTORY_REQUIRE_TYPES=1 go test -count=1 ./internal/inventory/ ./internal/verifier/
 
 lint-kb:
 	cd $(TOOL) && go run . lint-kb ../..

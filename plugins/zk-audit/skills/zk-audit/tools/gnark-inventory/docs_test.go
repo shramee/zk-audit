@@ -58,7 +58,7 @@ func pluginDocs(t *testing.T) map[string]string {
 }
 
 // actionSubcommands take an action word before their flags.
-var actionSubcommands = map[string]bool{"ledger": true, "agents": true, "memory": true}
+var actionSubcommands = map[string]bool{"ledger": true, "agents": true, "memory": true, "verifier": true, "convert": true}
 
 // TestDocumentedCommandsExist fails when the skill, a command or an agent
 // tells the model to run a script, subcommand, flag, validate kind, reference

@@ -109,6 +109,8 @@ func TestBundlesCustomVerifier(t *testing.T) {
 	out := t.TempDir()
 	b, _ := json.Marshal(inv)
 	os.WriteFile(filepath.Join(out, "inventory.json"), b, 0o644)
+	os.MkdirAll(filepath.Join(out, "regen"), 0o755)
+	os.WriteFile(filepath.Join(out, "regen", "diff.json"), []byte(`{"sides":[{"name":"src/HandVerifier.sol"},{"name":"regen/output/Verifier.sol"}],"summary":"different structure and different verifying key"}`), 0o644)
 	res, err := Build(Options{Out: out, Skill: filepath.Join("..", "..", "..", ".."), Profile: "quick"})
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +125,8 @@ func TestBundlesCustomVerifier(t *testing.T) {
 		}
 	}
 	md, _ := os.ReadFile(path)
-	for _, want := range []string{"- verifier HandVerifier at `src/HandVerifier.sol:", "generator hand-written", "V-CV5. Public inputs not checked"} {
+	for _, want := range []string{"- verifier HandVerifier at `src/HandVerifier.sol:", "generator hand-written", "V-CV5. Public inputs not checked",
+		"- regenerated verifier (verifier regen): `src/HandVerifier.sol` vs `regen/output/Verifier.sol`: different structure and different verifying key"} {
 		if !strings.Contains(string(md), want) {
 			t.Errorf("V-custom bundle lacks %q", want)
 		}

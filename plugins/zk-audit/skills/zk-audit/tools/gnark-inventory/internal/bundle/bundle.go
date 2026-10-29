@@ -70,6 +70,7 @@ func Build(opt Options) ([]Result, error) {
 	}
 	binding, _ := os.ReadFile(filepath.Join(opt.Out, "binding-table.md"))
 	periph := peripheral(opt.Out)
+	regen := regenSummary(opt.Out)
 	known := ""
 	if m, ok, err := memory.Load(opt.Out); err != nil {
 		return nil, fmt.Errorf("bundle: %w", err)
@@ -133,7 +134,7 @@ func Build(opt Options) ([]Result, error) {
 			if sh.Name != sh.Kind {
 				id = a.ID + "@" + sh.Name
 			}
-			md := render(&inv, a, id, sh, string(binding), periph, known, sop, lens, slice, rules, opt.Profile)
+			md := render(&inv, a, id, sh, string(binding), periph, known, sop, lens, slice, rules, opt.Profile, regen)
 			p := filepath.Join(dir, safeName(id)+".md")
 			if err := os.WriteFile(p, []byte(md), 0o644); err != nil {
 				return nil, err
@@ -335,7 +336,30 @@ func lineCount(abs string) int {
 	return n
 }
 
-func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, periph, known, sop, lens, slice, rules, profile string) string {
+// regenSummary reads <out>/regen/diff.json, written by `verifier regen
+// --compare`, and returns its one-line summary, or "".
+func regenSummary(out string) string {
+	b, err := os.ReadFile(filepath.Join(out, "regen", "diff.json"))
+	if err != nil {
+		return ""
+	}
+	var d struct {
+		Summary string `json:"summary"`
+		Sides   []struct {
+			Name string `json:"name"`
+		} `json:"sides"`
+	}
+	if json.Unmarshal(b, &d) != nil || d.Summary == "" {
+		return ""
+	}
+	var names []string
+	for _, s := range d.Sides {
+		names = append(names, "`"+s.Name+"`")
+	}
+	return strings.Join(names, " vs ") + ": " + d.Summary + " (`regen/diff.json` in the audit output directory)"
+}
+
+func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, periph, known, sop, lens, slice, rules, profile, regen string) string {
 	var b strings.Builder
 	w := func(format string, x ...any) { fmt.Fprintf(&b, format, x...) }
 	w("# Bundle %s\n\n", id)
@@ -450,6 +474,10 @@ func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, per
 			w("- setup provenance: %s — %s\n", p.Ceremony.Verdict, p.Ceremony.Detail)
 			n++
 		}
+	}
+	if regen != "" && (sh.Kind == "integration" || sh.Kind == "all") {
+		w("- regenerated verifier (verifier regen): %s\n", regen)
+		n++
 	}
 	if n == 0 {
 		w("_none_\n")

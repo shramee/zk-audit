@@ -45,9 +45,23 @@ The `/zk-audit:<mode>` commands exist only in a plugin install; the
 `/zk-audit <mode>` form works in every install.
 
 Flags: `--local` (single agent, no subagents) · `--loop N` (N passes with a
-memory ledger; deep default 3) · `--no-poc` (skip PoC generation and
+memory ledger; default: the profile's passes) · `--no-poc` (skip PoC generation and
 execution; the refuter still runs) · `--file-output` (also write `REPORT.md` into the target repo) ·
-`--out DIR` (override the output directory).
+`--out DIR` (override the output directory) · `--profile P` (same as the bare
+profile word).
+
+Never parse the invocation by hand. Pass the words after `/zk-audit` to the
+tool (`--mode <mode>` when a `/zk-audit:<mode>` command started the run):
+
+```bash
+{skill}/scripts/gnark-inventory args --repo <repo> -- <words>
+```
+
+It prints JSON: `mode`, `profile` and `profile_explicit`, `scope`, `local`,
+`passes` and `memory`, `poc`, `file_output` and `report_copy`, `out`,
+`run_id`, `diff` (`base`, `head`) and `warnings`. Exit 1 lists every problem
+(unknown flag, missing scope file, `--out` inside the repository): show them
+to the user and stop. Use its `out`, `run_id`, `scope` and `passes` below.
 
 **Profiles**
 

@@ -34,6 +34,7 @@ const Version = "0.1.0"
 const usage = `gnark-inventory ` + Version + ` — deterministic recon for zk-audit
 
 Usage:
+  gnark-inventory args      [--repo DIR] [--mode M] [--run-id ID] [--home DIR] -- WORDS...
   gnark-inventory detect    --repo DIR [--out stack.json]
   gnark-inventory inventory --repo DIR --out DIR [--files a.go,dir/] [--syntax-only] [--allow-network]
   gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile P]
@@ -78,6 +79,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		code, err = cmdLint(args[1:], stdout)
 	case "advisories":
 		err = cmdAdvisories(args[1:], stdout)
+	case "args":
+		code, err = cmdArgs(args[1:], stdout)
 	case "profiles":
 		code, err = cmdProfiles(args[1:], stdout)
 	case "rules":

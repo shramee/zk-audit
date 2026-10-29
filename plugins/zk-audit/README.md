@@ -37,6 +37,7 @@ through `skills/zk-audit/scripts/gnark-inventory`, which builds it once into
 
 | Subcommand | Output |
 |---|---|
+| `args [--repo DIR] [--mode M] [--run-id ID] [--home DIR] -- WORDS...` | Parses a `/zk-audit ...` invocation (mode, profile, scope files, `--local`, `--loop N`, `--no-poc`, `--file-output`, `--out DIR`, `--profile P`, setup's `--check-only`) into JSON with defaults (output `~/.zk-audit/<repo>/<run-id>`, passes from the profile); exit 1 lists every invalid word. |
 | `detect --repo DIR [--out stack.json]` | gnark / gnark-crypto versions, matching advisories, backends, curves, Solidity / Foundry / Hardhat / Circom / Noir presence. |
 | `inventory --repo DIR --out DIR [--files a,b] [--syntax-only] [--allow-network]` | `inventory.json`, `inventory.md`, `binding-table.md`, `coverage-ledger.json` (seeded), `stack.json`. |
 | `bundle --out DIR --skill SKILL_DIR [--profile P]` | One `bundles/<agent>.md` per selected agent: source shard (paths and line counts), binding table, inventory items, SOP, lens, shared rules. |

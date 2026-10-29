@@ -59,7 +59,8 @@ Resolve `{skill}` (`SKILL.md`, first paragraph), read `{skill}/VERSION`,
 print the banner from `SKILL.md` and the phase table (all `Pending`). Then, in
 parallel:
 
-1. Create the output directory `~/.zk-audit/<repo>/<run-id>/` (or `--out`).
+1. Parse the invocation (`{skill}/scripts/gnark-inventory args --repo <repo> -- <words>`,
+   `SKILL.md` §2) and create its `out` directory.
 2. Run Phase 0: `{skill}/scripts/gnark-inventory detect --repo <repo> --out <out>/stack.json`.
 3. Detect companions (`companions.md`).
 4. Run the update check: `{skill}/scripts/check-version` (silent unless a

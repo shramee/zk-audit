@@ -4,6 +4,8 @@ Entry points: `/zk-audit:diff <base>[..<head>]` (plugin install) or
 `/zk-audit diff <base>[..<head>]` (any install). Default base: `origin/main`,
 head: `HEAD`. `{skill}` is the directory that holds the skill's `SKILL.md`.
 
+0. Parse the arguments: `{skill}/scripts/gnark-inventory args --repo <repo> --mode diff -- <arguments>`.
+   Its `diff.base`, `diff.head`, `scope` and `out` are the inputs below.
 1. Compute the merge base: `git merge-base <base> <head>`. List changed files
    with `git diff --name-status <merge-base> <head>`.
 2. Run Phase 0 on `<head>`. Run the inventory on both sides in scratch

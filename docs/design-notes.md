@@ -151,6 +151,18 @@ left open, it is recorded here with the reason.
 Nothing else changes: bundles, ledger seeding and validation, the docs
 tables and `gnark-inventory profiles` all follow the entry.
 
+## Invocation parsing
+
+- **`gnark-inventory args`** turns the words after `/zk-audit` into JSON
+  (mode, profile, scope, flags, `out`, `run_id`, diff range) so the
+  orchestrator never parses flags. It splits a single quoted string with
+  shell-like quoting, rejects unknown flags, scope paths that do not exist or
+  leave the repository (after resolving symlinks), `--loop` outside 1–10 or
+  outside a full audit, and an `--out` inside the repository. `--loop`
+  defaults to the profile's `passes` from `profiles.json`. Commands that fix
+  the mode (`/zk-audit:diff`) pass `--mode`. Added flag: `--profile P`, the
+  same as the bare profile word.
+
 ## Evals
 
 - **Blind runs.** Fixtures keep their `// BUG:` comments for the inventory

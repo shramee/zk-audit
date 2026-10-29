@@ -35,7 +35,8 @@ lint-kb:
 standalone:
 	test/standalone-skill.sh
 
-## eval-pocs: run the eval PoCs of the pool (Go), liveness-roots and
+## eval-pocs: run the eval PoCs of the pool and lib-gadgets (Go; the
+## latter through gnark-inventory harness wrappers), liveness-roots and
 ## sol-gnark-abi (Foundry; the second against a real gnark-exported verifier
 ## with a real proof) fixtures in sanitized scratch copies, inside the skill's sandbox and
 ## offline; missing modules (testify for gnark/test) and the pinned solc are
@@ -45,6 +46,7 @@ eval-pocs: fixtures
 	EVAL_GOPROXY="$$(go env GOPROXY)" evals/run-pocs pool "$$(mktemp -d)"
 	EVAL_GOPROXY="$$(go env GOPROXY)" evals/run-pocs liveness-roots "$$(mktemp -d)"
 	EVAL_GOPROXY="$$(go env GOPROXY)" evals/run-pocs sol-gnark-abi "$$(mktemp -d)"
+	EVAL_GOPROXY="$$(go env GOPROXY)" evals/run-pocs lib-gadgets "$$(mktemp -d)"
 
 ## sync-schemas: copy the canonical schemas into the tool's embed directory
 sync-schemas:

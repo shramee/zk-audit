@@ -262,6 +262,31 @@ tables and `gnark-inventory profiles` all follow the entry.
   reason, so the report shows them as not examined instead of silently
   dropping them.
 
+## Diff triggers
+
+- **`gnark-inventory diff`** flags diff mode's triggers deterministically
+  (PLAN §3, `references/modes/diff.md`). It reads both sides with `git
+  cat-file` and `git diff --no-ext-diff --no-textconv` under `-c
+  core.fsmonitor= -c core.hooksPath=/dev/null`, so a hostile repository
+  config cannot run commands, and it refuses revisions that start with `-`.
+- **Go**: per function, the count of constraint calls (the inventory's sink
+  list) in the merge base and in the head: fewer is `constraint-removed`
+  (`range-check-removed` for decompositions and range checks), more of them
+  under a Go `if` is `constraint-now-conditional`, more `NewHint` /
+  `RegisterHint` calls is `hint-added`. Public inputs: the ordered
+  `gnark`-tagged fields of each struct; a change among the public ones
+  (add, remove, re-order, re-tag) is `public-input-changed`. Test files are
+  skipped. This is syntax-level: a constraint moved to a helper function
+  shows as removed in one function (a false positive the agent pass
+  resolves), and a hint output that stops reaching a constraint is not
+  detected (the mode compares the two inventories for that).
+- **go.mod**: gnark / gnark-crypto version or replace changes.
+  **Solidity**: a file that looks like a generated verifier (two of
+  `verifyProof`, VK constants, pairing) is `verifier-contract-changed`;
+  otherwise added or removed lines with verifier calls, verifier
+  assignments or setters, or public-input arrays are `verify-call-changed`.
+  **VK files** by name.
+
 ## Invocation parsing
 
 - **`gnark-inventory args`** turns the words after `/zk-audit` into JSON

@@ -105,6 +105,44 @@ func Seed(inv *inventory.Inventory, stack *detect.Stack, tool string) *Ledger {
 	}
 	pos := func(p inventory.Pos) string { return fmt.Sprintf("%s:%d", p.File, p.Line) }
 
+	production := 0
+	for _, c := range inv.Circuits {
+		if !c.InTest {
+			production++
+		}
+	}
+	// exported gadgets (library mode): one unit per gadget for each class
+	// seeded "gadget"; without a production circuit the "circuit" classes
+	// get one unit per gadget package instead
+	pkgs := map[string]string{}
+	var pkgOrder []string
+	for _, g := range inv.Gadgets {
+		if g.InTest {
+			continue
+		}
+		var ks []string
+		for _, c := range g.Checks {
+			ks = append(ks, c.Kind)
+		}
+		note := fmt.Sprintf("%d doc checks", len(g.Checks))
+		if len(ks) > 0 {
+			note += ": " + strings.Join(ks, ", ")
+		}
+		for _, cc := range seeded("gadget") {
+			add("gadget", g.Name, cc.class, cc.lenses, []string{pos(g.Pos)}, note)
+		}
+		if _, ok := pkgs[g.Package]; !ok {
+			pkgs[g.Package] = pos(g.Pos)
+			pkgOrder = append(pkgOrder, g.Package)
+		}
+	}
+	if production == 0 {
+		for _, p := range pkgOrder {
+			for _, cc := range seeded("circuit") {
+				add("package", p, cc.class, cc.lenses, []string{pkgs[p]}, "gadget package (no production circuit): the circuit lenses review its exported gadgets")
+			}
+		}
+	}
 	for _, c := range inv.Circuits {
 		if c.InTest {
 			continue

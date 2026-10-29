@@ -598,7 +598,7 @@ func (in *input) quote(l Location) (string, string, bool) {
 }
 
 var statuses = []string{"planned", "in_progress", "covered", "candidate", "deferred", "blocked", "not_applicable", "out_of_scope"}
-var kinds = []string{"circuit", "hint", "public-input", "contract-fn", "verifier", "role", "setup", "prover", "dependency"}
+var kinds = []string{"circuit", "package", "gadget", "hint", "public-input", "contract-fn", "verifier", "role", "setup", "prover", "dependency"}
 
 func (in *input) writeCoverage(b *strings.Builder, rejected int) {
 	w := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
@@ -671,6 +671,7 @@ func (in *input) writeCoverage(b *strings.Builder, rejected int) {
 		}
 		w("\n")
 	}
+	in.writeGadgets(b)
 	w("Rejected candidates: %d (kept in `findings.json` so a later run does not raise them again).\n\n", rejected)
 	if c := in.f.Companions; c == nil {
 		w("Companions: not recorded.\n\n")

@@ -170,6 +170,30 @@ type Ledger struct {
 
 // Inventory holds the parts of inventory.json the report uses.
 type Inventory struct {
-	LoadMode   string   `json:"load_mode"`
-	LoadErrors []string `json:"load_errors"`
+	LoadMode   string      `json:"load_mode"`
+	LoadErrors []string    `json:"load_errors"`
+	Gadgets    []InvGadget `json:"gadgets"`
+}
+
+// InvGadget is the part of an inventory gadget the report's gadget
+// contract table shows (library mode).
+type InvGadget struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Pos  struct {
+		File string `json:"file"`
+		Line int    `json:"line"`
+	} `json:"pos"`
+	Promises []InvClaim `json:"doc_promises"`
+	Preconds []InvClaim `json:"doc_preconditions"`
+	Checks   []struct {
+		Kind string `json:"kind"`
+	} `json:"doc_checks"`
+	InTest bool `json:"in_test_file"`
+}
+
+// InvClaim is one classified doc sentence.
+type InvClaim struct {
+	Kinds []string `json:"kinds"`
+	Text  string   `json:"text"`
 }

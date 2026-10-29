@@ -218,7 +218,7 @@ func (in *input) writeNotCovered(b *strings.Builder) {
 	if _, ok := set.Profile(in.f.Profile); ok {
 		var out []string
 		for _, l := range set.Lenses {
-			if !l.In(in.f.Profile) {
+			if !l.In(in.f.Profile) && (l.When != "exported-gadgets" || in.gadgetCount() > 0) {
 				out = append(out, l.ID)
 			}
 		}

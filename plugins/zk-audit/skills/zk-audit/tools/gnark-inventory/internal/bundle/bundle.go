@@ -155,6 +155,12 @@ func ConditionHolds(name string, inv *inventory.Inventory) bool {
 	switch name {
 	case "non-gnark-verifier":
 		return len(CustomVerifiers(inv)) > 0
+	case "exported-gadgets":
+		for _, g := range inv.Gadgets {
+			if !g.InTest {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -212,6 +218,12 @@ func Shards(inv *inventory.Inventory) ([]Shard, error) {
 	for _, c := range inv.Circuits {
 		if !c.InTest {
 			circuitDirs[path.Dir(c.Define.File)] = true
+		}
+	}
+	// packages of exported gadgets are circuit code too (library mode)
+	for _, g := range inv.Gadgets {
+		if !g.InTest {
+			circuitDirs[g.Package] = true
 		}
 	}
 	goFiles, err := fsutil.Walk(root, fsutil.HasExt(".go"))
@@ -399,6 +411,32 @@ func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, per
 			n++
 		}
 	}
+	for _, g := range inv.Gadgets {
+		if !in[g.Pos.File] || g.InTest {
+			continue
+		}
+		var ins, outs, checks []string
+		for _, p := range g.Params {
+			if p.Kind != "api" && p.Kind != "field" {
+				ins = append(ins, p.Name+" "+p.Flow)
+			}
+		}
+		for _, r := range g.Results {
+			if r.Source != "none" {
+				o := fmt.Sprintf("%d %s", r.Index, r.Source)
+				if len(r.Hints) > 0 {
+					o += " (" + strings.Join(r.Hints, ", ") + ")"
+				}
+				outs = append(outs, o)
+			}
+		}
+		for _, c := range g.Checks {
+			checks = append(checks, c.Kind)
+		}
+		w("- gadget %s `%s` at `%s:%d`: inputs %s; outputs %s; doc promises %d, preconditions %d; doc checks: %s\n", g.ID, g.Name, g.Pos.File, g.Pos.Line,
+			orNone(strings.Join(ins, ", ")), orNone(strings.Join(outs, "; ")), len(g.Promises), len(g.Preconds), orNone(strings.Join(checks, ", ")))
+		n++
+	}
 	if c := inv.Contracts; c != nil {
 		for _, p := range c.Privileged {
 			if in[p.File] {
@@ -549,4 +587,11 @@ func peripheral(out string) string {
 	}
 	b.WriteString(".")
 	return b.String()
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "none"
+	}
+	return s
 }

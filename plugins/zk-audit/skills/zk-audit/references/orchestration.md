@@ -17,12 +17,12 @@ install, write into the target repo, or use the network.
 
 | Id | Lens | Lens file | Group | Shard | Profiles |
 |---|---|---|---|---|---|
-| C1 | hint soundness | `agents/C1-hint-soundness.md` | circuit | circuit | quick, standard, deep |
-| C2 | range and decomposition | `agents/C2-range-decomposition.md` | circuit | circuit | standard, deep |
-| C3 | field arithmetic | `agents/C3-field-arithmetic.md` | circuit | circuit | standard, deep |
-| C4 | control flow and selectors | `agents/C4-control-selector.md` | circuit | circuit | standard, deep |
-| C5 | cryptographic gadgets | `agents/C5-crypto-gadgets.md` | circuit | circuit | standard, deep |
-| C6 | specification and invariants | `agents/C6-spec-invariant.md` | circuit | all | standard, deep |
+| C1 | hint soundness | `agents/C1-hint-soundness.md` | circuit | circuit | quick, standard, deep, library |
+| C2 | range and decomposition | `agents/C2-range-decomposition.md` | circuit | circuit | standard, deep, library |
+| C3 | field arithmetic | `agents/C3-field-arithmetic.md` | circuit | circuit | standard, deep, library |
+| C4 | control flow and selectors | `agents/C4-control-selector.md` | circuit | circuit | standard, deep, library |
+| C5 | cryptographic gadgets | `agents/C5-crypto-gadgets.md` | circuit | circuit | standard, deep, library |
+| C6 | specification and invariants | `agents/C6-spec-invariant.md` | circuit | all | standard, deep, library |
 | I1 | public-input binding | `agents/I1-public-input-binding.md` | integration | integration | quick, standard, deep |
 | I2 | verifier contracts | `agents/I2-verifier-contract.md` | integration | integration | standard, deep |
 | I3 | protocol state | `agents/I3-protocol-state.md` | integration | integration | standard, deep |
@@ -30,14 +30,15 @@ install, write into the target repo, or use the network.
 | S1 | contract review | `agents/S1-contract-review.md` | integration | integration | standard, deep |
 | T1 | trusted parties | `agents/T1-trusted-parties.md` | integration | all | quick, standard, deep |
 | PR1 | privacy | `agents/PR1-privacy.md` | cross | all | standard, deep |
-| V-hints | vector scan: hints | `agents/vector-scan.md` + `attack-vectors/hints.md` | vector scan | circuit | quick, standard, deep |
-| V-range | vector scan: range and bits | `agents/vector-scan.md` + `attack-vectors/range-bits.md` | vector scan | circuit | quick, standard, deep |
-| V-field | vector scan: field arithmetic | `agents/vector-scan.md` + `attack-vectors/field-arith.md` | vector scan | circuit | quick, standard, deep |
-| V-selector | vector scan: selectors and control | `agents/vector-scan.md` + `attack-vectors/selector-control.md` | vector scan | circuit | quick, standard, deep |
-| V-hash | vector scan: hashes and Merkle | `agents/vector-scan.md` + `attack-vectors/hash-merkle.md` | vector scan | circuit | quick, standard, deep |
-| V-curves | vector scan: curves and signatures | `agents/vector-scan.md` + `attack-vectors/curves-signatures.md` | vector scan | circuit | quick, standard, deep |
-| V-commit | vector scan: commitments and recursion | `agents/vector-scan.md` + `attack-vectors/commitments-recursion.md` | vector scan | circuit | quick, standard, deep |
-| V-generic | vector scan: generic ZK | `agents/vector-scan.md` + `attack-vectors/generic-zk.md` | vector scan | circuit | quick, standard, deep |
+| L1 | doc contract vs enforced constraints | `agents/L1-doc-contract.md` | circuit | circuit | library, deep (only when: exported-gadgets) |
+| V-hints | vector scan: hints | `agents/vector-scan.md` + `attack-vectors/hints.md` | vector scan | circuit | quick, standard, deep, library |
+| V-range | vector scan: range and bits | `agents/vector-scan.md` + `attack-vectors/range-bits.md` | vector scan | circuit | quick, standard, deep, library |
+| V-field | vector scan: field arithmetic | `agents/vector-scan.md` + `attack-vectors/field-arith.md` | vector scan | circuit | quick, standard, deep, library |
+| V-selector | vector scan: selectors and control | `agents/vector-scan.md` + `attack-vectors/selector-control.md` | vector scan | circuit | quick, standard, deep, library |
+| V-hash | vector scan: hashes and Merkle | `agents/vector-scan.md` + `attack-vectors/hash-merkle.md` | vector scan | circuit | quick, standard, deep, library |
+| V-curves | vector scan: curves and signatures | `agents/vector-scan.md` + `attack-vectors/curves-signatures.md` | vector scan | circuit | quick, standard, deep, library |
+| V-commit | vector scan: commitments and recursion | `agents/vector-scan.md` + `attack-vectors/commitments-recursion.md` | vector scan | circuit | quick, standard, deep, library |
+| V-generic | vector scan: generic ZK | `agents/vector-scan.md` + `attack-vectors/generic-zk.md` | vector scan | circuit | quick, standard, deep, library |
 | V-pubin | vector scan: public inputs | `agents/vector-scan.md` + `attack-vectors/public-inputs.md` | vector scan | integration | quick, standard, deep |
 | V-verifier | vector scan: verifier contracts | `agents/vector-scan.md` + `attack-vectors/verifier-contracts.md` | vector scan | integration | quick, standard, deep |
 | V-custom | vector scan: hand-written and non-gnark verifiers | `agents/vector-scan.md` + `attack-vectors/custom-verifiers.md` | vector scan | integration | quick, standard, deep (only when: non-gnark-verifier) |
@@ -46,15 +47,16 @@ install, write into the target repo, or use the network.
 | V-privacy | vector scan: privacy | `agents/vector-scan.md` + `attack-vectors/privacy.md` | vector scan | all | standard, deep |
 | V-liveness | vector scan: gas and liveness | `agents/vector-scan.md` + `attack-vectors/gas-liveness.md` | vector scan | integration | standard, deep |
 | V-prover | vector scan: prover service | `agents/vector-scan.md` + `attack-vectors/prover-service.md` | vector scan | prover | quick, standard, deep |
-| G1 | numerical gaps | `agents/G1-numerical-gap.md` | gap | circuit | deep |
+| G1 | numerical gaps | `agents/G1-numerical-gap.md` | gap | circuit | deep, library |
 | G2 | binding gaps | `agents/G2-binding-gap.md` | gap | all | quick, standard, deep |
-| G3 | composition gaps | `agents/G3-composition-gap.md` | gap | circuit | deep |
-| A1 | asymmetry | `agents/A1-asymmetry.md` | cross | all | deep |
-| F1 | first principles | `agents/F1-first-principles.md` | cross | all | standard, deep |
+| G3 | composition gaps | `agents/G3-composition-gap.md` | gap | circuit | deep, library |
+| A1 | asymmetry | `agents/A1-asymmetry.md` | cross | all | deep, library |
+| F1 | first principles | `agents/F1-first-principles.md` | cross | all | standard, deep, library |
 
 - **quick**: C1, I1, T1, G2 + 13 vector-scan shards (V-*).
 - **standard**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, S1, T1, PR1, G2, F1 + 16 vector-scan shards (V-*).
-- **deep**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, S1, T1, PR1, G1, G2, G3, A1, F1 + 16 vector-scan shards (V-*).
+- **deep**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, S1, T1, PR1, L1, G1, G2, G3, A1, F1 + 16 vector-scan shards (V-*).
+- **library**: C1, C2, C3, C4, C5, C6, L1, G1, G3, A1, F1 + 8 vector-scan shards (V-*).
 
 <!-- end generated:agent-table -->
 

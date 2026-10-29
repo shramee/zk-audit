@@ -71,7 +71,8 @@ to the user and stop. Use its `out`, `run_id`, `scope` and `passes` below.
 |---|---|---|---|---|---|---|
 | `quick` | C1, I1, T1, G2 + 13 vector-scan shards (V-*) | confirmed Critical/High circuit findings only | one per confirmed finding (also with --no-poc) | none | 1 | ABI check, ceremony scan |
 | `standard` (default) | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, S1, T1, PR1, G2, F1 + 16 vector-scan shards (V-*) | every confirmed circuit finding | one per confirmed finding | coverage critic + 1 targeted wave | 1 | ABI check, ceremony scan |
-| `deep` | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, S1, T1, PR1, G1, G2, G3, A1, F1 + 16 vector-scan shards (V-*) | every confirmed finding | one per confirmed finding | coverage critic + final-clean critic + 1 targeted wave | 3 with memory | ABI check, ceremony scan, regenerate and diff the verifier (sandbox) |
+| `deep` | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, S1, T1, PR1, L1, G1, G2, G3, A1, F1 + 16 vector-scan shards (V-*) | every confirmed finding | one per confirmed finding | coverage critic + final-clean critic + 1 targeted wave | 3 with memory | ABI check, ceremony scan, regenerate and diff the verifier (sandbox) |
+| `library` | C1, C2, C3, C4, C5, C6, L1, G1, G3, A1, F1 + 8 vector-scan shards (V-*) | every confirmed gadget finding, through the per-gadget harness; a differential test per gadget that has a native reference | one per confirmed finding | coverage critic + 1 targeted wave | 1 | ABI check, ceremony scan |
 
 <!-- end generated:profile-table -->
 

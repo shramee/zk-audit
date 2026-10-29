@@ -13,7 +13,7 @@ var skill = filepath.Join("..", "..", "..", "..")
 
 func TestEmbeddedProfiles(t *testing.T) {
 	s := Load()
-	if len(s.Lenses) < 20 || len(s.Profiles) != 3 {
+	if len(s.Lenses) < 20 || len(s.Profiles) != 4 {
 		t.Fatalf("%d lenses, %d profiles", len(s.Lenses), len(s.Profiles))
 	}
 	if s.Default().ID != "standard" {
@@ -120,6 +120,27 @@ func TestParseRejects(t *testing.T) {
 	badStep := strings.Replace(strings.Replace(base, "%s", ok, 1), `"passes":1}`, `"passes":1,"provenance":["abi","telepathy"]}`, 1)
 	if _, err := Parse([]byte(badStep)); err == nil || !strings.Contains(err.Error(), "telepathy") {
 		t.Errorf("unknown provenance step: %v", err)
+	}
+}
+
+// TestLibraryProfile: library mode runs the doc-contract lens and the
+// circuit-side lenses only (no integration shard exists), and L1 also runs
+// in deep when the repository has exported gadgets.
+func TestLibraryProfile(t *testing.T) {
+	s := Load()
+	var ids []string
+	for _, l := range s.LensesFor("library") {
+		if l.Shard == "integration" || l.Shard == "prover" {
+			t.Errorf("library selects %s, which reads the %s shard", l.ID, l.Shard)
+		}
+		ids = append(ids, l.ID)
+	}
+	if !strings.HasPrefix(strings.Join(ids, ","), "C1,C2,C3,C4,C5,C6,L1,") {
+		t.Errorf("library lenses %v", ids)
+	}
+	l1, _ := s.Lens("L1")
+	if !l1.In("deep") || l1.When != "exported-gadgets" || l1.Ledger.Seed != "gadget" {
+		t.Errorf("L1 %+v", l1)
 	}
 }
 

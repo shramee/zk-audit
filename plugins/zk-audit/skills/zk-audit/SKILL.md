@@ -24,7 +24,7 @@ The skill folder is self-contained: everything below lives under `{skill}`
 |---|---|---|
 | "is this circuit ok?", "what does `bits.OmitModulusCheck` do?", "explain this constraint", "why does my proof fail?" | **guidance** | Answer directly from `references/` and the code. No agents, no output directory, no tools beyond Read/Grep. Offer an audit at the end in one line. |
 | "audit", "review", "security review", "find bugs", "check this verifier", `/zk-audit ...` | **full audit** | Run the phases in §4. |
-| `/zk-audit setup`, `recon` or `diff` (or `/zk-audit:setup` etc.) | **setup / recon / diff** | Follow `references/modes/<mode>.md`. |
+| `/zk-audit setup`, `recon`, `diff` or `resume` (or `/zk-audit:setup` etc.) | **setup / recon / diff / resume** | Follow `references/modes/<mode>.md`. |
 | `/zk-audit library`, or an audit of a repository that exports gnark gadgets with no production circuit and no verifier contract (`stack.json` `library.mode`) | **library** | Full audit with the `library` profile; follow `references/modes/library.md`. |
 | "fix this test", "write a circuit", "speed up the prover" | **not this skill** | Do the task. Mention a security concern only if you see one. |
 
@@ -41,6 +41,7 @@ the user did not ask for.
 /zk-audit recon                            recon only, no hunting (also /zk-audit:recon)
 /zk-audit library                          audit a gnark gadget library (no production circuit)
 /zk-audit setup                            show companion skills and tools; install only after consent (also /zk-audit:setup)
+/zk-audit resume [run-id|out-dir]          continue an interrupted run where it stopped (also /zk-audit:resume)
 ```
 
 The `/zk-audit:<mode>` commands exist only in a plugin install; the
@@ -50,18 +51,21 @@ Flags: `--local` (single agent, no subagents) · `--loop N` (N passes with a
 memory ledger; default: the profile's passes) · `--no-poc` (skip PoC generation and
 execution; the refuter still runs) · `--file-output` (also write `REPORT.md` into the target repo) ·
 `--out DIR` (override the output directory) · `--profile P` (same as the bare
-profile word).
+profile word) · `--budget USD` (stop before a wave that would cross it; the
+report then says it is partial).
 
 Never parse the invocation by hand. Pass the words after `/zk-audit` to the
 tool (`--mode <mode>` when a `/zk-audit:<mode>` command started the run):
 
 ```bash
-{skill}/scripts/gnark-inventory args --repo <repo> -- <words>
+{skill}/scripts/gnark-inventory args --repo <repo> --save -- <words>
 ```
 
 It prints JSON: `mode`, `profile` and `profile_explicit`, `scope`, `local`,
 `passes` and `memory`, `poc`, `file_output` and `report_copy`, `out`,
-`run_id`, `diff` (`base`, `head`) and `warnings`. Exit 1 lists every problem
+`run_id`, `diff` (`base`, `head`), `budget_usd`, `resume` and `warnings`.
+`--save` creates `out` and records the run in `<out>/run.json`, which
+`/zk-audit resume` reads back. Exit 1 lists every problem
 (unknown flag, missing scope file, `--out` inside the repository): show them
 to the user and stop. Use its `out`, `run_id`, `scope` and `passes` below.
 
@@ -275,7 +279,11 @@ hunter as the `zk-audit:hunter` agent type (plugin install: Read, Grep and
 Glob only), else a general-purpose agent briefed with `{skill}/agents/hunter.md`
 and limited to those tools by prompt. Run at most **6
 agents at a time** and keep the `Agent Progress` table current. Agents return
-FINDING / LEAD blocks only. `--local` runs the same lenses one after another in
+FINDING / LEAD blocks only. Save each return with `agents save`, with the
+usage the runtime shows for it (`--tokens`); before each wave run `budget
+check` ("Budget" in `references/orchestration.md`). A stopped or refused
+agent is retried once in plain words, then recorded as blocked, never
+dropped. `--local` runs the same lenses one after another in
 this context. With more than one pass (deep, `--loop N`), follow "Loop mode" in
 `references/orchestration.md`: `gnark-inventory memory` holds the
 fingerprints, NEW / KNOWN tags and the stop rule.
@@ -310,12 +318,16 @@ record is later demoted.
 
 ### Phase 5 — Critique
 
-A coverage critic (`zk-audit:critic`, else a general-purpose agent briefed
-with `{skill}/agents/critic.md`; read-only) reads `coverage-ledger.json` and all agent outputs and returns
-`missing_units` (a hint never analysed, a public input with no binding row, a
-verifier function never read). Standard runs one extra targeted wave on them;
-deep also runs a final-clean critic. Units left open stay `planned` or
-`deferred` in the ledger with a reason.
+First the tool lists what it can compute: `{skill}/scripts/gnark-inventory
+critic-check --out <out>` (units nobody started, covered units with no saved
+output, hint sites, public inputs, verifier calls, privileged functions and
+entry points no agent output names). Then a coverage critic
+(`zk-audit:critic`, else a general-purpose agent briefed with
+`{skill}/agents/critic.md`; read-only) returns only the lens-level gaps the
+tool cannot see. Record a decision for every item of both lists: run it in
+the targeted wave, defer it, or dismiss it with a reason;
+`critic-check --out <out> --verify` must pass before Phase 6. Deep also runs
+a final-clean critic. Units left open stay `deferred` with a reason.
 
 ### Phase 6 — Report
 
@@ -424,4 +436,4 @@ is not a refutation. The full table with the reason each fails is in
 | `references/rationalizations.md` | Phase 3 and refuter prompts |
 | `references/report-format.md` | Phase 6 |
 | `references/companions.md` | Phase 0 and setup mode |
-| `references/modes/*.md` | `/zk-audit setup`, `recon`, `diff`, `library` |
+| `references/modes/*.md` | `/zk-audit setup`, `recon`, `diff`, `library`, `resume` |

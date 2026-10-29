@@ -70,8 +70,9 @@ Resolve `{skill}` (`SKILL.md`, first paragraph), read `{skill}/VERSION`,
 print the banner from `SKILL.md` and the phase table (all `Pending`). Then, in
 parallel:
 
-1. Parse the invocation (`{skill}/scripts/gnark-inventory args --repo <repo> -- <words>`,
-   `SKILL.md` §2) and create its `out` directory.
+1. Parse the invocation (`{skill}/scripts/gnark-inventory args --repo <repo> --save -- <words>`,
+   `SKILL.md` §2). `--save` creates `out` and writes `<out>/run.json`. For
+   `resume`, follow `modes/resume.md` instead of the turns below.
 2. Run Phase 0: `{skill}/scripts/gnark-inventory detect --repo <repo> --out <out>/stack.json`.
 3. Detect companions (`companions.md`).
 4. Run the update check: `{skill}/scripts/check-version` (silent unless a
@@ -252,7 +253,12 @@ After each agent returns, record it with the tool; never hand-edit
    `{skill}/scripts/gnark-inventory agents save --out <out> --id <ID> --from <out>/raw/<ID>.md`.
    This writes `<out>/agents/<ID>.md` (the critic, the judge and the ledger
    check read it) and `agents/index.json`, and prints the FINDING / LEAD
-   counts for the progress table.
+   counts for the progress table. When the runtime shows the agent's usage
+   (Claude Code ends some results with `<usage>subagent_tokens: N`,
+   `tool_uses: N`, `duration_ms: N`), add `--tokens N --tool-uses N
+   --duration-ms N`; never guess a number. It is recorded in
+   `<out>/spend.json` (without it, the agent counts at its role's calibrated
+   average, marked estimated).
 2. Mark the ledger units it owned:
    `{skill}/scripts/gnark-inventory ledger mark --out <out> --lens <lens> --from planned --status covered --agent <ID> --reviewed <file>`
    (one `--reviewed` per file it read; `--unit <id>` for single units). Units
@@ -260,14 +266,29 @@ After each agent returns, record it with the tool; never hand-edit
    The tool refuses `covered` for an agent with no saved output, and
    reviewed paths that miss the unit's own file.
 
-**An agent that is stopped or refused** (a safety classifier, an API error,
-a turn limit): retry it once with the same bundle and a plainly worded
-prompt. If the retry also fails, record it, and its units, instead of
-dropping them:
-`agents save --out <out> --id <ID> --status refused --reason "<what happened, retried once>"`
-and `ledger mark --out <out> --lens <lens> --from planned --status blocked --reason "<ID> refused twice"`.
-The report then lists those units as not examined, with the reason. If the
-runtime switched the agent to another model, say so in the reason.
+**Recovery rule: an agent that is stopped, refused or fails** (a safety
+classifier, an API error, a turn limit), whatever its kind (hunter, PoC
+builder, refuter, critic, wave):
+
+1. Record the attempt: `agents save --out <out> --id <ID> --status refused
+   --reason "<what happened>"` (PoC builders and refuters: `budget record
+   --out <out> --id poc-<n> --role poc --status refused`).
+2. Retry it once with the same bundle or record and a plainly worded
+   prompt: no "attack", "forge", "exploit" or "break"; describe the work
+   ("check whether this assignment satisfies the constraint system", "read
+   these files and list the checks each public input gets").
+3. If the retry also fails, do not retry again. Record it and its units
+   instead of dropping them: `agents save ... --status blocked --reason
+   "<ID> refused twice: <what happened>"` and `ledger mark --out <out>
+   --lens <lens> --from planned --status blocked --reason "<ID> refused
+   twice"`. A PoC builder refused twice leaves its record at `evidence:
+   ANALYSIS` with `poc.result: not_run`; a refuter refused twice leaves
+   `refuter` unset and lowers confidence. The report lists the blocked
+   agents and their units as not examined, with the reason.
+
+If the runtime ran the agent on another model than the session's (a
+fallback it reports), pass `--model <model>` to `agents save` and name it in
+the reason; never assume a fallback the runtime did not show.
 
 ## Turn 5 — Judge
 
@@ -315,20 +336,39 @@ or `{skill}/agents/refuter.md`) as its brief, with the same tool limits.
 
 ## Turn 7 — Critique
 
-Spawn one coverage critic as the **`zk-audit:critic`** agent type (Read,
-Grep and Glob only), or, without the plugin, a general-purpose agent briefed
-with `{skill}/agents/critic.md` and told to use only Read, Grep and Glob:
+1. Compute the missing units the tool can see:
+   `{skill}/scripts/gnark-inventory critic-check --out <out>`. It lists
+   units still `planned` or `in_progress`, covered units with no saved
+   output, and hint sites, public inputs, verifier calls, privileged
+   functions, entry points and gadgets that no saved agent output cites or
+   names, each with its ledger unit (or the `ledger add` command when none
+   covers it), and writes `<out>/critic-check.json`.
+2. Spawn one coverage critic as the **`zk-audit:critic`** agent type (Read,
+   Grep and Glob only), or, without the plugin, a general-purpose agent
+   briefed with `{skill}/agents/critic.md` and told to use only Read, Grep
+   and Glob:
 
-```text
-Role: coverage. The audit output directory is <out>.
-```
+   ```text
+   Role: coverage. The audit output directory is <out>.
+   ```
 
-It returns `{"missing_units": [...]}` per its brief. Save it like a hunter
-(`agents save --id critic`). Record a decision for **every** missing unit:
-a unit that is not in the ledger yet is added
-(`ledger add --out <out> --kind <kind> --subject <subject> --class <class> --lens <lens> --path <file:line> --notes "coverage critic"`);
-then it either goes to the targeted wave or is marked `deferred` with the
-reason it was left (`ledger mark ... --status deferred --reason "..."`).
+   It reads `critic-check.json` and returns only the lens-level gaps the
+   tool cannot compute (`{"missing_units": [...]}` per its brief). Save it
+   like a hunter (`agents save --id critic`).
+3. Record a decision for **every** item of both lists. An item with no
+   ledger unit is added first (`ledger add --out <out> --kind <kind>
+   --subject <subject> --class <class> --lens <lens> --path <file:line>
+   --notes "critic-check"`). Then each one is:
+   - **run**: in the targeted wave; mark its unit with `--wave <n>` when
+     the wave agent returns;
+   - **deferred**: `ledger mark ... --status deferred --reason "<why>"`;
+   - **dismissed**: `ledger mark ... --notes "critic: dismissed, <why>"`
+     (the unit keeps its status) or `--status not_applicable --reason
+     "<why>"`.
+4. `{skill}/scripts/gnark-inventory critic-check --out <out> --verify`
+   must print `OK` before Turn 8; it names every item still without a
+   decision.
+
 Wave agents use the lens id they run (`C1`, `I3`), never a wave label, and
 are saved and marked like hunters with `--wave <n>`.
 
@@ -352,6 +392,44 @@ profile's critics and targeted waves. Every unit still open gets `deferred` with
    It writes `<out>/REPORT.md` per `report-format.md`, or exits 1 and writes
    nothing when an input is invalid. Never edit the report by hand.
 4. Print the findings table, the coverage line and the output path.
+
+## Budget
+
+Spend is counted in tokens and turned into USD with the calibrated rate
+(`gnark-inventory estimate`); the runtime shows no cost per agent, so every
+figure is an estimate and is printed as one. Before each wave, ask the tool:
+
+```bash
+{skill}/scripts/gnark-inventory budget check --out <out> --before "<wave>" --hunter <n> [--poc <n>] [--refuter <n>] [--critic <n>] [--wave <n>] [--companion 1]
+```
+
+Waves: the hunt of each pass (`--hunter` = the bundles not yet saved, plus
+`--companion 1` for `solidity-auditor`), the PoC builders and refuters
+(Turn 6), the critic and its targeted wave (Turn 7), deep's final-clean
+critic. It prints `{"spent_usd", "next_usd", "budget_usd", "stop", ...}`
+and records the check in `<out>/spend.json`; without `--budget` it never
+stops. When `stop` is true:
+
+1. Spawn nothing more, in this wave or later.
+2. Close the ledger: `ledger mark --out <out> --from planned --status
+   deferred --reason "budget: <wave> not run"`, the same for `in_progress`.
+3. Judge what the saved agents returned, write `findings.json` (say in
+   `posture` that the run stopped at the budget) and assemble. The report
+   prints the stop and the spend; it is a partial report.
+
+PoC builders, refuters and the companion are not saved with `agents save`;
+record each with `budget record --out <out> --id poc-<n> --role poc
+[--tokens N]` (`refuter-<n>`, `--role refuter`; `solidity-auditor`,
+`--role companion`). `budget show --out <out>` prints the totals for the
+final summary.
+
+## Resume
+
+`/zk-audit resume [run-id|out-dir]` continues a run whose session ended
+(`modes/resume.md`). `gnark-inventory status --out <out>` reads the output
+directory and names the first incomplete step; saved agents are never
+respawned, missing ones are spawned, refused ones retried once (recovery
+rule above), and the budget checks continue from `spend.json`.
 
 ## Loop mode (`passes` > 1: deep, or `--loop N`)
 

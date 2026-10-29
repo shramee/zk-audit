@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/advisory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/assemble"
@@ -55,7 +57,7 @@ Usage:
   gnark-inventory convert   pashov --in PATH --out FILE [--inventory FILE]
   gnark-inventory sandbox   [--rw DIR]... [--ro DIR]... [--cwd DIR] [--timeout SEC] [--mem MB] [--allow-network] [--engine E] [--require] [--check] -- CMD [ARGS...]
   gnark-inventory lint-kb   [--gnark-src DIR] SKILL_DIR
-  gnark-inventory advisories [--version vX.Y.Z]
+  gnark-inventory advisories [--version vX.Y.Z] [--crypto-version vX.Y.Z] [--repo DIR] [--json] [--osv]
   gnark-inventory rules
   gnark-inventory version
 
@@ -573,6 +575,11 @@ func cmdLint(args []string, stdout io.Writer) (int, error) {
 func cmdAdvisories(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("advisories", flag.ContinueOnError)
 	ver := fs.String("version", "", "only advisories affecting this gnark version")
+	cver := fs.String("crypto-version", "", "only advisories affecting this gnark-crypto version")
+	repo := fs.String("repo", "", "take the gnark and gnark-crypto versions from every go.mod of this repository")
+	osv := fs.Bool("osv", false, "compare the embedded table with the OSV database for those versions (NETWORK: ask the user first)")
+	osvURL := fs.String("osv-url", advisory.DefaultOSV, "OSV API base URL")
+	asJSON := fs.Bool("json", false, "print JSON (with --repo or --osv)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -580,9 +587,122 @@ func cmdAdvisories(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if *ver == "" {
+	type pin struct{ module, version, gomod string }
+	var pins []pin
+	if *ver != "" {
+		pins = append(pins, pin{advisory.Gnark, *ver, "--version"})
+	}
+	if *cver != "" {
+		pins = append(pins, pin{advisory.GnarkCrypto, *cver, "--crypto-version"})
+	}
+	if *repo != "" {
+		root, err := absRepo(*repo)
+		if err != nil {
+			return err
+		}
+		st, err := detect.Detect(root, Version)
+		if err != nil {
+			return err
+		}
+		for _, m := range st.GoModules {
+			if m.Gnark != "" {
+				pins = append(pins, pin{advisory.Gnark, m.Gnark, m.Path})
+			}
+			if m.GnarkCrypto != "" {
+				pins = append(pins, pin{advisory.GnarkCrypto, m.GnarkCrypto, m.Path})
+			}
+		}
+		if len(pins) == 0 {
+			return fmt.Errorf("advisories: no gnark or gnark-crypto version in any go.mod under %s", root)
+		}
+	}
+	asOf := "advisory table as of " + tab.AsOf
+	if *osv {
+		if len(pins) == 0 {
+			return fmt.Errorf("advisories --osv needs --repo, --version or --crypto-version")
+		}
+		client := advisory.NewOSV(*osvURL)
+		ctx := context.Background()
+		f := &advisory.Freshness{TableAsOf: tab.AsOf, Checked: time.Now().UTC().Format("2006-01-02"), Source: client.BaseURL}
+		seen := map[string]bool{}
+		for _, p := range pins {
+			k := p.module + "@" + p.version
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			if _, err := advisory.ParseVersion(p.version); err != nil {
+				fmt.Fprintf(os.Stderr, "gnark-inventory: skipping %s (%s): %v\n", k, p.gomod, err)
+				continue
+			}
+			vulns, err := client.Query(ctx, p.module, p.version)
+			if err != nil {
+				return err
+			}
+			if err := tab.CompareOSV(f, p.module, p.version, vulns, func(id string) (*advisory.OSVVuln, bool, error) { return client.Get(ctx, id) }); err != nil {
+				return err
+			}
+		}
+		f.Finish()
+		if *asJSON {
+			return writeJSON(stdout, f)
+		}
+		fmt.Fprintln(stdout, f.Summary)
+		for _, n := range f.New {
+			fmt.Fprintf(stdout, "new: %s (%s) %s@%s affected %s — %s\n", n.ID, strings.Join(n.Aliases, ", "), n.Package, n.Version, n.Affected, n.Summary)
+		}
+		for _, c := range f.Changed {
+			fmt.Fprintf(stdout, "changed: %s (OSV %s) %s@%s: table %s, OSV %s\n", c.ID, c.OSVID, c.Package, c.Version, c.Table, c.OSV)
+		}
+		for _, n := range f.NotInOSV {
+			fmt.Fprintf(stdout, "not in OSV: %s (%s@%s; table row verified by %s)\n", n.ID, n.Package, n.Version, n.VerifiedBy)
+		}
+		return nil
+	}
+	if len(pins) == 0 {
 		_, err := stdout.Write(advisory.Raw())
 		return err
 	}
-	return writeJSON(stdout, tab.Affecting(*ver))
+	type hit struct {
+		advisory.Match
+		Module  string `json:"module"`
+		Version string `json:"version"`
+		GoMod   string `json:"go_mod"`
+	}
+	var hits []hit
+	for _, p := range pins {
+		for _, m := range tab.AffectingModule(p.module, p.version) {
+			hits = append(hits, hit{Match: m, Module: p.module, Version: p.version, GoMod: p.gomod})
+		}
+	}
+	if *repo == "" || *asJSON {
+		if hits == nil {
+			hits = []hit{}
+		}
+		if *repo == "" && *cver == "" {
+			// backward compatible: --version alone prints the matches only
+			ms := []advisory.Match{}
+			for _, h := range hits {
+				ms = append(ms, h.Match)
+			}
+			fmt.Fprintln(os.Stderr, asOf+" (offline; --osv compares it with OSV)")
+			return writeJSON(stdout, ms)
+		}
+		fmt.Fprintln(os.Stderr, asOf+" (offline; --osv compares it with OSV)")
+		return writeJSON(stdout, hits)
+	}
+	fmt.Fprintf(stdout, "%s (offline; --osv compares it with OSV, network)\n", asOf)
+	for _, p := range pins {
+		n := 0
+		for _, h := range hits {
+			if h.Module == p.module && h.Version == p.version && h.GoMod == p.gomod {
+				n++
+			}
+		}
+		fmt.Fprintf(stdout, "%s: %s %s: %d advisories\n", p.gomod, strings.TrimPrefix(p.module, "github.com/consensys/"), p.version, n)
+	}
+	for _, h := range hits {
+		fmt.Fprintf(stdout, "- %s %s (%s, %s; affected %s): %s\n", h.ID, h.Status, h.Severity, strings.TrimPrefix(h.Module, "github.com/consensys/"), h.Affected(), h.Action)
+	}
+	return nil
 }

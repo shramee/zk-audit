@@ -1,0 +1,10 @@
+{
+  "schema_version": "1", "case": "merkle-sentinel", "fixture": "merkle-sentinel",
+  "items": [
+    {"id": "M1", "class": "soundness", "critical": true,
+     "title": "Empty-slot sentinel leaf accepted as a member",
+     "ranges": [{"file": "circuit/circuit.go", "anchors": ["api.AssertIsEqual(cur, c.Root)"]}],
+     "match": "(?i)sentinel|empty|zero|leaf != 0|leaf == 0|padding|unused|member|slot",
+     "expect": ["confirmed"], "partial": ["needs_validation", "lead"], "severity": ["high", "critical", "medium"]}
+  ], "decoys": [], "other": []
+}

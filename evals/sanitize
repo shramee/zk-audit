@@ -4,7 +4,7 @@
 #
 # Usage: evals/sanitize <fixture-name> <dest-dir>
 #   fixture-name: a directory under testdata/ with a
-#                 matching evals/<fixture-name>/sanitize.sed
+#                 matching evals/fixtures/<fixture-name>/sanitize.sed
 #   dest-dir:     must not exist yet and must be outside this repository
 #
 # The copy gets a fresh git repository (one commit) so worktree-based PoC runs
@@ -15,7 +15,7 @@ repo_root="$(cd "$here/.." && pwd)"
 name="${1:?fixture name}"
 dest="${2:?destination directory}"
 src="$repo_root/testdata/$name"
-rules="$here/$name/sanitize.sed"
+rules="$here/fixtures/$name/sanitize.sed"
 [ -d "$src" ] || { echo "sanitize: no fixture $src" >&2; exit 2; }
 [ -f "$rules" ] || { echo "sanitize: no rules $rules" >&2; exit 2; }
 [ ! -e "$dest" ] || { echo "sanitize: $dest already exists" >&2; exit 2; }

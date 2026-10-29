@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Scaffold for audit cases run by `claude plugin eval --scaffold`. Runs in the
+# run's empty workspace (the current directory) before the agent starts,
+# outside the agent's sandbox, with a throwaway HOME.
+#
+# Usage (from a case's scaffold.sh): exec <repo>/evals/lib/scaffold-audit <fixture>
+#
+# Leaves in the workspace:
+#   target/   sanitized copy of testdata/<fixture> with a one-commit git repo
+# and in HOME:
+#   .config/go/env       points the go command at the shared module cache and
+#                        at build/temp directories inside the workspace (the
+#                        agent's sandbox can write only there), offline
+#   .zk-audit/bin/       the gnark-inventory binary, prebuilt
+#
+# The module cache is <repo>/.cache/gomod (gitignored). The first run fills it
+# from GOPROXY; later runs are offline. The agent's sandbox has no network.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo="$(cd "$here/../.." && pwd)"
+fixture="${1:?fixture name}"
+ws="$(pwd)"
+modcache="$repo/.cache/gomod"
+mkdir -p "$modcache" "$ws/.cache/go-build" "$ws/.cache/tmp"
+
+"$repo/evals/sanitize" "$fixture" "$ws/target" >/dev/null
+
+mkdir -p "$HOME/.config/go"
+cat >"$HOME/.config/go/env" <<ENV
+GOMODCACHE=$modcache
+GOCACHE=$ws/.cache/go-build
+GOTMPDIR=$ws/.cache/tmp
+GOTOOLCHAIN=local
+GOSUMDB=off
+GOPROXY=off
+ENV
+
+# Fill the module cache for the fixture (network only on the first run) and
+# the build cache for its packages, so typed loading and PoCs work offline.
+(cd "$ws/target" && GOPROXY="https://proxy.golang.org,direct" GOFLAGS=-mod=mod go mod download all >/dev/null)
+(cd "$ws/target" && GOFLAGS=-mod=mod go build ./... >/dev/null 2>&1 || true)
+(cd "$ws/target" && git checkout -q -- . && git clean -qfd)
+
+ZK_AUDIT_NO_UPDATE_CHECK=1 "$repo/plugins/zk-audit/skills/zk-audit/scripts/gnark-inventory" version >/dev/null

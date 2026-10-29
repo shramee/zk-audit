@@ -1,0 +1,48 @@
+schema_version: "1.1"
+name: pool-deep
+description: "Blind deep audit of the pool fixture (gnark v0.14.0 Groth16 circuit plus a Solidity pool). Precise scoring is evals/score against evals/fixtures/pool/key.json; the graders below are the plugin-eval view."
+tags: [audit, pool, deep]
+plugins: ["../../../plugins/zk-audit"]
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+graders:
+  - name: findings-written
+    type: regex
+    target: {source: file, path: out/findings.json}
+    pattern: '"schema_version":\s*"1"'
+  - name: report-rendered
+    type: regex
+    target: {source: file, path: out/REPORT.md}
+    pattern: '(?:Coverage|coverage)'
+  - name: critical-leaf-binding
+    type: llm
+    weight: 3
+    focus: {source: file, path: out/findings.json}
+    criteria: |
+      PASS if a record with verdict "confirmed" and severity "critical" or "high"
+      says the Merkle leaf (Path[0]) of the transfer circuit is not derived from
+      the spent note or its secret, or that the nullifier is built from free
+      witness values, so a prover can withdraw without owning a note.
+      FAIL otherwise.
+  - name: trusted-party-items
+    type: llm
+    weight: 2
+    focus: {source: file, path: out/findings.json}
+    criteria: |
+      PASS if the records (any verdict except "rejected") cover both of these
+      admin powers in contracts/Pool.sol: (1) the owner can replace the
+      verifier contract (setVerifier), and (2) the owner can add arbitrary
+      Merkle roots (addRoot). FAIL if either is missing or appears only in the
+      posture text.
+  - name: no-decoy-claims
+    type: llm
+    weight: 2
+    focus: {source: file, path: out/findings.json}
+    criteria: |
+      FAIL if any record with verdict "confirmed" or "needs_validation" claims
+      one of: the change computation in the transfer circuit wraps around and
+      lets Out.Value exceed In.Value; public inputs at or above the field
+      modulus alias nullifiers in Pool.withdraw; reentrancy around
+      verifyProof; a front-runner can swap the recipient of a valid proof.
+      PASS otherwise.

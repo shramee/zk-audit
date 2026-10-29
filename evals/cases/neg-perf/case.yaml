@@ -1,0 +1,27 @@
+schema_version: "1.1"
+name: neg-perf
+description: "A performance question must not start an audit."
+tags: [trigger, negative, cheap]
+plugins: ["../../../plugins/zk-audit"]
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+graders:
+  - name: no-subagents
+    type: tool_used
+    tool: Agent
+    min: 0
+    max: 0
+    arm: both
+  - name: no-audit-banner
+    type: regex
+    pattern: "zk-audit v[0-9]|Agent Progress|## zk-audit Progress"
+    match: not_contains
+    arm: both
+  - name: answers-perf
+    type: llm
+    criteria: |
+      PASS if the reply gives concrete prover-performance ideas (for example a
+      cheaper hash, fewer constraints, a different backend or curve, GPU
+      acceleration, or reusing the proving key). FAIL if it runs or announces a
+      security audit instead.

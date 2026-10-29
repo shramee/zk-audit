@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Runs an audit case headless and scores it. The case format is the one
+# `claude plugin eval` reads (case.yaml + prompt.md + scaffold.sh); this runner
+# exists because audit cases need a writable shell, which the eval sandbox
+# does not give a root user. It runs each repetition in a fresh workspace with
+# `claude -p`, a tool allowlist, deny rules on the answer keys and a budget
+# cap, then scores <workspace>/out/findings.json with evals/score.
+#
+# Usage: evals/run-audit [--runs N] [--budget USD] [--model M] [--results DIR] CASE...
+#   CASE      a directory under evals/cases (name or path); its scaffold.sh
+#             names the fixture, whose key is evals/fixtures/<fixture>/key.json
+#   --runs    repetitions per case (default 3)
+#   --budget  per-run cap passed to claude --max-budget-usd (default 30)
+#   --model   model for the audit session (default: claude's default)
+#   --results where to put workspaces and scores (default evals/results/<UTC time>)
+#
+# Writes <results>/<case>/run<i>/{stream.jsonl,score.json} and
+# <results>/summary.md. Exit 0 when every run produced a findings.json.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo="$(cd "$here/.." && pwd)"
+runs=3 budget=30 model="" results=""
+cases=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --runs) runs="$2"; shift 2 ;;
+    --budget) budget="$2"; shift 2 ;;
+    --model) model="$2"; shift 2 ;;
+    --results) results="$2"; shift 2 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -*) echo "run-audit: unknown flag $1" >&2; exit 2 ;;
+    *) cases+=("$1"); shift ;;
+  esac
+done
+[ ${#cases[@]} -gt 0 ] || { echo "run-audit: no case given" >&2; exit 2; }
+command -v claude >/dev/null || { echo "run-audit: claude CLI not found" >&2; exit 2; }
+results="${results:-$here/results/$(date -u +%Y%m%dT%H%M%SZ)}"
+mkdir -p "$results"
+results="$(cd "$results" && pwd)"
+plugin="$repo/plugins/zk-audit"
+skill="$plugin/skills/zk-audit"
+score_bin="$results/.score"
+(cd "$here/score" && GOWORK=off go build -o "$score_bin" .)
+
+# prompt_body FILE: the prompt.md body after its front matter.
+prompt_body() { awk 'NR==1 && /^---$/ {fm=1; next} fm && /^---$/ {fm=0; next} !fm' "$1"; }
+
+settings() { # settings WS
+  local ws="$1"
+  jq -n --arg ws "$ws" --arg skill "$skill" --arg repo "$repo" '{permissions: {
+    defaultMode: "default",
+    allow: (["Read", "Glob", "Grep", "Agent", "Skill", "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
+      "Write(/\($ws)/**)", "Edit(/\($ws)/**)", "Bash(\($skill)/scripts/*)"] +
+      (["go", "git", "forge", "timeout", "ls", "cat", "head", "tail", "wc", "grep", "find", "sed -n", "mkdir", "cp",
+        "date", "jq", "diff", "sort", "echo", "test", "basename", "dirname", "cd"] | map("Bash(\(.):*)")) +
+      (["GOFLAGS", "GOWORK", "GOPROXY", "GOTOOLCHAIN", "CGO_ENABLED", "ZK_AUDIT_NO_UPDATE_CHECK"] | map("Bash(\(.)=*)")) +
+      ["Bash(pwd)"]),
+    deny: (["evals", "testdata", "docs", "test", ".git"] | map("Read(/\($repo)/\(.)/**)", "Grep(/\($repo)/\(.)/**)", "Glob(/\($repo)/\(.)/**)"))
+      + ["Read(/\($repo)/PLAN.md)", "WebFetch", "WebSearch"]}}'
+}
+
+harness_note='
+
+Context for this run (evaluation harness, nobody is watching):
+- Nobody can answer questions. Use the profile and flags above and the default model; say so in one line instead of asking.
+- Read only ./target, the skill folder, the Go module cache and ./out. Do not read anything else on this machine.
+- Shell commands outside a fixed allowlist are refused automatically; if one is refused, use a simpler allowed command (go, git, forge, timeout, ls, cat, grep, find, mkdir, cp, jq, diff) and carry on.
+- Run the whole audit through the report and print the report path at the end.'
+
+status=0
+scores=()
+for c in "${cases[@]}"; do
+  dir="$c"
+  [ -d "$dir" ] || dir="$here/cases/$c"
+  dir="$(cd "$dir" && pwd)"
+  name="$(basename "$dir")"
+  [ -f "$dir/prompt.md" ] && [ -f "$dir/scaffold.sh" ] ||
+    { echo "run-audit: $dir needs prompt.md and scaffold.sh" >&2; exit 2; }
+  fixture="$(sed -n 's/.*scaffold-audit[" ]* \([A-Za-z0-9_-]*\).*/\1/p' "$dir/scaffold.sh" | head -1)"
+  key="$here/fixtures/$fixture/key.json"
+  [ -f "$key" ] || { echo "run-audit: $dir: no answer key $key" >&2; exit 2; }
+  prompt="$(prompt_body "$dir/prompt.md")$harness_note"
+  for i in $(seq 1 "$runs"); do
+    ws="$results/$name/run$i"
+    mkdir -p "$ws/home"
+    (cd "$ws" && HOME="$ws/home" bash "$dir/scaffold.sh")
+    settings "$ws" >"$ws/settings.json"
+    echo "run-audit: $name run $i/$runs in $ws" >&2
+    start=$(date +%s)
+    set +e
+    (cd "$ws" && GOENV="$ws/home/.config/go/env" ZK_AUDIT_BIN="$ws/home/.zk-audit/bin" ZK_AUDIT_NO_UPDATE_CHECK=1 \
+      claude -p "$prompt" --plugin-dir "$plugin" --settings "$ws/settings.json" --permission-mode default \
+      --max-budget-usd "$budget" ${model:+--model "$model"} --output-format stream-json --verbose \
+      >"$ws/stream.jsonl" 2>"$ws/stderr.log")
+    set -e
+    dur=$(( $(date +%s) - start ))
+    cost="$(jq -s '[.[] | select(.type == "result") | .total_cost_usd] | max // -1' "$ws/stream.jsonl" 2>/dev/null || echo -1)"
+    [ -f "$ws/out/findings.json" ] || status=1
+    "$score_bin" run --key "$key" --target "$ws/target" --findings "$ws/out/findings.json" \
+      --label "$name/run$i" --cost "$cost" --duration "$dur" --json "$ws/score.json" >/dev/null
+    scores+=("$ws/score.json")
+    jq -r '"run-audit: \(.label): recall \(.recall * 100 | floor) %, false positives \(.false_positives | length), cost \(.cost_usd // "?") USD"' "$ws/score.json" >&2
+  done
+done
+"$score_bin" summarize "${scores[@]}" | tee "$results/summary.md"
+exit $status

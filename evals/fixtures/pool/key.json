@@ -1,0 +1,494 @@
+{
+  "schema_version": "1",
+  "case": "pool",
+  "fixture": "pool",
+  "items": [
+    {
+      "id": "P1",
+      "class": "soundness",
+      "critical": true,
+      "title": "Merkle leaf, index and nullifier not bound to the spent note",
+      "ranges": [
+        {
+          "file": "circuit/transfer.go",
+          "anchors": [
+            "h.Write(c.Secret, c.Index)",
+            "api.AssertIsEqual(cur, c.Root)"
+          ]
+        }
+      ],
+      "match": "(?i)leaf|path\\[0\\]|merkle|nullifier|index|note|secret",
+      "expect": [
+        "confirmed"
+      ],
+      "partial": [
+        "needs_validation",
+        "lead"
+      ],
+      "severity": [
+        "critical",
+        "high"
+      ]
+    },
+    {
+      "id": "P2",
+      "class": "soundness",
+      "title": "divHint remainder never constrained",
+      "ranges": [
+        {
+          "file": "circuit/transfer.go",
+          "anchors": [
+            "NewHint(divHint",
+            "api.AssertIsEqual(api.Mul(q, c.Out.Value), c.In.Value)"
+          ]
+        }
+      ],
+      "match": "(?i)divhint|remainder|res\\[1\\]|quotient",
+      "expect": [
+        "confirmed",
+        "lead",
+        "hardening"
+      ],
+      "severity": [
+        "low",
+        "info"
+      ]
+    },
+    {
+      "id": "P3",
+      "class": "soundness",
+      "title": "DivUnchecked 0/0 leaves ratio free",
+      "ranges": [
+        {
+          "file": "circuit/transfer.go",
+          "anchors": [
+            "ratio := api.DivUnchecked",
+            "api.AssertIsEqual(api.Mul(ratio, c.Fees[1]), c.Fees[0])"
+          ]
+        }
+      ],
+      "match": "(?i)divunchecked|ratio|0/0|fee",
+      "expect": [
+        "lead",
+        "hardening",
+        "confirmed"
+      ],
+      "partial": [
+        "needs_validation"
+      ],
+      "severity": [
+        "low",
+        "info"
+      ]
+    },
+    {
+      "id": "P4",
+      "class": "soundness",
+      "title": "ToBinary(Out.Owner) with OmitModulusCheck",
+      "ranges": [
+        {
+          "file": "circuit/transfer.go",
+          "anchors": [
+            "bits.ToBinary(api, c.Out.Owner, bits.OmitModulusCheck())"
+          ]
+        }
+      ],
+      "match": "(?i)omitmodulus|alias|modulus|tobinary",
+      "expect": [
+        "lead",
+        "hardening",
+        "confirmed"
+      ],
+      "partial": [
+        "needs_validation"
+      ],
+      "severity": [
+        "low",
+        "info"
+      ]
+    },
+    {
+      "id": "P6",
+      "class": "soundness",
+      "title": "Owner equality gated by a prover-chosen Index",
+      "ranges": [
+        {
+          "file": "circuit/transfer.go",
+          "anchors": [
+            "flag := api.IsZero(c.Index)",
+            "api.AssertIsEqual(api.Mul(flag, api.Sub(c.In.Owner, c.Out.Owner)), 0)"
+          ]
+        }
+      ],
+      "match": "(?i)owner|flag|gat|index",
+      "expect": [
+        "confirmed",
+        "lead"
+      ],
+      "partial": [
+        "needs_validation",
+        "hardening"
+      ]
+    },
+    {
+      "id": "P7",
+      "class": "soundness",
+      "title": "IsZero(Recipient) result discarded",
+      "ranges": [
+        {
+          "file": "circuit/transfer.go",
+          "anchors": [
+            "api.IsZero(c.Recipient)"
+          ]
+        }
+      ],
+      "match": "(?i)iszero|recipient|discard|dropped|unused",
+      "expect": [
+        "lead",
+        "hardening",
+        "confirmed"
+      ],
+      "partial": [
+        "needs_validation"
+      ],
+      "severity": [
+        "low",
+        "info"
+      ]
+    },
+    {
+      "id": "P8",
+      "class": "soundness",
+      "title": "Go branch on a witness value",
+      "ranges": [
+        {
+          "file": "circuit/transfer.go",
+          "anchors": [
+            "if c.Index == nil {"
+          ]
+        }
+      ],
+      "match": "(?i)compile.?time|go (if|branch|nil)|nil.?check|dead code|branch",
+      "expect": [
+        "lead",
+        "hardening",
+        "confirmed"
+      ],
+      "partial": [
+        "needs_validation"
+      ],
+      "severity": [
+        "low",
+        "info"
+      ]
+    },
+    {
+      "id": "P9",
+      "class": "soundness",
+      "title": "decompose returns unconstrained hint outputs",
+      "ranges": [
+        {
+          "file": "circuit/transfer.go",
+          "anchors": [
+            "func decompose(",
+            "return out"
+          ]
+        }
+      ],
+      "match": "(?i)decompose|splithint|limb|unconstrained|unchecked",
+      "expect": [
+        "hardening",
+        "lead",
+        "confirmed"
+      ],
+      "partial": [
+        "needs_validation"
+      ],
+      "severity": [
+        "low",
+        "info"
+      ]
+    },
+    {
+      "id": "P10",
+      "class": "soundness",
+      "title": "Emulated Limbs[0] read on an unreduced product",
+      "ranges": [
+        {
+          "file": "circuit/sig.go",
+          "anchors": [
+            "sq := f.Mul(&c.Amount, &c.Amount)",
+            "api.AssertIsDifferent(sq.Limbs[0], 0)"
+          ]
+        }
+      ],
+      "match": "(?i)limb|emulated|reduc|canonical",
+      "expect": [
+        "lead",
+        "needs_validation",
+        "confirmed",
+        "hardening"
+      ],
+      "severity": [
+        "low",
+        "info"
+      ]
+    },
+    {
+      "id": "P11",
+      "class": "setup",
+      "title": "Single-party groth16.Setup outside tests",
+      "ranges": [
+        {
+          "file": "cmd/setup/main.go",
+          "anchors": [
+            "groth16.Setup(ccs)"
+          ]
+        }
+      ],
+      "match": "(?i)setup|ceremony|toxic|trusted",
+      "expect": [
+        "needs_validation",
+        "confirmed"
+      ],
+      "partial": [
+        "lead",
+        "hardening"
+      ],
+      "severity": [
+        "high",
+        "critical"
+      ]
+    },
+    {
+      "id": "P12",
+      "class": "dependency",
+      "title": "gnark v0.14.0 advisories",
+      "ranges": [
+        {
+          "file": "go.mod",
+          "anchors": [
+            "github.com/consensys/gnark v0.14.0"
+          ]
+        }
+      ],
+      "match": "(?i)GHSA|advisor|CVE|v0\\.14",
+      "expect": [
+        "needs_validation",
+        "confirmed"
+      ],
+      "partial": [
+        "lead",
+        "hardening"
+      ]
+    },
+    {
+      "id": "P13",
+      "class": "trusted-party",
+      "title": "Owner can swap the verifier",
+      "ranges": [
+        {
+          "file": "contracts/Pool.sol",
+          "anchors": [
+            "function setVerifier",
+            "verifier = IVerifier(v);"
+          ]
+        }
+      ],
+      "match": "(?i)verifier|vk|verifying key",
+      "expect": [
+        "lead",
+        "needs_validation"
+      ],
+      "partial": [
+        "hardening",
+        "confirmed"
+      ],
+      "match_in": "title"
+    },
+    {
+      "id": "P14",
+      "class": "trusted-party",
+      "title": "Roots are set by the owner, not derived from deposits",
+      "ranges": [
+        {
+          "file": "contracts/Pool.sol",
+          "anchors": [
+            "function addRoot",
+            "knownRoots[root] = true;"
+          ]
+        },
+        {
+          "file": "contracts/Pool.sol",
+          "anchors": [
+            "require(knownRoots[root]"
+          ]
+        }
+      ],
+      "match": "(?i)root",
+      "expect": [
+        "lead",
+        "needs_validation"
+      ],
+      "partial": [
+        "hardening",
+        "confirmed"
+      ],
+      "match_in": "title"
+    },
+    {
+      "id": "P15",
+      "class": "integration",
+      "title": "No chain id or contract address in the statement",
+      "ranges": [
+        {
+          "file": "contracts/Pool.sol",
+          "anchors": [
+            "function withdraw(",
+            "payable(recipient).transfer(value);"
+          ]
+        },
+        {
+          "file": "circuit/transfer.go",
+          "anchors": [
+            "type TransferCircuit struct",
+            "Debug  frontend.Variable"
+          ]
+        }
+      ],
+      "match": "(?i)chain|replay|deployment|contract address|address\\(this\\)|domain",
+      "expect": [
+        "lead",
+        "needs_validation",
+        "confirmed"
+      ],
+      "partial": [
+        "hardening"
+      ],
+      "severity": [
+        "medium",
+        "high",
+        "low"
+      ]
+    }
+  ],
+  "decoys": [
+    {
+      "id": "P5",
+      "title": "change wrap (Out.Value > In.Value)",
+      "ranges": [
+        {
+          "file": "circuit/transfer.go",
+          "anchors": [
+            "change := api.Sub(c.In.Value, c.Out.Value)",
+            "api.AssertIsLessOrEqual(change, c.In.Value)"
+          ]
+        }
+      ],
+      "match": "(?i)wrap|underflow|change"
+    },
+    {
+      "id": "D1",
+      "title": "public inputs >= r alias nullifiers",
+      "ranges": [
+        {
+          "file": "contracts/Pool.sol",
+          "anchors": [
+            "input[0] = root;",
+            "input[6] = ownerKey;"
+          ]
+        }
+      ],
+      "match": "(?i)(>=|≥|greater).{0,20}(r\\b|modulus|field)|alias|non.?canonical|reduc"
+    },
+    {
+      "id": "D2",
+      "title": "reentrancy around verifyProof",
+      "ranges": [
+        {
+          "file": "contracts/Pool.sol",
+          "anchors": [
+            "verifier.verifyProof(proof, input);",
+            "payable(recipient).transfer(value);"
+          ]
+        }
+      ],
+      "match": "(?i)reentr"
+    },
+    {
+      "id": "D4",
+      "title": "front-running by changing recipient",
+      "ranges": [
+        {
+          "file": "contracts/Pool.sol",
+          "anchors": [
+            "function withdraw(",
+            "payable(recipient).transfer(value);"
+          ]
+        },
+        {
+          "file": "circuit/transfer.go",
+          "anchors": [
+            "api.IsZero(c.Recipient)"
+          ]
+        }
+      ],
+      "match": "(?i)front.?run[\\s\\S]*recipient|recipient[\\s\\S]*front.?run|recipient[\\s\\S]*(not bound|unbound|swap)"
+    },
+    {
+      "id": "D5",
+      "title": "eddsa signature malleability",
+      "ranges": [
+        {
+          "file": "circuit/sig.go",
+          "anchors": [
+            "eddsa.Verify("
+          ]
+        }
+      ],
+      "match": "(?i)malleab|canonical|curve check|on.?curve|subgroup"
+    }
+  ],
+  "other": [
+    {
+      "id": "O1",
+      "title": "change and the Out note are never stored; unused public inputs",
+      "ranges": [
+        {
+          "file": "contracts/Pool.sol",
+          "anchors": [
+            "function withdraw(",
+            "payable(recipient).transfer(value);"
+          ]
+        }
+      ],
+      "match": "(?i)change|out note|ownerkey|fee0|fee1|unused|never (stored|used)"
+    },
+    {
+      "id": "O2",
+      "title": "no deposit or payable function",
+      "ranges": [
+        {
+          "file": "contracts/Pool.sol",
+          "anchors": []
+        }
+      ],
+      "match": "(?i)deposit|payable|receive"
+    },
+    {
+      "id": "O3",
+      "title": "Verifier.sol is a placeholder / VK drift",
+      "ranges": [
+        {
+          "file": "contracts/Verifier.sol",
+          "anchors": []
+        },
+        {
+          "file": "cmd/setup/main.go",
+          "anchors": []
+        }
+      ],
+      "match": "(?i)placeholder|stub|drift|vk|verifying key|generated|always revert|trace"
+    }
+  ]
+}

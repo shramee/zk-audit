@@ -1,10 +1,10 @@
 SKILL := plugins/zk-audit/skills/zk-audit
 TOOL := $(SKILL)/tools/gnark-inventory
 
-.PHONY: check vet test test-types fixtures lint-kb standalone sync-schemas sync-agents vendor eval-pocs
+.PHONY: check vet test test-types fixtures lint-kb standalone sync-schemas sync-agents vendor eval-pocs eval-score eval-audit
 
 ## check: everything CI runs (offline)
-check: vet test lint-kb standalone
+check: vet test lint-kb standalone eval-score
 
 vet:
 	cd $(TOOL) && go vet ./...
@@ -46,3 +46,15 @@ sync-agents:
 
 vendor:
 	cd $(TOOL) && go mod tidy && go mod vendor
+
+## eval-score: unit tests of the eval scorer (offline)
+eval-score:
+	cd evals/score && go vet ./... && go test ./...
+
+## eval-audit: run audit cases headless and score them (model calls, costs
+## money). CASES=pool-quick RUNS=3 BUDGET=30 by default.
+CASES ?= pool-quick
+RUNS ?= 3
+BUDGET ?= 30
+eval-audit:
+	evals/run-audit --runs $(RUNS) --budget $(BUDGET) $(CASES)

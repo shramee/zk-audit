@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# Builds the bundled gnark-inventory tool once per version (offline, from the
-# vendored sources) into ~/.zk-audit/bin and runs it with the given arguments.
+# Builds the bundled gnark-inventory tool once per source tree (offline, from
+# the vendored sources) into ~/.zk-audit/bin and runs it with the given
+# arguments. The binary name carries the version and a hash of the sources, so
+# two checkouts at the same version never share a stale binary, and a copy of
+# the same sources (a plugin cache, an eval sandbox) reuses a prebuilt one.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 src="$here/../tools/gnark-inventory"
 ver="$(sed -n 's/^const Version = "\(.*\)"$/\1/p' "$src/main.go")"
+hash_cmd="sha256sum"
+command -v sha256sum >/dev/null 2>&1 || hash_cmd="shasum -a 256"
+sum="$(cd "$src" && find . -type f \( -name '*.go' -o -name '*.json' -o -name 'go.mod' -o -name 'go.sum' -o -name 'modules.txt' \) \
+  -not -name '*_test.go' -print | LC_ALL=C sort | xargs cat | $hash_cmd | cut -c1-12)"
 bin_dir="${ZK_AUDIT_BIN:-$HOME/.zk-audit/bin}"
-bin="$bin_dir/gnark-inventory-$ver"
-stale=""
-if [ -x "$bin" ]; then
-  stale="$(find "$src" -name '*.go' -not -path '*/testdata/*' -newer "$bin" -print -quit 2>/dev/null || true)"
-fi
-if [ ! -x "$bin" ] || [ -n "$stale" ]; then
+bin="$bin_dir/gnark-inventory-$ver-$sum"
+if [ ! -x "$bin" ]; then
   if ! command -v go >/dev/null 2>&1; then
     echo "gnark-inventory: Go >= 1.24 is required to build the tool (https://go.dev/dl/)" >&2
     exit 2

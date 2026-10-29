@@ -51,13 +51,18 @@ execution; the refuter still runs) · `--file-output` (also write `REPORT.md` in
 
 **Profiles**
 
+<!-- generated:profile-table from profiles.json (make sync-profiles); do not edit -->
+
 | Profile | Agents | PoC | Critics | Passes |
 |---|---|---|---|---|
-| `quick` | vector-scan shards + C1 + I1 + G2 | confirmed Critical/High only | none | 1 |
-| `standard` (default) | C1–C6, I1–I4, vector-scan shards, G2, F1 | every confirmed circuit finding | coverage critic + 1 targeted wave | 1 |
-| `deep` | everything incl. G1, G3, A1 | every confirmed finding | coverage + final-clean critic | 3 with memory |
+| `quick` | C1, I1, G2 + 12 vector-scan shards (V-*) | confirmed Critical/High circuit findings only | none | 1 |
+| `standard` (default) | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, G2, F1 + 12 vector-scan shards (V-*) | every confirmed circuit finding | coverage critic + 1 targeted wave | 1 |
+| `deep` | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, G1, G2, G3, A1, F1 + 12 vector-scan shards (V-*) | every confirmed finding | coverage critic + final-clean critic + 1 targeted wave | 3 with memory |
 
-Lens ids and their files are listed in `references/orchestration.md`.
+<!-- end generated:profile-table -->
+
+Lens ids and their files are listed in `references/orchestration.md`. The tool
+prints the same definitions as JSON: `{skill}/scripts/gnark-inventory profiles [--profile P]`.
 
 Before the first agent spawn, ask **one** question with `AskUserQuestion`
 (profile and model, recommended default preselected). If the runtime has no

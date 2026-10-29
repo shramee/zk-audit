@@ -164,3 +164,24 @@ func TestLedger(t *testing.T) {
 		}
 	}
 }
+
+// TestLedgerLensesAndClassesFromProfiles checks that ledger classes and
+// lenses are validated against profiles.json, not a schema enum.
+func TestLedgerLensesAndClassesFromProfiles(t *testing.T) {
+	doc := `{"schema_version":"1","repo":"r","generated_by":"t","units":[
+	 {"id":"circuit:C|made-up-class","kind":"circuit","subject":"C","class":"made-up-class","lenses":["Z9","V"],"paths":["c.go:1"],"status":"planned","agent_ids":[],"reviewed_paths":[],"result_fingerprints":[]}
+	]}`
+	rep, err := Document("ledger", []byte(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(rep.Errors, "\n")
+	for _, want := range []string{`class "made-up-class" is owned by no lens`, `lens "Z9" is not defined`} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("want %q in %s", want, joined)
+		}
+	}
+	if strings.Contains(joined, `lens "V"`) {
+		t.Errorf("V (the vector scan) must be accepted: %s", joined)
+	}
+}

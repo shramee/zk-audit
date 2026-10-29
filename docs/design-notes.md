@@ -109,6 +109,48 @@ left open, it is recorded here with the reason.
 - **Not yet implemented.** The deep profile's "regenerate `Verifier.sol` and
   diff" is described in the I2 lens but not automated.
 
+## Profiles and lenses (one source of truth)
+
+- **`profiles.json`** (`tools/gnark-inventory/internal/profile/profiles.json`,
+  embedded in the tool) defines every lens (id, name, lens file, vector slice,
+  group, shard, the profiles that select it, the ledger classes it owns), the
+  critics, and every profile (PoC policy, critics, targeted waves, passes,
+  memory). It replaces the four copies x-ray P-17 listed (`SKILL.md` table,
+  `orchestration.md`, `bundle.Agents`, the ledger seeder's class lists).
+  It lives in the tool rather than in `{skill}/` so it is embedded without a
+  synced copy (unlike the schemas); `gnark-inventory profiles` prints it.
+- **Readers.** `bundle` selects lenses from it; the ledger seeder creates one
+  unit per `ledger.seed` subject (each production circuit, or each verifying
+  / state-writing contract function) and class; `validate ledger` accepts a
+  unit `class` only if a lens owns it and a `lenses` entry only if it is a
+  lens id or `V` (the ledger schema uses patterns instead of enums for both,
+  so a new lens does not need a schema edit); `args` takes the profile ids and
+  the default pass count from it.
+- **Generated docs.** The profile table in `SKILL.md` and the agent table in
+  `references/orchestration.md` sit between `<!-- generated:... -->` markers
+  and are rewritten by `make sync-profiles`
+  (`gnark-inventory profiles --sync-docs`). `TestGeneratedDocsInSync` fails on
+  drift, `TestEveryLensFileIsUsed` fails when a file in `references/agents/`
+  is not named by any lens, and `CheckFiles` fails when a lens names a
+  missing file.
+
+### Adding a lens
+
+1. Write the lens file `references/agents/<ID>-<name>.md` (or, for a
+   vector-scan shard, a slice under `references/attack-vectors/` that
+   `lint-kb` accepts).
+2. Add one entry to `lenses` in `profiles.json`: `id` (capitalised, e.g.
+   `T1`), `name`, `file`, optional `slice`, `group`, `shard`
+   (`circuit` / `integration` / `prover` / `all`) and `profiles`. If the lens
+   owns coverage, add `ledger: {classes: [...], seed: "circuit" |
+   "contract-fn", with: [...]}`; a class that needs a new subject kind (not
+   one unit per circuit or per contract function) also needs seeding code in
+   `internal/ledger/seed.go`.
+3. Run `make sync-profiles` and `make check`.
+
+Nothing else changes: bundles, ledger seeding and validation, the docs
+tables and `gnark-inventory profiles` all follow the entry.
+
 ## Evals
 
 - **Blind runs.** Fixtures keep their `// BUG:` comments for the inventory

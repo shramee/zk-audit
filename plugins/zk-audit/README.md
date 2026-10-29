@@ -40,6 +40,7 @@ through `skills/zk-audit/scripts/gnark-inventory`, which builds it once into
 | `detect --repo DIR [--out stack.json]` | gnark / gnark-crypto versions, matching advisories, backends, curves, Solidity / Foundry / Hardhat / Circom / Noir presence. |
 | `inventory --repo DIR --out DIR [--files a,b] [--syntax-only] [--allow-network]` | `inventory.json`, `inventory.md`, `binding-table.md`, `coverage-ledger.json` (seeded), `stack.json`. |
 | `bundle --out DIR --skill SKILL_DIR [--profile P]` | One `bundles/<agent>.md` per selected agent: source shard (paths and line counts), binding table, inventory items, SOP, lens, shared rules. |
+| `profiles [--profile P] [--markdown] [--check-docs SKILL_DIR] [--sync-docs SKILL_DIR]` | Prints the lens, critic and profile definitions (the embedded `profiles.json`, the single source of truth), one profile with its lenses, or the generated Markdown tables; `--check-docs` / `--sync-docs` compare or rewrite the tables in `SKILL.md` and `references/orchestration.md`. |
 | `validate findings FILE` | Checks `findings.json` against `skills/zk-audit/schemas/findings.schema.json` plus semantic rules. |
 | `validate ledger FILE` | Checks `coverage-ledger.json` against `skills/zk-audit/schemas/ledger.schema.json` plus semantic rules. |
 | `validate stack FILE` | Checks `stack.json` against `skills/zk-audit/schemas/stack.schema.json`. |

@@ -11,29 +11,45 @@ install, write into the target repo, or use the network.
 
 ## Agents
 
-| Id | Lens file | Group | Shard |
-|---|---|---|---|
-| C1 | `agents/C1-hint-soundness.md` | circuit | circuit |
-| C2 | `agents/C2-range-decomposition.md` | circuit | circuit |
-| C3 | `agents/C3-field-arithmetic.md` | circuit | circuit |
-| C4 | `agents/C4-control-selector.md` | circuit | circuit |
-| C5 | `agents/C5-crypto-gadgets.md` | circuit | circuit |
-| C6 | `agents/C6-spec-invariant.md` | circuit | all |
-| I1 | `agents/I1-public-input-binding.md` | integration | integration |
-| I2 | `agents/I2-verifier-contract.md` | integration | integration |
-| I3 | `agents/I3-protocol-state.md` | integration | integration |
-| I4 | `agents/I4-prover-service.md` | integration | prover |
-| V-hints, V-range, V-field, V-selector, V-hash, V-curves, V-commit, V-generic | `agents/vector-scan.md` + one circuit slice each | vector scan | circuit |
-| V-pubin, V-verifier, V-state, V-prover | `agents/vector-scan.md` + one integration slice each | vector scan | integration (V-prover: prover) |
-| G1 | `agents/G1-numerical-gap.md` | gap | circuit |
-| G2 | `agents/G2-binding-gap.md` | gap | all |
-| G3 | `agents/G3-composition-gap.md` | gap | circuit |
-| A1 | `agents/A1-asymmetry.md` | cross | all |
-| F1 | `agents/F1-first-principles.md` | cross | all |
+<!-- generated:agent-table from profiles.json (make sync-profiles); do not edit -->
 
-Profiles (from `SKILL.md`): **quick** = V-* shards + C1 + I1 + G2. **standard** =
-C1–C6, I1–I4, V-*, G2, F1. **deep** = all of the above plus G1, G3, A1, repeated
-for 3 passes with memory. Skip agents whose shard is empty (for example no
+| Id | Lens | Lens file | Group | Shard | Profiles |
+|---|---|---|---|---|---|
+| C1 | hint soundness | `agents/C1-hint-soundness.md` | circuit | circuit | quick, standard, deep |
+| C2 | range and decomposition | `agents/C2-range-decomposition.md` | circuit | circuit | standard, deep |
+| C3 | field arithmetic | `agents/C3-field-arithmetic.md` | circuit | circuit | standard, deep |
+| C4 | control flow and selectors | `agents/C4-control-selector.md` | circuit | circuit | standard, deep |
+| C5 | cryptographic gadgets | `agents/C5-crypto-gadgets.md` | circuit | circuit | standard, deep |
+| C6 | specification and invariants | `agents/C6-spec-invariant.md` | circuit | all | standard, deep |
+| I1 | public-input binding | `agents/I1-public-input-binding.md` | integration | integration | quick, standard, deep |
+| I2 | verifier contracts | `agents/I2-verifier-contract.md` | integration | integration | standard, deep |
+| I3 | protocol state | `agents/I3-protocol-state.md` | integration | integration | standard, deep |
+| I4 | prover service | `agents/I4-prover-service.md` | integration | prover | standard, deep |
+| V-hints | vector scan: hints | `agents/vector-scan.md` + `attack-vectors/hints.md` | vector scan | circuit | quick, standard, deep |
+| V-range | vector scan: range and bits | `agents/vector-scan.md` + `attack-vectors/range-bits.md` | vector scan | circuit | quick, standard, deep |
+| V-field | vector scan: field arithmetic | `agents/vector-scan.md` + `attack-vectors/field-arith.md` | vector scan | circuit | quick, standard, deep |
+| V-selector | vector scan: selectors and control | `agents/vector-scan.md` + `attack-vectors/selector-control.md` | vector scan | circuit | quick, standard, deep |
+| V-hash | vector scan: hashes and Merkle | `agents/vector-scan.md` + `attack-vectors/hash-merkle.md` | vector scan | circuit | quick, standard, deep |
+| V-curves | vector scan: curves and signatures | `agents/vector-scan.md` + `attack-vectors/curves-signatures.md` | vector scan | circuit | quick, standard, deep |
+| V-commit | vector scan: commitments and recursion | `agents/vector-scan.md` + `attack-vectors/commitments-recursion.md` | vector scan | circuit | quick, standard, deep |
+| V-generic | vector scan: generic ZK | `agents/vector-scan.md` + `attack-vectors/generic-zk.md` | vector scan | circuit | quick, standard, deep |
+| V-pubin | vector scan: public inputs | `agents/vector-scan.md` + `attack-vectors/public-inputs.md` | vector scan | integration | quick, standard, deep |
+| V-verifier | vector scan: verifier contracts | `agents/vector-scan.md` + `attack-vectors/verifier-contracts.md` | vector scan | integration | quick, standard, deep |
+| V-state | vector scan: protocol state | `agents/vector-scan.md` + `attack-vectors/protocol-state.md` | vector scan | integration | quick, standard, deep |
+| V-prover | vector scan: prover service | `agents/vector-scan.md` + `attack-vectors/prover-service.md` | vector scan | prover | quick, standard, deep |
+| G1 | numerical gaps | `agents/G1-numerical-gap.md` | gap | circuit | deep |
+| G2 | binding gaps | `agents/G2-binding-gap.md` | gap | all | quick, standard, deep |
+| G3 | composition gaps | `agents/G3-composition-gap.md` | gap | circuit | deep |
+| A1 | asymmetry | `agents/A1-asymmetry.md` | cross | all | deep |
+| F1 | first principles | `agents/F1-first-principles.md` | cross | all | standard, deep |
+
+- **quick**: C1, I1, G2 + 12 vector-scan shards (V-*).
+- **standard**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, G2, F1 + 12 vector-scan shards (V-*).
+- **deep**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, G1, G2, G3, A1, F1 + 12 vector-scan shards (V-*).
+
+<!-- end generated:agent-table -->
+
+Deep repeats the hunt for 3 passes with memory (Loop mode below). Skip agents whose shard is empty (for example no
 Solidity means no I1–I3 or integration V-shards); mark them `Skipped` with the
 reason, and record their ledger units as `not_applicable`.
 

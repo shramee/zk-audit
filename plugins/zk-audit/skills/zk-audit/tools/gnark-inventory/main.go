@@ -22,6 +22,7 @@ import (
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/kblint"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/ledger"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/load"
+	profiles "github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/report"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/validate"
 )
@@ -35,7 +36,8 @@ const usage = `gnark-inventory ` + Version + ` — deterministic recon for zk-au
 Usage:
   gnark-inventory detect    --repo DIR [--out stack.json]
   gnark-inventory inventory --repo DIR --out DIR [--files a.go,dir/] [--syntax-only] [--allow-network]
-  gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile quick|standard|deep]
+  gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile P]
+  gnark-inventory profiles  [--profile P] [--markdown] [--check-docs SKILL_DIR] [--sync-docs SKILL_DIR]
   gnark-inventory validate  findings|ledger|stack FILE
   gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F]
   gnark-inventory lint-kb   [--gnark-src DIR] SKILL_DIR
@@ -76,6 +78,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		code, err = cmdLint(args[1:], stdout)
 	case "advisories":
 		err = cmdAdvisories(args[1:], stdout)
+	case "profiles":
+		code, err = cmdProfiles(args[1:], stdout)
 	case "rules":
 		err = writeJSON(stdout, inventory.Rules)
 	case "version", "--version", "-v":
@@ -257,17 +261,12 @@ func cmdBundle(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("bundle", flag.ContinueOnError)
 	out := fs.String("out", "", "audit output directory holding inventory.json (required)")
 	skill := fs.String("skill", "", "zk-audit skill directory, the one holding SKILL.md (required)")
-	profile := fs.String("profile", "standard", "quick, standard or deep")
+	profile := fs.String("profile", profiles.Load().Default().ID, "profile id (gnark-inventory profiles lists them)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *out == "" || *skill == "" {
 		return fmt.Errorf("bundle: --out and --skill are required")
-	}
-	switch *profile {
-	case "quick", "standard", "deep":
-	default:
-		return fmt.Errorf("bundle: unknown profile %q", *profile)
 	}
 	res, err := bundle.Build(bundle.Options{Out: *out, Skill: *skill, Profile: *profile})
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/jsonschema"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 )
 
 // Schemas are copies of plugins/zk-audit/skills/zk-audit/schemas/*.json; a unit test keeps
@@ -159,6 +160,8 @@ type unit struct {
 	ID                 string   `json:"id"`
 	Kind               string   `json:"kind"`
 	Class              string   `json:"class"`
+	Lenses             []string `json:"lenses"`
+	Paths              []string `json:"paths"`
 	Status             string   `json:"status"`
 	AgentIDs           []string `json:"agent_ids"`
 	ReviewedPaths      []string `json:"reviewed_paths"`
@@ -183,6 +186,9 @@ func semanticLedger(doc []byte, rep *Report) {
 	}
 	seen := map[string]bool{}
 	counts := map[string]int{}
+	set := profile.Load()
+	classes := set.LedgerClasses()
+	lenses := set.LedgerLenses()
 	for i, u := range d.Units {
 		at := fmt.Sprintf("units[%d] (%s)", i, u.ID)
 		if seen[u.ID] {
@@ -194,6 +200,14 @@ func semanticLedger(doc []byte, rep *Report) {
 		}
 		if !strings.HasSuffix(u.ID, "|"+u.Class) {
 			rep.Errors = append(rep.Errors, at+": id must end with its class \"|"+u.Class+"\"")
+		}
+		if _, ok := classes[u.Class]; !ok && u.Class != "" {
+			rep.Errors = append(rep.Errors, at+": class \""+u.Class+"\" is owned by no lens in profiles.json")
+		}
+		for _, l := range u.Lenses {
+			if !lenses[l] {
+				rep.Errors = append(rep.Errors, at+": lens \""+l+"\" is not defined in profiles.json")
+			}
 		}
 		counts[u.Status]++
 		switch u.Status {

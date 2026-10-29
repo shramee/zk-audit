@@ -18,54 +18,11 @@ import (
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fsutil"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/inventory"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 )
 
-// Agent is one hunting agent.
-type Agent struct {
-	ID    string
-	Lens  string // file under references/
-	Slice string // attack-vectors slice for vector-scan shards
-	Shard string // circuit, integration, prover, all
-	// Profiles that select this agent.
-	Profiles []string
-}
-
-var (
-	std  = []string{"standard", "deep"}
-	all  = []string{"quick", "standard", "deep"}
-	deep = []string{"deep"}
-)
-
-// Agents lists every agent of orchestration.md.
-var Agents = []Agent{
-	{"C1", "agents/C1-hint-soundness.md", "", "circuit", all},
-	{"C2", "agents/C2-range-decomposition.md", "", "circuit", std},
-	{"C3", "agents/C3-field-arithmetic.md", "", "circuit", std},
-	{"C4", "agents/C4-control-selector.md", "", "circuit", std},
-	{"C5", "agents/C5-crypto-gadgets.md", "", "circuit", std},
-	{"C6", "agents/C6-spec-invariant.md", "", "all", std},
-	{"I1", "agents/I1-public-input-binding.md", "", "integration", all},
-	{"I2", "agents/I2-verifier-contract.md", "", "integration", std},
-	{"I3", "agents/I3-protocol-state.md", "", "integration", std},
-	{"I4", "agents/I4-prover-service.md", "", "prover", std},
-	{"V-hints", "agents/vector-scan.md", "attack-vectors/hints.md", "circuit", all},
-	{"V-range", "agents/vector-scan.md", "attack-vectors/range-bits.md", "circuit", all},
-	{"V-field", "agents/vector-scan.md", "attack-vectors/field-arith.md", "circuit", all},
-	{"V-selector", "agents/vector-scan.md", "attack-vectors/selector-control.md", "circuit", all},
-	{"V-hash", "agents/vector-scan.md", "attack-vectors/hash-merkle.md", "circuit", all},
-	{"V-curves", "agents/vector-scan.md", "attack-vectors/curves-signatures.md", "circuit", all},
-	{"V-commit", "agents/vector-scan.md", "attack-vectors/commitments-recursion.md", "circuit", all},
-	{"V-generic", "agents/vector-scan.md", "attack-vectors/generic-zk.md", "circuit", all},
-	{"V-pubin", "agents/vector-scan.md", "attack-vectors/public-inputs.md", "integration", all},
-	{"V-verifier", "agents/vector-scan.md", "attack-vectors/verifier-contracts.md", "integration", all},
-	{"V-state", "agents/vector-scan.md", "attack-vectors/protocol-state.md", "integration", all},
-	{"V-prover", "agents/vector-scan.md", "attack-vectors/prover-service.md", "prover", all},
-	{"G1", "agents/G1-numerical-gap.md", "", "circuit", deep},
-	{"G2", "agents/G2-binding-gap.md", "", "all", all},
-	{"G3", "agents/G3-composition-gap.md", "", "circuit", deep},
-	{"A1", "agents/A1-asymmetry.md", "", "all", deep},
-	{"F1", "agents/F1-first-principles.md", "", "all", std},
-}
+// Agent is one hunting agent; the definitions live in profiles.json.
+type Agent = profile.Lens
 
 // Shard is a named set of repo-relative files.
 type Shard struct {
@@ -128,8 +85,11 @@ func Build(opt Options) ([]Result, error) {
 		return nil, err
 	}
 	var out []Result
-	for _, a := range Agents {
-		if !contains(a.Profiles, opt.Profile) {
+	if _, ok := profile.Load().Profile(opt.Profile); !ok {
+		return nil, fmt.Errorf("bundle: unknown profile %q (want one of %s)", opt.Profile, strings.Join(profile.Load().ProfileIDs(), ", "))
+	}
+	for _, a := range profile.Load().Lenses {
+		if !a.In(opt.Profile) {
 			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: "not in profile " + opt.Profile})
 			continue
 		}
@@ -138,7 +98,7 @@ func Build(opt Options) ([]Result, error) {
 			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: "empty " + a.Shard + " shard"})
 			continue
 		}
-		lens, err := read(a.Lens)
+		lens, err := read(a.File)
 		if err != nil {
 			return nil, err
 		}
@@ -162,15 +122,6 @@ func Build(opt Options) ([]Result, error) {
 		}
 	}
 	return out, nil
-}
-
-func contains(xs []string, x string) bool {
-	for _, y := range xs {
-		if y == x {
-			return true
-		}
-	}
-	return false
 }
 
 func safeName(s string) string {
@@ -322,7 +273,7 @@ func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, sop
 	var b strings.Builder
 	w := func(format string, x ...any) { fmt.Fprintf(&b, format, x...) }
 	w("# Bundle %s\n\n", id)
-	w("Agent id: `%s` · lens: `%s` · shard: `%s` · profile: `%s` · repository: `%s`\n\n", id, a.Lens, sh.Name, profile, inv.Repo)
+	w("Agent id: `%s` · lens: `%s` · shard: `%s` · profile: `%s` · repository: `%s`\n\n", id, a.File, sh.Name, profile, inv.Repo)
 	w("The repository is read-only for you (shared rules §1).\n\n")
 	w("## 1. Source shard\n\nRead every file below in full before writing anything. Paths are relative to the repository root.\n\n| File | Lines |\n|---|---|\n")
 	total := 0

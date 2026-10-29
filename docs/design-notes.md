@@ -119,8 +119,8 @@ left open, it is recorded here with the reason.
 - **Docs lint.** `docs_test.go` fails when the skill, a command or an agent
   names a script, subcommand, flag, `validate` kind, reference file or
   `zk-audit:` agent that does not exist.
-- **Not yet implemented.** The deep profile's "regenerate `Verifier.sol` and
-  diff" is described in the I2 lens but not automated.
+- **Verifier regeneration.** The deep profile's "regenerate `Verifier.sol`
+  and diff" is `gnark-inventory verifier regen` (see "Verifier provenance").
 
 ## Profiles and lenses (one source of truth)
 
@@ -156,13 +156,142 @@ left open, it is recorded here with the reason.
    `T1`), `name`, `file`, optional `slice`, `group`, `shard`
    (`circuit` / `integration` / `prover` / `all`) and `profiles`. If the lens
    owns coverage, add `ledger: {classes: [...], seed: "circuit" |
-   "contract-fn" | "privileged", with: [...]}`; a class that needs a new
-   subject kind (not one unit per circuit, per contract function, or per
-   privileged surface) also needs seeding code in `internal/ledger/seed.go`.
+   "contract-fn" | "privileged" | "entry" | "custom-verifier", with: [...]}`;
+   a class that needs a new subject kind (not one unit per circuit, per
+   contract function, per privileged surface, per entry point or per
+   non-gnark verifier) also needs seeding code in `internal/ledger/seed.go`.
+   A vector-scan shard that owns a class is listed on its units as `V`.
+   A lens that only makes sense for some targets names a condition in
+   `when` (`profile.Conditions`, evaluated by `bundle.ConditionHolds`); the
+   bundle is skipped with the condition's reason when it does not hold.
 3. Run `make sync-profiles` and `make check`.
 
 Nothing else changes: bundles, ledger seeding and validation, the docs
 tables and `gnark-inventory profiles` all follow the entry.
+
+## Solidity scan: inheritance, imports and several verifiers
+
+- **Two phases, still lexical.** The scan first splits every file into
+  contracts (bases, function headers with parameter and return types,
+  variables, `using` directives) and follows imports, with remappings from
+  `remappings.txt`, `foundry.toml` and Foundry's `lib/<name>/src` rule, into
+  files outside the scan, which are read as peripheral contracts (types and
+  inheritance only, never in scope). The second phase resolves what a
+  per-file pass missed: modifiers and state declared in a base, the declared
+  type of each verify call's receiver (parameter, local, state variable,
+  mapping or array element, cast), library and `using ... for` calls, calls
+  to an inherited verifier, and low-level `staticcall`/`call` built with
+  `encodeWithSelector`, `encodeWithSignature` or `encodeCall` (whether the
+  success flag is checked and the return data decoded as bool).
+- **Call sites to verifiers.** Every call is mapped to the verifier
+  contracts it can reach (`direct`, `inherits`, `selector`, `name-only`,
+  `inherited-call`), overloads are counted by arity, and canonical ABI
+  signatures carry their selectors (a small Keccak-256 in `internal/keccak`,
+  so the tool keeps its single dependency). A call made in a base contract
+  lists the contracts that inherit it. The binding table names each call's
+  verifier and picks circuits by the verifier's input width.
+- **Generators.** Verifier classification names the generator and template
+  (gnark Groth16 and PLONK templates by version range, snarkjs, ZoKrates,
+  Barretenberg, Halo2, SP1, RISC Zero, hand-written) and the precompiles it
+  calls. A verifier whose generator is not gnark routes the V-custom shard.
+- **Entry points.** External and public state-changing functions of every
+  non-verifier contract, with their gate and effects (`eth-out`, `erc20`,
+  `external-call`, `low-level-call`, `delegatecall`, `signature`, `oracle`,
+  `verify`, `state-write`, `reentrancy-guard`, `initializer`), are the S1
+  contract-review units.
+- **Fixtures.** `testdata/sol-inherit` (a `lib/` base through a
+  remapping, an abstract base holding the call and a modifier),
+  `testdata/sol-multi` (two verifiers, overloaded interfaces, three
+  low-level encodings) and `testdata/sol-library` (library and inherited
+  hand-written verifiers, a non-verifier `verify`).
+
+## Verifier provenance
+
+- **What runs where.** `gnark-inventory verifier abi|diff|vk|bytecode|regen|ceremony`.
+  Every profile's inventory runs `abi` and `ceremony` (offline, no target
+  code; `provenance` in `profiles.json` lists the steps per profile). Deep
+  adds `regen`, run by the orchestrator in Turn 2 inside the sandbox; its
+  `diff.json` reaches the integration bundles. `bytecode` and `regen --vk`
+  run only on artifacts the user supplies.
+- **ABI check (measurement finding 5).** Both measured pool runs found the
+  caller-interface/exported-verifier mismatch only by reading gnark's
+  template. The tool now compares each call's selector, return value and
+  input width with the repository's verifiers and with the verifier the
+  pinned gnark exports (`internal/verifier/templates.json`, read from gnark
+  v0.8.0 to v0.16.4), and notes mismatches on the verifier-contract ledger
+  units.
+- **What needs network or the user.**
+
+  | Check | Needs |
+  |---|---|
+  | ABI check, template check, ceremony scan, `verifier vk`, `verifier diff` | nothing (offline, static) |
+  | `verifier regen --main/--circuit` (deep) | the target's modules in the local cache (offline in the sandbox; fails otherwise) |
+  | VK constants equal to the committed verifier | a verifying-key file or ceremony output (`regen --vk`); a fresh `--circuit` setup compares structure only |
+  | deployed bytecode | a runtime-bytecode file from the user (`--deployed`), or `--rpc URL --address` (network: only when the user asks) |
+  | which VK is deployed, who ran the setup | not decidable from the repository: a `needs_validation` blocker |
+
+- **Ceremony scan.** Single-party `groth16.Setup` / `plonk.Setup`, unsafe
+  SRS, `mpcsetup` phase 1 and 2 calls, and key or ceremony files (gnark
+  `.vk` / `.pk`, mpcsetup phase files, snarkjs `.zkey` / `.ptau` with their
+  recorded contribution counts) seed one trusted-party setup unit each.
+
+## Contract review (S1, V-contract) and custom verifiers (V-custom)
+
+- **Why both a lens and a companion.** I1–I3 read only the proof seam, and
+  the report used to say "Solidity beyond the ZK integration: companion
+  only". pashov's `solidity-auditor` covers that ground more widely but is
+  optional, so S1 and the `contract-review.md` slice are the embedded
+  fallback, and they also run when the companion runs (its output is
+  converted, never trusted as is).
+- **Units.** S1 owns `contract-review`, one unit per entry point. V-custom
+  owns `custom-verifier`, one unit per verifier gnark did not generate,
+  shared with I2. V-custom is in every profile but runs only when the
+  inventory finds such a verifier or a call to an SP1 or RISC Zero gateway
+  (`when: non-gnark-verifier`), so a gnark-only target pays nothing for it.
+- **Sources.** Every V-SA and V-CV vector cites a public audit finding
+  (zkSecurity reports, checked against the report's finding list), an EIP,
+  the SWC registry, an advisory or the gnark template it contrasts with.
+  Oracle manipulation has no vector with an allowed source yet; it is an S1
+  checklist step.
+- **PoCs.** Contract findings use T-FOUNDRY-VERIFIER (now concrete: the
+  verifier gnark exports with a real proof made in the worktree, the
+  committed one when its proving key is committed, or a mock with the
+  target's selector) and custom-verifier findings T-FOUNDRY-MALLEATE. Which
+  findings get a PoC is still the profile's PoC policy (deep: every layer).
+
+## solidity-auditor converter
+
+- **Call site.** Turn 4 runs the companion once (standard, deep) as a
+  general-purpose agent with `--loop 1` on the scratch worktree, because it
+  writes `.solidity-auditor/` into the directory it audits and the target is
+  read-only. `gnark-inventory convert pashov` turns its runs directory into
+  `<out>/companions/solidity-auditor.json`.
+- **Format source.** github.com is not reachable from the build host, so
+  the shapes were read from pashov/skills fetched as a Go module through
+  proxy.golang.org (pseudo-version `v0.0.0-20261021092205-eacfc09b365d`,
+  `solidity-auditor/VERSION` 4.1): `references/dedup-and-assembly.md` (run
+  files with `<!--RUN-->` and `<!--F key=... conf=... kind=...-->` markers)
+  and `references/report-formatting.md` (`full-report.md`). The converter
+  reads both; a later format change breaks the fixture test, not silently
+  the audit.
+- **Everything is a lead.** The run files keep a finding's title,
+  location, description and fix, not its exploit proof, so a converted
+  FINDING enters judging as a `lead` with its confidence and run count in
+  `code_smells`; the judge promotes it after re-deriving the call sequence.
+  Its fix diff, kind and confidence stay under `items`. Items on contracts
+  the inventory does not know go to `unresolved`, which the judge lists in
+  `out_of_scope`.
+
+## Foundry PoCs in CI
+
+`make eval-pocs` runs `evals/fixtures/sol-gnark-abi/pocs/AbiMismatch.t.sol`
+against the verifier gnark v0.14.0 exported for `testdata/sol-gnark-abi`
+with a real proof (sanity), the caller's mismatched interface (attack) and
+the exported interface (control), in the skill's sandbox and offline. The
+fixture pins `solc_version = "0.8.24"` and `evals/run-pocs` fetches it with
+a compile-only `forge build` before the sandboxed run; CI installs Foundry
+v1.7.1 with `foundry-rs/foundry-toolchain`. There is no forge-std in the
+fixtures, so Foundry PoCs declare the cheatcodes they use.
 
 ## Trusted parties (T1)
 

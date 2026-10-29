@@ -8,14 +8,31 @@ import (
 )
 
 func TestTargetEnv(t *testing.T) {
-	env := targetEnv([]string{"GOFLAGS=-mod=vendor -trimpath", "GOPROXY=https://proxy.golang.org", "HOME=/x"}, false)
-	joined := strings.Join(env, "\n")
-	if strings.Contains(joined, "-mod=") || !strings.Contains(joined, "-trimpath") || !strings.Contains(joined, "GOPROXY=off") || strings.Contains(joined, "proxy.golang.org") {
-		t.Fatalf("env: %v", env)
+	env := targetEnv([]string{"GOFLAGS=-mod=vendor -toolexec=/evil", "GOPROXY=https://proxy.golang.org", "HOME=/x",
+		"CGO_ENABLED=1", "GOWORK=/parent/go.work", "GOTOOLCHAIN=auto"}, false)
+	m := map[string]string{}
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		if _, dup := m[k]; dup {
+			t.Errorf("%s set twice: %v", k, env)
+		}
+		m[k] = v
 	}
-	env = targetEnv([]string{"GOPROXY=https://proxy.golang.org"}, true)
-	if len(env) != 1 || env[0] != "GOPROXY=https://proxy.golang.org" {
-		t.Fatalf("network env: %v", env)
+	want := map[string]string{"GOFLAGS": "", "GOPROXY": "off", "CGO_ENABLED": "0", "GOWORK": "off", "GOTOOLCHAIN": "local", "HOME": "/x"}
+	for k, v := range want {
+		if got, ok := m[k]; !ok || got != v {
+			t.Errorf("%s=%q, want %q (env %v)", k, got, v, env)
+		}
+	}
+	env = targetEnv([]string{"GOPROXY=https://proxy.golang.org", "GOTOOLCHAIN=auto", "CGO_ENABLED=1"}, true)
+	joined := strings.Join(env, " ")
+	for _, w := range []string{"GOPROXY=https://proxy.golang.org", "GOTOOLCHAIN=auto", "CGO_ENABLED=0", "GOWORK=off"} {
+		if !strings.Contains(joined, w) {
+			t.Errorf("network env lacks %s: %v", w, env)
+		}
+	}
+	if strings.Contains(joined, "CGO_ENABLED=1") {
+		t.Errorf("cgo kept with network: %v", env)
 	}
 }
 

@@ -11,8 +11,8 @@ replay, VK drift, proof malleability). It proves what it can with a witness or a
 Go / Foundry test, and it records what it actually examined.
 
 > Status: early. The inventory tool, schemas, validators, report assembler and
-> knowledge base work today; the agent orchestration has one recorded blind
-> end-to-end run (quick profile on the pool fixture). See
+> knowledge base work today; the agent orchestration has recorded blind
+> end-to-end runs (quick, standard and deep on the pool fixture, 2026-10-29). See
 > [Current status](#current-status) and the project x-ray in
 > [`docs/x-ray/`](docs/x-ray/x-ray.md).
 

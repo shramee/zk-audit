@@ -111,8 +111,8 @@ before recon finishes.
    the limits; say so in the report's posture. `-mod=mod` lets the go command
    add `go.sum` lines for test-only imports such as `gnark/test` from the
    module cache; it only rewrites the worktree's `go.mod`. If the module
-   cache lacks the target's dependencies, ask before running `go mod
-   download`. `--no-poc` disables PoCs. Remove the worktree at the end
+   cache lacks the target's dependencies, `gnark-inventory preflight` prints
+   the download commands; ask before running them. `--no-poc` disables PoCs. Remove the worktree at the end
    (`git -C <repo> worktree remove --force <out>/worktree`).
 4. **No silent installs.** Never install a skill, a Go module, `forge` or
    anything else without the user's explicit yes. `/zk-audit setup` prints the
@@ -183,6 +183,16 @@ The wrapper builds the tool on first use (needs Go ≥ 1.24). It reports the gna
 and gnark-crypto versions from `go.mod`, matching advisories, backend and curve
 hints, and whether Solidity, Foundry, Hardhat, Circom or Noir are present.
 
+- Pre-flight: `{skill}/scripts/gnark-inventory preflight --repo <repo> --out <out>`.
+  It checks that the pinned gnark and gnark-crypto sources, the target's
+  other requirements and a Go at least as new as the module's and gnark's
+  `go` directives are on this machine, and prints the exact commands that
+  fetch what is missing. Show them and ask before running any (hard rules 4
+  and 8); never fetch silently. When the local Go is too old but a newer
+  toolchain is cached, it prints that toolchain's `go` binary (`use_go`):
+  run PoCs with it inside the sandbox. If the user declines, continue: std
+  is "not available" in the bundles and typed loading falls back to syntax
+  mode; say so in the report's posture.
 - Check the sandbox: `{skill}/scripts/sandbox --check`. It prints the engine
   (`bwrap`, `sandbox-exec` or `none`) and what it isolates; add it to the
   stack line.

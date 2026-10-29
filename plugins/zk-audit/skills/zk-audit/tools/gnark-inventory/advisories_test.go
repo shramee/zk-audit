@@ -150,3 +150,39 @@ func TestAdvisoriesOfflineByDefault(t *testing.T) {
 		t.Errorf("--osv without versions should be a usage error, got %d", code)
 	}
 }
+
+func TestPreflightCommandFakeCache(t *testing.T) {
+	cache := t.TempDir()
+	src := filepath.Join(cache, "github.com", "consensys", "gnark@v0.14.0")
+	if err := os.MkdirAll(filepath.Join(src, "std"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOMODCACHE", cache)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/t\n\ngo 1.24.0\n\nrequire (\n\tgithub.com/consensys/gnark v0.14.0\n\tgithub.com/consensys/gnark-crypto v0.19.0\n)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if code := run([]string{"preflight", "--repo", repo, "--out", "/tmp/o", "--json"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	var r struct {
+		OK       bool
+		Missing  []string
+		Commands []struct{ Command string }
+		Modules  []struct {
+			Std string `json:"gnark_std"`
+		}
+	}
+	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
+		t.Fatal(err)
+	}
+	// the source directory exists, the download entries do not: both
+	// modules must be fetched before an offline build
+	if r.OK || len(r.Commands) == 0 || r.Commands[0].Command != "go -C /tmp/o mod download github.com/consensys/gnark@v0.14.0 github.com/consensys/gnark-crypto@v0.19.0" {
+		t.Errorf("%s", out.String())
+	}
+	if len(r.Modules) != 1 || r.Modules[0].Std != filepath.Join(src, "std") {
+		t.Errorf("std path: %s", out.String())
+	}
+}

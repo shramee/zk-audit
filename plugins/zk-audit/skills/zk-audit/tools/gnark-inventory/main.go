@@ -25,6 +25,8 @@ import (
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/kblint"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/ledger"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/load"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/modcache"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/preflight"
 	profiles "github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/report"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/sandbox"
@@ -41,6 +43,7 @@ const usage = `gnark-inventory ` + Version + ` — deterministic recon for zk-au
 Usage:
   gnark-inventory args      [--repo DIR] [--mode M] [--run-id ID] [--home DIR] -- WORDS...
   gnark-inventory detect    --repo DIR [--out stack.json]
+  gnark-inventory preflight --repo DIR [--out DIR] [--json]
   gnark-inventory inventory --repo DIR --out DIR [--files a.go,dir/] [--syntax-only] [--allow-network]
   gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile P]
   gnark-inventory profiles  [--profile P] [--markdown] [--check-docs SKILL_DIR] [--sync-docs SKILL_DIR]
@@ -85,6 +88,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "detect":
 		err = cmdDetect(args[1:], stdout)
+	case "preflight":
+		err = cmdPreflight(args[1:], stdout)
 	case "inventory":
 		err = cmdInventory(args[1:], stdout)
 	case "assemble":
@@ -193,6 +198,33 @@ func cmdDetect(args []string, stdout io.Writer) error {
 	}
 	fmt.Fprintln(stdout, st.Line())
 	return nil
+}
+
+// cmdPreflight checks that the pinned gnark and gnark-crypto sources, the
+// target's requirements and a new enough Go are on this machine, and prints
+// the commands that would fetch what is missing. It never runs them.
+func cmdPreflight(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("preflight", flag.ContinueOnError)
+	repo := repoFlag(fs)
+	out := fs.String("out", "", "audit output directory, used in the printed commands (default <out>)")
+	asJSON := fs.Bool("json", false, "print JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	root, err := absRepo(*repo)
+	if err != nil {
+		return err
+	}
+	st, err := detect.Detect(root, Version)
+	if err != nil {
+		return err
+	}
+	rep := preflight.Check(st, preflight.Options{Cache: modcache.Dir(), LocalGo: modcache.LocalGo(), Out: *out})
+	if *asJSON {
+		return writeJSON(stdout, rep)
+	}
+	_, err = io.WriteString(stdout, rep.Text())
+	return err
 }
 
 func cmdInventory(args []string, stdout io.Writer) error {

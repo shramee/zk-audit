@@ -93,6 +93,22 @@ left open, it is recorded here with the reason.
   from `testdata/osv/` through `httptest`; no test uses the network. Known
   difference: GO-2025-3929 lists GHSA-9fvj with no lower bound, the GHSA
   record (and the table) start at v0.12.0.
+- **`preflight` (D16).** A deterministic check before recon: for every
+  `go.mod` that pins gnark or gnark-crypto it looks up both in the module
+  cache (extracted source for the agents, and the `cache/download` `.mod`
+  and `.zip` the go command builds from with `GOPROXY=off`), every other
+  requirement's download entry, and the go directive of the module, gnark
+  and gnark-crypto against the local `go env GOVERSION`. It prints what is
+  missing and simple commands (no `&&`) that fetch it: `go -C <out> mod
+  download gnark@v gnark-crypto@v` (outside the repository), `go -C
+  <out>/worktree mod download` (only the scratch worktree's `go.sum` can
+  change) and `GOTOOLCHAIN=goX go -C <out> version` for a toolchain. It
+  runs none of them. The sandbox keeps `GOTOOLCHAIN=local`, so a target
+  that needs a newer Go runs with a cached toolchain's own `bin/go`, which
+  preflight finds in `golang.org/toolchain@…` and prints as `use_go`.
+  `internal/modcache` holds the cache lookups for preflight and `bundle`
+  (which writes the absolute gnark std path, and now the gnark-crypto
+  path, into every bundle). Tests use a fake `GOMODCACHE`.
 - **Fallback loader.** If `go/packages` cannot type-check the target (missing
   dependencies, wrong toolchain), the tool falls back to `go/parser` and marks
   unresolved items (`resolved: false`). gnark ≥ v0.15 needs Go ≥ 1.25 and

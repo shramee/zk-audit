@@ -6,24 +6,22 @@ package bundle
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"go/parser"
 	"go/token"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/detect"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fsutil"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/inventory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/memory"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/modcache"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 )
 
@@ -512,8 +510,10 @@ func demote(md string) string {
 }
 
 // peripheral describes where agents find peripheral code. Hunters have no
-// shell, so the gnark std directory is resolved here, from stack.json and the
-// module cache, and stated as an absolute path or as unavailable.
+// shell, so the gnark (and gnark-crypto) source directories are resolved
+// here, from stack.json and the module cache, and stated as absolute paths
+// or as unavailable (`gnark-inventory preflight` prints the command that
+// fetches them).
 func peripheral(out string) string {
 	var b strings.Builder
 	b.WriteString("Peripheral code (read on demand, never edit): vendored libraries under `vendor/` or Foundry `lib/`")
@@ -523,43 +523,30 @@ func peripheral(out string) string {
 		b.WriteString("; gnark std at the version pinned in `go.mod` (no stack.json: version unknown).")
 		return b.String()
 	}
-	cache := moduleCache()
+	cache := modcache.Dir()
 	for _, v := range st.Gnark.Versions {
 		if !strings.HasPrefix(v, "v") {
 			fmt.Fprintf(&b, "; gnark %s: std source location unknown", v)
 			continue
 		}
-		dir := filepath.Join(cache, "github.com", "consensys", "gnark@"+v, "std")
-		if st, err := os.Stat(dir); cache != "" && err == nil && st.IsDir() {
-			fmt.Fprintf(&b, "; gnark std at the pinned %s: `%s`", v, dir)
+		m := modcache.Lookup(cache, "github.com/consensys/gnark", v)
+		if cache != "" && m.SourcePresent {
+			fmt.Fprintf(&b, "; gnark std at the pinned %s: `%s` (use this absolute path with Read and Grep)", v, filepath.Join(m.Source, "std"))
 		} else {
 			fmt.Fprintf(&b, "; gnark std at the pinned %s is **not available** (not in the module cache): do not reason about std internals from memory, write a LEAD whose `unverified:` names the std function", v)
 		}
 	}
+	seen := map[string]bool{}
+	for _, gm := range st.GoModules {
+		v := gm.GnarkCrypto
+		if v == "" || seen[v] || !strings.HasPrefix(v, "v") {
+			continue
+		}
+		seen[v] = true
+		if m := modcache.Lookup(cache, "github.com/consensys/gnark-crypto", v); cache != "" && m.SourcePresent {
+			fmt.Fprintf(&b, "; gnark-crypto %s (native reference implementations): `%s`", v, m.Source)
+		}
+	}
 	b.WriteString(".")
 	return b.String()
-}
-
-// moduleCache returns GOMODCACHE: the environment, else `go env`, else
-// GOPATH/pkg/mod.
-func moduleCache() string {
-	if c := os.Getenv("GOMODCACHE"); c != "" {
-		return c
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if o, err := exec.CommandContext(ctx, "go", "env", "GOMODCACHE").Output(); err == nil {
-		if c := strings.TrimSpace(string(o)); c != "" {
-			return c
-		}
-	}
-	gp := os.Getenv("GOPATH")
-	if gp == "" {
-		h, err := os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
-		gp = filepath.Join(h, "go")
-	}
-	return filepath.Join(strings.Split(gp, string(os.PathListSeparator))[0], "pkg", "mod")
 }

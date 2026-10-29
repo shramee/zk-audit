@@ -38,6 +38,8 @@ out="$work/out"
 mkdir -p "$out"
 
 step "build + version";   "$gi" version
+step "args + profiles";   "$gi" args --repo "$root/testdata/pool" --run-id 20261028-000000 -- deep --no-poc | grep -q '"passes": 3'
+                          "$gi" profiles --check-docs "$skill"
 step "detect";            "$gi" detect --repo "$fixture" --out "$out/stack.json"
 step "inventory";         "$gi" inventory --repo "$fixture" --out "$out" --syntax-only
 step "validate";          "$skill/scripts/validate-ledger" "$out/coverage-ledger.json"

@@ -4,9 +4,12 @@
 #
 # Usage: evals/run-pocs <fixture-name> <scratch-dir>
 #   Copies the fixture with evals/sanitize to <scratch-dir>/<fixture-name>,
-#   copies evals/fixtures/<fixture-name>/pocs/*_test.go into the package named in
-#   evals/fixtures/<fixture-name>/pocs/PACKAGE, and runs the PoC_ and Decoy_ tests.
-# Needs the fixture's modules in the Go module cache (make fixtures).
+#   copies evals/fixtures/<fixture-name>/pocs/*_test.go (Go) or *.t.sol
+#   (Foundry) into the directory named in evals/fixtures/<fixture-name>/pocs/PACKAGE,
+#   and runs the PoC_ and Decoy_ tests.
+# Go fixtures need their modules in the Go module cache (make fixtures).
+# Foundry fixtures need forge and the solc version of their foundry.toml
+# (fetched by a compile-only `forge build` when EVAL_GOPROXY allows network).
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 name="${1:?fixture name}"
@@ -15,6 +18,19 @@ pocs="$here/fixtures/$name/pocs"
 pkg="$(cat "$pocs/PACKAGE")"
 dest="$scratch/$name"
 "$here/sanitize" "$name" "$dest" >/dev/null
+sandbox="$here/../plugins/zk-audit/skills/zk-audit/scripts/sandbox"
+if compgen -G "$pocs/*.t.sol" >/dev/null; then
+  command -v forge >/dev/null || { echo "run-pocs: $name needs forge (Foundry)" >&2; exit 2; }
+  mkdir -p "$dest/$pkg"
+  cp "$pocs"/*.t.sol "$dest/$pkg/"
+  if [ "${EVAL_GOPROXY:-off}" != off ]; then
+    # Compile only (no test runs) to let forge fetch the pinned solc into
+    # ~/.svm; the sandboxed run below is offline.
+    forge build --root "$dest" --quiet
+  fi
+  exec "$sandbox" --rw "$dest" --timeout 900 -- \
+    forge test --root "$dest" --offline --match-contract '^(PoC|Decoy)_' -vv
+fi
 cp "$pocs"/*_test.go "$dest/$pkg/"
 # Run through the skill's sandbox, the same command an audit uses: no network
 # (GOPROXY=off; EVAL_GOPROXY fetches missing modules first), the scratch copy the
@@ -26,5 +42,5 @@ if [ "${EVAL_GOPROXY:-off}" != off ]; then
   # anything, so this step needs no sandbox.
   GOWORK=off CGO_ENABLED=0 GOFLAGS=-mod=mod GOPROXY="$EVAL_GOPROXY" go -C "$dest" list -test -deps "./$pkg/" >/dev/null
 fi
-exec "$here/../plugins/zk-audit/skills/zk-audit/scripts/sandbox" --rw "$dest" --timeout 900 -- \
+exec "$sandbox" --rw "$dest" --timeout 900 -- \
   go -C "$dest" test -count=1 -run '^Test(PoC|Decoy)_' -v "./$pkg/"

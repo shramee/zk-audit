@@ -38,6 +38,20 @@
         }
       }
     },
+    "accepted_risks": {
+      "type": "array",
+      "description": "Risks zk-audit.md accepts that no record covers (a record of an accepted risk carries trust.accepted instead); listed under Trusted parties",
+      "items": {
+        "type": "object",
+        "required": ["party", "risk", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "party": { "$ref": "#/$defs/nonEmpty" },
+          "risk": { "$ref": "#/$defs/nonEmpty" },
+          "source": { "type": "string", "pattern": "^zk-audit\\.md(:[0-9]+(-[0-9]+)?)?$" }
+        }
+      }
+    },
     "records": { "type": "array", "items": { "$ref": "#/$defs/record" } }
   },
   "$defs": {
@@ -84,6 +98,25 @@
       }
     },
     "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+    "property": { "enum": ["soundness", "completeness", "privacy", "liveness"], "description": "What the record breaks; privacy records are listed in the report's Privacy section" },
+    "calibration": { "type": "string", "pattern": "^SC-[A-Z0-9]+(-[A-Z0-9]+)*$", "description": "The severity-calibration anchor the record fits (references/severity-calibration.md); validate findings checks the verdict and severity against it" },
+    "trust": {
+      "type": "object",
+      "required": ["party", "role", "power", "breaks", "assumption"],
+      "additionalProperties": false,
+      "description": "A trusted-party item (judging.md Gate 3): who holds the power, what it breaks, and the assumption users carry. `validate findings` checks the verdict and severity rules.",
+      "properties": {
+        "party": { "$ref": "#/$defs/nonEmpty", "description": "Who holds the power, as the code names it (owner of Vault, UPDATER_ROLE, the setup ceremony)" },
+        "role": { "enum": ["owner", "admin", "role", "upgrader", "deployer", "setup", "prover", "sequencer", "relayer", "oracle", "service", "other"] },
+        "power": { "$ref": "#/$defs/nonEmpty", "description": "What the party can do, in one sentence" },
+        "breaks": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["soundness", "funds", "liveness", "privacy"] } },
+        "assumption": { "$ref": "#/$defs/nonEmpty", "description": "The trust assumption users carry, as a statement" },
+        "mitigation": { "type": "string", "description": "What the repository shows that limits the power (timelock, multisig owner, multi-party ceremony), with file:line; empty or absent when none" },
+        "accepted": { "type": "boolean", "description": "zk-audit.md marks the party trusted or lists this power as an accepted risk" },
+        "source": { "type": "string", "pattern": "^zk-audit\\.md(:[0-9]+(-[0-9]+)?)?$", "description": "Where zk-audit.md accepts it, e.g. zk-audit.md:12" },
+        "lead_reason": { "$ref": "#/$defs/nonEmpty", "description": "Only for a lead: why the power itself is not established" }
+      }
+    },
     "fix": {
       "type": "object",
       "required": ["summary"],
@@ -151,7 +184,7 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "confirmed" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true, "seen": true,
+        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" }, "property": { "$ref": "#/$defs/property" },
         "severity": { "$ref": "#/$defs/severity" },
         "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
         "evidence": { "enum": ["POC", "ANALYSIS"] },
@@ -172,7 +205,7 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "needs_validation" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true, "seen": true,
+        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" }, "property": { "$ref": "#/$defs/property" },
         "severity": { "$ref": "#/$defs/severity" },
         "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
         "proof": { "type": "string" },
@@ -192,7 +225,7 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "rejected" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true, "seen": true,
+        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" }, "property": { "$ref": "#/$defs/property" },
         "reason": { "$ref": "#/$defs/nonEmpty" },
         "refuting_location": { "$ref": "#/$defs/location" },
         "poc": { "$ref": "#/$defs/poc" },
@@ -207,7 +240,7 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "lead" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true, "seen": true,
+        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" }, "property": { "$ref": "#/$defs/property" },
         "code_smells": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmpty" } },
         "unverified": { "$ref": "#/$defs/nonEmpty" },
         "poc": { "$ref": "#/$defs/poc", "description": "A demoted record keeps the PoC that was built for it" },

@@ -25,15 +25,20 @@ hashing are the caller's job unless stated otherwise.
 
 **V-E2. EdDSA public key accepted with a torsion component**
 
-- **D:** `eddsa.Verify` checks that `A` is on the curve and not of small order,
-  but it "accepts mixed-order public keys (a prime-order point plus a torsion
-  point)". One secret key therefore corresponds to up to `cofactor` accepted
-  public keys. A circuit that derives an identity, a membership leaf or a
-  nullifier from `A.X, A.Y` lets one key holder appear as several identities.
+- **D:** `eddsa.Verify` checks neither that `A` is on the curve nor that it
+  is of prime order: it only asserts the bound on `S`, that
+  `[S]G - [h]A` is on the curve, and that `[cofactor]([S]G - [h]A - R)` is
+  the identity. A key with a torsion component (a prime-order point plus a
+  small-order point) verifies the same signatures as the clean key, so one
+  secret key corresponds to up to `cofactor` accepted public keys, and
+  small-order keys pass too. A circuit that derives an identity, a
+  membership leaf or a nullifier from `A.X, A.Y` lets one key holder appear
+  as several identities.
 - **FP:** The identity is derived from something unique per secret (for example
-  a hash of the secret proven in-circuit), or the circuit clears the cofactor /
-  checks full subgroup membership before hashing the key.
-- **Source:** `gnark/std/signature/eddsa/eddsa.go` (`Verify` doc comment)
+  a hash of the secret proven in-circuit), or the circuit checks `A` on the
+  curve and clears the cofactor / checks prime-order subgroup membership
+  before hashing the key.
+- **Source:** `gnark/std/signature/eddsa/eddsa.go` (`Verify` / `IsValid`: no curve or subgroup check on `A` or `R`; checked at v0.14.0 and v0.16.4)
 - **Seed:** FG-SIGNATURE
 - **PoC:** T-INVALID-ASSIGNMENT
 

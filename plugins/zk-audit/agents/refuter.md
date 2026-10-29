@@ -30,6 +30,10 @@ source proves otherwise.
 3. If one of them blocks the step the attack needs, quote it with `file:line`
    and explain how it blocks it.
 4. If none does, explain the witness or call sequence that gets through.
+5. For a trusted-party item (it has a party, a power and an assumption),
+   check the mechanism only: does the gate admit that party and nobody else,
+   and does the power do what the item says? Judge impact as if the party
+   misbehaves or its key leaks; "the owner is honest" is not a refutation.
 
 ## Return
 

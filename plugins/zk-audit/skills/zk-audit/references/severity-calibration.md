@@ -1,0 +1,244 @@
+# Severity calibration
+
+Severity in this skill is fixed by fact pattern, not by the judge's mood.
+Every `confirmed` or `needs_validation` record names the anchor below that
+fits it in its `calibration` field, and `validate findings` refuses a verdict
+or severity the anchor does not allow. When no anchor fits, leave
+`calibration` out (the validator warns) and say why in the description.
+
+The anchors were set against published audit labels: the gnark audits that
+ship in `gnark/audits/` (zkSecurity gnark std 2024-05, Kudelski gnark-crypto
+2022-10, Sigma Prime KZG 2024-05; the Least Authority reports there carry no
+severity labels), the gnark GitHub advisories (`gnark-versions.md`), and
+public zkSecurity reports (reports.zksecurity.xyz, read 2026-10-29). Library
+audits rate latent flaws higher than application audits do, because unknown
+callers may reach them; the anchors are for application audits and say so
+where it matters. zkSecurity's scale tops out at High, so their High covers
+both `high` and `critical` here.
+
+## How to pick
+
+1. Gate 4 decides **who is harmed**; the anchor decides **how much**.
+2. A mechanism that holds with nobody harmed is not a lead and not rejected:
+   - the free value has no consumer → `SC-UNUSED-FREE-VALUE` (`info`, or `low`
+     when a consumer exists without protocol effect);
+   - the bypass reaches nothing beyond an honest witness or another reported
+     bug → `SC-MASKED-BYPASS`, `confirmed` `low`, with `chain` to the masking
+     record;
+   - only the prover's own proof breaks (self-harm) → `rejected`.
+3. A trusted party's power is `SC-TRUST-SOUNDNESS` (`needs_validation`,
+   `high`; `medium` only with `trust.mitigation`), `SC-TRUST-LIVENESS`,
+   `SC-PRIVACY-OPERATOR` or `SC-TRUST-HYGIENE`; an unprivileged path to it
+   is `SC-TRUST-AMPLIFIED` (`judging.md` Gate 3).
+4. Pick the highest anchor whose pattern the record fully meets. Do not
+   average: one record, one anchor.
+
+Worked cases (invented names):
+
+- A divide hint returns quotient and remainder; the circuit asserts only
+  `q * d == n` in the field and never reads the remainder. Nothing else reads
+  `q` either. → `SC-UNUSED-FREE-VALUE`, `confirmed` `info` (a PoC shows two
+  witnesses for one public input). Not `medium`: no consumer changes what
+  verifies.
+- An equality check on the note owner is multiplied by a prover-chosen flag,
+  but the input owner it compares is itself unbound (a separate critical
+  finding). → `SC-MASKED-BYPASS`, `confirmed` `low`, `chain` to the unbound
+  owner finding. The refuter's "no victim" is the masking, not a refutation.
+- `setChecker(address)` is `onlyOwner`, no timelock, owner is an EOA in the
+  deploy script. → `SC-TRUST-SOUNDNESS`, `needs_validation` `high`, blocker
+  "Is the owner a timelocked multisig, and who holds its keys?".
+- The same setter behind a `TimelockController` owner set in the deploy
+  script. → `SC-TRUST-SOUNDNESS`, `needs_validation` `medium`, with the
+  deploy line in `trust.mitigation`.
+- A 30-root ring buffer that anyone can flush with deposits they withdraw
+  again. → `SC-LIVENESS-GRIEF`, `low` (the victim re-proves), `medium` if
+  exits are time-critical.
+
+## Anchors
+
+| Anchor | Pattern | Verdicts | Severity | Rule |
+|---|---|---|---|---|
+| `SC-FORGE-ANY` | Any prover forges a statement that mints, steals or double-spends, or proves membership it does not have, with no special state. | confirmed | critical, high | critical when any prover reaches it from honest-looking inputs; high when it needs a specific achievable state or input set. |
+| `SC-GADGET-SOUNDNESS` | A gadget or library routine accepts a false result for some inputs any prover can choose (non-unique decomposition, unchecked hint, broken Fiat-Shamir), and production circuits call it on prover-controlled values. | confirmed, needs_validation | critical, high, medium | high by default; medium when the reachable inputs are narrow or the caller's other constraints limit what the false result can do; critical only with a direct path to funds. |
+| `SC-LATENT-UNREACHABLE` | A soundness flaw that the current callers, constants or parameters cannot reach (fixed-length inputs, a branch the configuration never takes). | confirmed, lead | low, info | low with a hardening fix; info when no plausible change makes it reachable. Library audits rate these higher (medium) because unknown callers can reach them; an application audit rates its own code. |
+| `SC-UNUSED-FREE-VALUE` | An unconstrained or under-constrained value (hint output, 0/0 division result, alias of a decomposition, quotient pinned only in the field) that reaches no public input, state, payout or later check. | confirmed, lead | low, info | info when nothing consumes the value; low when a consumer exists but its use has no protocol effect today. Never medium or above without a consumer that changes what verifies. |
+| `SC-MASKED-BYPASS` | A check can be bypassed (gated by a prover-chosen flag, weakened by a missing bound), but the bypass reaches nothing an honest witness or a separate, already reported bug does not already reach. | confirmed | low | confirmed low with chain to the masking finding; not a lead (the mechanism is real) and not rejected (fixing the other bug makes it exploitable). Self-harm only is rejected instead. |
+| `SC-COMPLETENESS-EDGE` | An honest input at a boundary (zero, r - 1, maximum length, an unused branch) cannot be proven, and the protocol has a way around it or does not need it. | confirmed, lead | low, info | low; info when no honest user reaches the boundary. |
+| `SC-BRICK-CORE` | Honest users cannot complete a core flow (withdraw, exit, claim) for a reachable state, permanently or until an upgrade. | confirmed, needs_validation | high, medium | high when funds stay locked with no recovery path; medium when an operator or upgrade can recover them. |
+| `SC-BINDING-REPLAY` | A proof is not bound to its sender, recipient, chain, contract or epoch, so it can be front-run, redirected or replayed. | confirmed, needs_validation, lead | high, medium | high when a front-runner takes the payout or a nullifier repeats; medium for cross-domain replay that needs a second deployment sharing the verifier and a root. |
+| `SC-TRUST-SOUNDNESS` | A trusted party (owner, role, upgrader, deployer) can break soundness or move funds: swap the verifier or VK, upgrade, insert a root, mint, sweep. No unprivileged path reaches it. | needs_validation | high, medium | needs_validation with a trust object and a blocker naming the assumption; high by default, medium only with trust.mitigation quoting a timelock, multisig owner or governance contract in the repository (validate enforces both). An accepted risk in zk-audit.md keeps the record. |
+| `SC-TRUST-AMPLIFIED` | An unprivileged actor reaches a trusted party's power: an ungated setter or upgrade, an initializer anyone calls first, a replayable admin signature. | confirmed | critical, high | confirmed; critical when it gives any caller the verifier or the funds, high otherwise. |
+| `SC-SETUP-SINGLE-PARTY` | Production keys come from a single-party groth16.Setup or unsafekzg, so whoever ran it can forge proofs. | needs_validation, confirmed | high, critical | needs_validation high with the blocker 'which keys are deployed?'; confirmed when the repository shows the keys from that setup are the deployed ones. |
+| `SC-TRUST-LIVENESS` | A trusted party or operator can pause, censor, ban, delay upgrades or let a role lapse, blocking users but not stealing. | needs_validation, confirmed | medium, low | medium when users' funds are blocked with no exit; low when users have a bypass (force exit, another operator). |
+| `SC-TRUST-HYGIENE` | Admin hygiene with no direct harm: single-step ownership transfer, missing events on setters, a role that cannot be rotated. | confirmed, needs_validation | info, low | info; low when a slip locks the protocol's admin out of a needed action. Prefer a hardening note when no record is needed. |
+| `SC-PRIVACY-DEANON` | Public data, a tag or a service deanonymises users or links all their actions, against an explicit privacy claim. | confirmed, needs_validation | high, medium | high when anyone on chain identifies the user; medium when only a specific observer can, or only for a subset of users. |
+| `SC-PRIVACY-PARTIAL` | A bounded function of a secret leaks, or the anonymity set shrinks (an index, an expiry, a range, a fingerprint). | confirmed, needs_validation, lead | medium, low | medium when the leak singles out users in practice; low when it only shrinks the anonymity set. |
+| `SC-PRIVACY-OPERATOR` | An operator the user relies on (relayer, indexer, delegated prover, scanner) sees links or secrets the chain does not show. | needs_validation, confirmed | low, info | low with a trust object when the trust model does not name the operator; info when it does and users can run their own. A leaked key that lets the operator act as the user is SC-PRIVACY-DEANON or worse. |
+| `SC-LIVENESS-GRIEF` | Anyone can delay honest users at their own gas cost, and the victim recovers by retrying (a flushable root window, a front-runnable hint, capacity filled temporarily). | confirmed, needs_validation | medium, low | low when the attack must be repeated per victim and the victim can re-prove; medium when it blocks all users or a time-critical exit. |
+| `SC-DOS-SERVICE` | Crafted input crashes, stalls or exhausts a service: deserialization without size limits, slow hints, oversized proofs. | confirmed, needs_validation | high, medium, low | medium for a network-facing prover or relayer; high when it halts a consensus or settlement path; low when the input is trusted (local keys, setup files). |
+| `SC-DEPENDENCY-ADVISORY` | The pinned gnark version matches a published advisory. | confirmed, needs_validation | critical, high, medium, low, info | the advisory's severity when the affected component is used in a production circuit, capped by the protocol impact; info when it is not imported (judging.md section 9). |
+| `SC-NEGLIGIBLE` | An event of negligible probability, or a security margin below a target but far from practical attack. | confirmed, lead | low, info | info for negligible probability; low for a margin below 112 bits. |
+| `SC-HYGIENE` | Stale or hand-edited artifacts, dead code, documentation that does not match the code, missing tests for public-input order. | confirmed, lead | info | info, or a hardening note instead of a record. |
+
+## Published findings behind the anchors
+
+| Source | Finding | Published | Anchor | Reference |
+|---|---|---|---|---|
+| zkSecurity, Zeko | #00 Arbitrary Token Withdrawals Allowed By Not Linking Proofs In Merge Rule | High | `SC-FORGE-ANY` | https://reports.zksecurity.xyz/reports/zeko/ |
+| zkSecurity, Renegade (3) | #00 Underconstrained Comparison Can Be Exploited to Drain Funds | High | `SC-FORGE-ANY` | https://reports.zksecurity.xyz/reports/renegade-3/ |
+| zkSecurity, zkLighter desert exit | #00 Negative TAV bypass allows withdrawal of absolute value | High | `SC-FORGE-ANY` | https://reports.zksecurity.xyz/reports/zklighter-desertexit/ |
+| zkSecurity, gnark std (2024-05) | 01 Partition Function Is Not Sound | High | `SC-GADGET-SOUNDNESS` | `gnark/audits/2024-05 - zksecurity - gnark std.pdf` |
+| zkSecurity, gnark std (2024-05) | 00 MultiCommitter Scheme May Converge To Using Constant Challenge 1 | High | `SC-GADGET-SOUNDNESS` | `gnark/audits/2024-05 - zksecurity - gnark std.pdf` |
+| zkSecurity, gnark std (2024-05) | 09 Missing Constraints In ToNAF Function | Medium | `SC-GADGET-SOUNDNESS` | `gnark/audits/2024-05 - zksecurity - gnark std.pdf` |
+| GitHub advisory, gnark | GHSA-3mvx-pp85-pm65 eleven std hint outputs consumed without binding | Critical | `SC-GADGET-SOUNDNESS` | https://github.com/Consensys/gnark/security/advisories/GHSA-3mvx-pp85-pm65 |
+| GitHub advisory, gnark | GHSA-498w-5j49-vqjg full-width ToBinary accepts a and a + r | Moderate | `SC-GADGET-SOUNDNESS` | https://github.com/Consensys/gnark/security/advisories/GHSA-498w-5j49-vqjg |
+| zkSecurity, Lighter (3) | #00 Invalid Remainder Range Check Can Lead to Incorrect Result in div_rem | High | `SC-GADGET-SOUNDNESS` | https://reports.zksecurity.xyz/reports/lighter-3/ |
+| zkSecurity, gnark std (2024-05) | 0a wrapped_hash Is Not Collision Resistant With Input Of Different Length (callers use fixed lengths) | Low | `SC-LATENT-UNREACHABLE` | `gnark/audits/2024-05 - zksecurity - gnark std.pdf` |
+| zkSecurity, gnark std (2024-05) | 05 Incorrect Condition May Lead To Overflow Native Field In IsZero (unreachable with current parameters; library audit) | Medium | `SC-LATENT-UNREACHABLE` | `gnark/audits/2024-05 - zksecurity - gnark std.pdf` |
+| GitHub advisory, gnark | GHSA-rjjm-x32p-m3f7 range checker accepted inputs up to 16 bits wider | Low | `SC-LATENT-UNREACHABLE` | https://github.com/Consensys/gnark/security/advisories/GHSA-rjjm-x32p-m3f7 |
+| zkSecurity, zkLogin (Mysten Labs) | #02 Underconstrained bit decomposition of nonce (deemed not a security risk in context) | Low | `SC-UNUSED-FREE-VALUE` | https://reports.zksecurity.xyz/reports/mysten-labs-zklogin/ |
+| zkSecurity, zkLighter wrapper | #03 Unused Return Value in verify_aggregated_delta | Informational | `SC-UNUSED-FREE-VALUE` | https://reports.zksecurity.xyz/reports/zklighter-wrapper/ |
+| zkSecurity, gnark std (2024-05) | 0b Field API Is A Leaky Abstraction (no current misuse) | Informational | `SC-UNUSED-FREE-VALUE` | `gnark/audits/2024-05 - zksecurity - gnark std.pdf` |
+| zkSecurity, Hinkal | #03 Merkle tree construction allows crafting a Merkle proof for membership of the intermediate nodes | Low | `SC-MASKED-BYPASS` | https://reports.zksecurity.xyz/reports/hinkal-audit/ |
+| zkSecurity, RISC Zero Solana contracts | #00 Groth16 Verifier Reduces Public Inputs | Low | `SC-MASKED-BYPASS` | https://reports.zksecurity.xyz/reports/risc0-solana-contracts/ |
+| zkSecurity, Lighter (3) | #05 conditional_div_rem Overconstrains Unused Branch | Low | `SC-COMPLETENESS-EDGE` | https://reports.zksecurity.xyz/reports/lighter-3/ |
+| zkSecurity, zkLogin (Mysten Labs) | #03 Overconstrained bounds for RSA signature verification | Low | `SC-COMPLETENESS-EDGE` | https://reports.zksecurity.xyz/reports/mysten-labs-zklogin/ |
+| Kudelski, gnark-crypto (2022-10) | KS-SBCF-F-04 Inversion of 0 element is not detected in field arithmetic | Low | `SC-COMPLETENESS-EDGE` | `gnark/audits/2022-10 - Kudelski - gnark-crypto.pdf` |
+| zkSecurity, zkLighter block | #01 On-chain operation count can bypass the block limit, leading to denial of L1 withdrawals | High | `SC-BRICK-CORE` | https://reports.zksecurity.xyz/reports/zklighter-block/ |
+| zkSecurity, Zeko | #07 Withdrawal Impossible Since L2 Bridge Account Is Missing Method To Receive Funds | Medium | `SC-BRICK-CORE` | https://reports.zksecurity.xyz/reports/zeko/ |
+| zkSecurity, Renegade | #00 Deposits Can Be Stolen By Frontrunners | High | `SC-BINDING-REPLAY` | https://reports.zksecurity.xyz/reports/renegade/ |
+| zkSecurity, Hinkal | #01 encryptedOutput and encryptedStakeCommitmentContent are not binding to the verified ZKP proofs | Medium | `SC-BINDING-REPLAY` | https://reports.zksecurity.xyz/reports/hinkal-audit/ |
+| zkSecurity, Aptos encrypted mempool | #02 Epoch Not Bound to AggregatedSubtranscript Signature Enables Stale Transcript Replay | High | `SC-BINDING-REPLAY` | https://reports.zksecurity.xyz/reports/aptos-encrypted-mempool/ |
+| zkSecurity, Aztec TGE | #00 The ATP contract can upgrade the Staker to arbitrary address and withdraw the locked token | High | `SC-TRUST-SOUNDNESS` | https://reports.zksecurity.xyz/reports/aztec-tge/ |
+| zkSecurity, RISC Zero Helios | #01 Next Sync Committee Might Be Arbitrarily Set (prover-chosen initial store) | Medium | `SC-TRUST-SOUNDNESS` | https://reports.zksecurity.xyz/reports/risc0-helios/ |
+| zkSecurity, HumanityLink | #04 Constructors don't gate upgrades, allowing anyone to upgrade the Leo programs | High | `SC-TRUST-AMPLIFIED` | https://reports.zksecurity.xyz/reports/humanitylink-1/ |
+| zkSecurity, HumanityLink | #00 Missing authorization checks in bulk_issue allow an attacker to drain the balance | High | `SC-TRUST-AMPLIFIED` | https://reports.zksecurity.xyz/reports/humanitylink-1/ |
+| 0xPARC zk-bug-tracker | Common vulnerability 7: Trusted Setup Leak (toxic waste lets its holder forge proofs) | unrated | `SC-SETUP-SINGLE-PARTY` | https://github.com/0xPARC/zk-bug-tracker |
+| zkSecurity, randa-mu OnlySwaps | #01 Admin Can Delay Upgrades Indefinitely | Medium | `SC-TRUST-LIVENESS` | https://reports.zksecurity.xyz/reports/randa-mu-onlyswaps/ |
+| zkSecurity, Renegade (3) | #02 Admin Functions Are Inaccessible If the Darkpool Is Paused | Medium | `SC-TRUST-LIVENESS` | https://reports.zksecurity.xyz/reports/renegade-3/ |
+| zkSecurity, Demox Aleo standard programs | #08 A Single Admin Can Manually Ban the Validator | Low | `SC-TRUST-LIVENESS` | https://reports.zksecurity.xyz/reports/demox-aleo-standard-programs/ |
+| zkSecurity, RISC Zero Helios | #03 Updaters Can't Be Rotated | Low | `SC-TRUST-LIVENESS` | https://reports.zksecurity.xyz/reports/risc0-helios/ |
+| zkSecurity, intmax zERC20 | #06 Lack of Two-Step Process for Ownership Transfer | Informational | `SC-TRUST-HYGIENE` | https://reports.zksecurity.xyz/reports/intmax-zerc20-1/ |
+| zkSecurity, Renegade (3) | #05 Lack of Two-Step Process for Ownership Transfer | Informational | `SC-TRUST-HYGIENE` | https://reports.zksecurity.xyz/reports/renegade-3/ |
+| zkSecurity, Silent Protocol | #00 Broken anonymity in zero-fee registration | High | `SC-PRIVACY-DEANON` | https://reports.zksecurity.xyz/reports/silent2/ |
+| zkSecurity, Aleo synthesizer | #04 Proof Delegation Leaks User Signing Key | High | `SC-PRIVACY-DEANON` | https://reports.zksecurity.xyz/reports/aleo-synthesizer/ |
+| GitHub advisory, gnark | GHSA-9xcg-3q8v-7fq6 Groth16 commitments to private witnesses are not hiding | High | `SC-PRIVACY-DEANON` | https://github.com/Consensys/gnark/security/advisories/GHSA-9xcg-3q8v-7fq6 |
+| zkSecurity, ZK Email | #04 The reveal array leaks inputs in a non-match | Medium | `SC-PRIVACY-PARTIAL` | https://reports.zksecurity.xyz/reports/zkemail/ |
+| zkSecurity, Demox Aleo standard programs | #07 transfer_private Function May Leak Information with authorized_until Field | Medium | `SC-PRIVACY-PARTIAL` | https://reports.zksecurity.xyz/reports/demox-aleo-standard-programs/ |
+| zkSecurity, intmax zERC20 | #03 Nova Proof Leaks Last Leaf Index in Calldata | Low | `SC-PRIVACY-PARTIAL` | https://reports.zksecurity.xyz/reports/intmax-zerc20-1/ |
+| zkSecurity, Silent Protocol | #07 Insecure randomness used for anonymity set sender position | Low | `SC-PRIVACY-PARTIAL` | https://reports.zksecurity.xyz/reports/silent2/ |
+| zkSecurity, intmax zERC20 | #01 Indexer Service Can Link Senders to Recipients | Low | `SC-PRIVACY-OPERATOR` | https://reports.zksecurity.xyz/reports/intmax-zerc20-1/ |
+| zkSecurity, HumanityLink | #12 Beneficiary records and view keys are sent to the delegated prover and scanner in plaintext | Informational | `SC-PRIVACY-OPERATOR` | https://reports.zksecurity.xyz/reports/humanitylink-1/ |
+| zkSecurity, Tongo | #06 Hint Manipulation and Staleness Issues (front-run, stale hint) | Low | `SC-LIVENESS-GRIEF` | https://reports.zksecurity.xyz/reports/tongo/ |
+| zkSecurity, Zeko (2) | #07 User can request arbitrary action state witness proofs from the Sequencer, allowing Denial of Service | Medium | `SC-LIVENESS-GRIEF` | https://reports.zksecurity.xyz/reports/zeko-2/ |
+| GitHub advisory, gnark | GHSA-cph5-3pgr-c82g crafted VK or proof exhausts memory on deserialization | Moderate | `SC-DOS-SERVICE` | https://github.com/Consensys/gnark/security/advisories/GHSA-cph5-3pgr-c82g |
+| GitHub advisory, gnark | GHSA-9fvj-xqr2-xwg8 fake-GLV decomposition hint stalls on some inputs | High | `SC-DOS-SERVICE` | https://github.com/Consensys/gnark/security/advisories/GHSA-9fvj-xqr2-xwg8 |
+| zkSecurity, OpenVM | #0f Proof decoding allocates vectors of untrusted size | Low | `SC-DOS-SERVICE` | https://reports.zksecurity.xyz/reports/openvm/ |
+| Sigma Prime, KZG (2024-05) | EKZG-03 Panics in UnmarshalText() for Go Bindings | High | `SC-DOS-SERVICE` | `gnark/audits/2024-05 - Sigma Prime - kzg.pdf` |
+| Sigma Prime, KZG (2024-05) | EKZG-04 Potential Panics Loading Trusted Setup (trusted input) | Low | `SC-DOS-SERVICE` | `gnark/audits/2024-05 - Sigma Prime - kzg.pdf` |
+| Kudelski, gnark-crypto (2022-10) | KS-SBCF-F-07 Dependency with security issue | Low | `SC-DEPENDENCY-ADVISORY` | `gnark/audits/2022-10 - Kudelski - gnark-crypto.pdf` |
+| GitHub advisory, gnark | GHSA-7fx8-hmgc-82jp fake-GLV hint result not checked on curve (ECDSA / P-256 forgery) | High | `SC-DEPENDENCY-ADVISORY` | https://github.com/Consensys/gnark/security/advisories/GHSA-7fx8-hmgc-82jp |
+| Sigma Prime, KZG (2024-05) | EKZG-07 Random Oracle for Batch Proofs may be Zero (probability about 2^-256) | Informational | `SC-NEGLIGIBLE` | `gnark/audits/2024-05 - Sigma Prime - kzg.pdf` |
+| Kudelski, gnark-crypto (2022-10) | KS-SBCF-F-03 BN254 curve has a low security margin | Low | `SC-NEGLIGIBLE` | `gnark/audits/2022-10 - Kudelski - gnark-crypto.pdf` |
+| zkSecurity, intmax zERC20 | #02 Collision attack complexity not as high as documented (about 2^89) | Low | `SC-NEGLIGIBLE` | https://reports.zksecurity.xyz/reports/intmax-zerc20-1/ |
+| zkSecurity, Lighter (3) | #09 Dead Code and Inaccurate Comments | Informational | `SC-HYGIENE` | https://reports.zksecurity.xyz/reports/lighter-3/ |
+| zkSecurity, intmax zERC20 | #05 Documentation Does Not Match Implementation | Informational | `SC-HYGIENE` | https://reports.zksecurity.xyz/reports/intmax-zerc20-1/ |
+| Kudelski, gnark-crypto (2022-10) | KS-SBCF-O-01 Pairing function does not check the group membership (documented precondition) | Informational | `SC-HYGIENE` | `gnark/audits/2022-10 - Kudelski - gnark-crypto.pdf` |
+
+## Machine-readable table
+
+`lint-kb` keeps this block identical to the tool's embedded
+`internal/calibration/calibration.json`, checks that every anchor cites at
+least one published finding, and that its vectors and ledger classes exist.
+
+```json
+{
+  "$comment": "Severity calibration anchors (references/severity-calibration.md carries the same JSON; lint-kb keeps them identical). A record's `calibration` names one anchor; validate findings checks its verdict and severity against it.",
+  "schema_version": "1",
+  "anchors": [
+    {"id": "SC-FORGE-ANY", "pattern": "Any prover forges a statement that mints, steals or double-spends, or proves membership it does not have, with no special state.", "verdicts": ["confirmed"], "severity": ["critical", "high"], "ledger_classes": ["hint-soundness", "range-decomposition", "field-arithmetic", "control-selector", "crypto-gadgets", "spec-invariant", "public-input-binding"], "vectors": ["V-H1", "V-M3", "V-M5", "V-PI2"], "rule": "critical when any prover reaches it from honest-looking inputs; high when it needs a specific achievable state or input set."},
+    {"id": "SC-GADGET-SOUNDNESS", "pattern": "A gadget or library routine accepts a false result for some inputs any prover can choose (non-unique decomposition, unchecked hint, broken Fiat-Shamir), and production circuits call it on prover-controlled values.", "verdicts": ["confirmed", "needs_validation"], "severity": ["critical", "high", "medium"], "ledger_classes": ["hint-soundness", "range-decomposition", "field-arithmetic", "crypto-gadgets"], "vectors": ["V-R1", "V-R6", "V-H5", "V-H6", "V-CM3", "V-F3"], "rule": "high by default; medium when the reachable inputs are narrow or the caller's other constraints limit what the false result can do; critical only with a direct path to funds."},
+    {"id": "SC-LATENT-UNREACHABLE", "pattern": "A soundness flaw that the current callers, constants or parameters cannot reach (fixed-length inputs, a branch the configuration never takes).", "verdicts": ["confirmed", "lead"], "severity": ["low", "info"], "ledger_classes": ["hint-soundness", "range-decomposition", "field-arithmetic", "crypto-gadgets", "spec-invariant"], "vectors": ["V-M6", "V-F6", "V-H7"], "rule": "low with a hardening fix; info when no plausible change makes it reachable. Library audits rate these higher (medium) because unknown callers can reach them; an application audit rates its own code."},
+    {"id": "SC-UNUSED-FREE-VALUE", "pattern": "An unconstrained or under-constrained value (hint output, 0/0 division result, alias of a decomposition, quotient pinned only in the field) that reaches no public input, state, payout or later check.", "verdicts": ["confirmed", "lead"], "severity": ["low", "info"], "ledger_classes": ["hint-soundness", "range-decomposition", "field-arithmetic", "control-selector"], "vectors": ["V-H1", "V-H3", "V-F1", "V-R1", "V-S4"], "rule": "info when nothing consumes the value; low when a consumer exists but its use has no protocol effect today. Never medium or above without a consumer that changes what verifies."},
+    {"id": "SC-MASKED-BYPASS", "pattern": "A check can be bypassed (gated by a prover-chosen flag, weakened by a missing bound), but the bypass reaches nothing an honest witness or a separate, already reported bug does not already reach.", "verdicts": ["confirmed"], "severity": ["low"], "ledger_classes": ["control-selector", "spec-invariant", "hint-soundness"], "vectors": ["V-S3", "V-S1", "V-G2"], "rule": "confirmed low with chain to the masking finding; not a lead (the mechanism is real) and not rejected (fixing the other bug makes it exploitable). Self-harm only is rejected instead."},
+    {"id": "SC-COMPLETENESS-EDGE", "pattern": "An honest input at a boundary (zero, r - 1, maximum length, an unused branch) cannot be proven, and the protocol has a way around it or does not need it.", "verdicts": ["confirmed", "lead"], "severity": ["low", "info"], "ledger_classes": ["field-arithmetic", "range-decomposition", "control-selector", "spec-invariant"], "vectors": ["V-F2", "V-S7"], "rule": "low; info when no honest user reaches the boundary."},
+    {"id": "SC-BRICK-CORE", "pattern": "Honest users cannot complete a core flow (withdraw, exit, claim) for a reachable state, permanently or until an upgrade.", "verdicts": ["confirmed", "needs_validation"], "severity": ["high", "medium"], "ledger_classes": ["spec-invariant", "protocol-state", "liveness", "verifier-contract"], "vectors": ["V-LV1", "V-LV5", "V-VC5", "V-PV4"], "rule": "high when funds stay locked with no recovery path; medium when an operator or upgrade can recover them."},
+    {"id": "SC-BINDING-REPLAY", "pattern": "A proof is not bound to its sender, recipient, chain, contract or epoch, so it can be front-run, redirected or replayed.", "verdicts": ["confirmed", "needs_validation", "lead"], "severity": ["high", "medium"], "ledger_classes": ["public-input-binding", "protocol-state"], "vectors": ["V-PI4", "V-PI5", "V-PS1", "V-PS4"], "rule": "high when a front-runner takes the payout or a nullifier repeats; medium for cross-domain replay that needs a second deployment sharing the verifier and a root."},
+    {"id": "SC-TRUST-SOUNDNESS", "pattern": "A trusted party (owner, role, upgrader, deployer) can break soundness or move funds: swap the verifier or VK, upgrade, insert a root, mint, sweep. No unprivileged path reaches it.", "verdicts": ["needs_validation"], "severity": ["high", "medium"], "ledger_classes": ["trusted-party", "verifier-contract", "protocol-state"], "vectors": ["V-VC2"], "rule": "needs_validation with a trust object and a blocker naming the assumption; high by default, medium only with trust.mitigation quoting a timelock, multisig owner or governance contract in the repository (validate enforces both). An accepted risk in zk-audit.md keeps the record."},
+    {"id": "SC-TRUST-AMPLIFIED", "pattern": "An unprivileged actor reaches a trusted party's power: an ungated setter or upgrade, an initializer anyone calls first, a replayable admin signature.", "verdicts": ["confirmed"], "severity": ["critical", "high"], "ledger_classes": ["trusted-party", "verifier-contract"], "vectors": ["V-VC2"], "rule": "confirmed; critical when it gives any caller the verifier or the funds, high otherwise."},
+    {"id": "SC-SETUP-SINGLE-PARTY", "pattern": "Production keys come from a single-party groth16.Setup or unsafekzg, so whoever ran it can forge proofs.", "verdicts": ["needs_validation", "confirmed"], "severity": ["high", "critical"], "ledger_classes": ["trusted-party", "prover-service"], "vectors": ["V-PV1"], "rule": "needs_validation high with the blocker 'which keys are deployed?'; confirmed when the repository shows the keys from that setup are the deployed ones."},
+    {"id": "SC-TRUST-LIVENESS", "pattern": "A trusted party or operator can pause, censor, ban, delay upgrades or let a role lapse, blocking users but not stealing.", "verdicts": ["needs_validation", "confirmed"], "severity": ["medium", "low"], "ledger_classes": ["trusted-party", "liveness"], "vectors": ["V-LV4"], "rule": "medium when users' funds are blocked with no exit; low when users have a bypass (force exit, another operator)."},
+    {"id": "SC-TRUST-HYGIENE", "pattern": "Admin hygiene with no direct harm: single-step ownership transfer, missing events on setters, a role that cannot be rotated.", "verdicts": ["confirmed", "needs_validation"], "severity": ["info", "low"], "ledger_classes": ["trusted-party"], "vectors": [], "rule": "info; low when a slip locks the protocol's admin out of a needed action. Prefer a hardening note when no record is needed."},
+    {"id": "SC-PRIVACY-DEANON", "pattern": "Public data, a tag or a service deanonymises users or links all their actions, against an explicit privacy claim.", "verdicts": ["confirmed", "needs_validation"], "severity": ["high", "medium"], "ledger_classes": ["privacy"], "vectors": ["V-PR2", "V-PR3", "V-PR6", "V-PR7", "V-CM2"], "rule": "high when anyone on chain identifies the user; medium when only a specific observer can, or only for a subset of users."},
+    {"id": "SC-PRIVACY-PARTIAL", "pattern": "A bounded function of a secret leaks, or the anonymity set shrinks (an index, an expiry, a range, a fingerprint).", "verdicts": ["confirmed", "needs_validation", "lead"], "severity": ["medium", "low"], "ledger_classes": ["privacy"], "vectors": ["V-PR1", "V-PR4", "V-G6"], "rule": "medium when the leak singles out users in practice; low when it only shrinks the anonymity set."},
+    {"id": "SC-PRIVACY-OPERATOR", "pattern": "An operator the user relies on (relayer, indexer, delegated prover, scanner) sees links or secrets the chain does not show.", "verdicts": ["needs_validation", "confirmed"], "severity": ["low", "info"], "ledger_classes": ["privacy", "trusted-party"], "vectors": ["V-PR5", "V-PR6"], "rule": "low with a trust object when the trust model does not name the operator; info when it does and users can run their own. A leaked key that lets the operator act as the user is SC-PRIVACY-DEANON or worse."},
+    {"id": "SC-LIVENESS-GRIEF", "pattern": "Anyone can delay honest users at their own gas cost, and the victim recovers by retrying (a flushable root window, a front-runnable hint, capacity filled temporarily).", "verdicts": ["confirmed", "needs_validation"], "severity": ["medium", "low"], "ledger_classes": ["liveness", "protocol-state"], "vectors": ["V-LV4", "V-LV2", "V-LV5"], "rule": "low when the attack must be repeated per victim and the victim can re-prove; medium when it blocks all users or a time-critical exit."},
+    {"id": "SC-DOS-SERVICE", "pattern": "Crafted input crashes, stalls or exhausts a service: deserialization without size limits, slow hints, oversized proofs.", "verdicts": ["confirmed", "needs_validation"], "severity": ["high", "medium", "low"], "ledger_classes": ["prover-service", "liveness"], "vectors": ["V-PV2", "V-PV3", "V-LV3"], "rule": "medium for a network-facing prover or relayer; high when it halts a consensus or settlement path; low when the input is trusted (local keys, setup files)."},
+    {"id": "SC-DEPENDENCY-ADVISORY", "pattern": "The pinned gnark version matches a published advisory.", "verdicts": ["confirmed", "needs_validation"], "severity": ["critical", "high", "medium", "low", "info"], "ledger_classes": ["gnark-version"], "vectors": [], "rule": "the advisory's severity when the affected component is used in a production circuit, capped by the protocol impact; info when it is not imported (judging.md section 9)."},
+    {"id": "SC-NEGLIGIBLE", "pattern": "An event of negligible probability, or a security margin below a target but far from practical attack.", "verdicts": ["confirmed", "lead"], "severity": ["low", "info"], "ledger_classes": ["crypto-gadgets", "spec-invariant"], "vectors": ["V-CM7"], "rule": "info for negligible probability; low for a margin below 112 bits."},
+    {"id": "SC-HYGIENE", "pattern": "Stale or hand-edited artifacts, dead code, documentation that does not match the code, missing tests for public-input order.", "verdicts": ["confirmed", "lead"], "severity": ["info"], "ledger_classes": ["verifier-contract", "spec-invariant", "prover-service"], "vectors": ["V-VC6", "V-S1"], "rule": "info, or a hardening note instead of a record."}
+  ],
+  "examples": [
+    {"anchor": "SC-FORGE-ANY", "source": "zkSecurity, Zeko", "finding": "#00 Arbitrary Token Withdrawals Allowed By Not Linking Proofs In Merge Rule", "published": "High", "ref": "https://reports.zksecurity.xyz/reports/zeko/"},
+    {"anchor": "SC-FORGE-ANY", "source": "zkSecurity, Renegade (3)", "finding": "#00 Underconstrained Comparison Can Be Exploited to Drain Funds", "published": "High", "ref": "https://reports.zksecurity.xyz/reports/renegade-3/"},
+    {"anchor": "SC-FORGE-ANY", "source": "zkSecurity, zkLighter desert exit", "finding": "#00 Negative TAV bypass allows withdrawal of absolute value", "published": "High", "ref": "https://reports.zksecurity.xyz/reports/zklighter-desertexit/"},
+    {"anchor": "SC-GADGET-SOUNDNESS", "source": "zkSecurity, gnark std (2024-05)", "finding": "01 Partition Function Is Not Sound", "published": "High", "ref": "gnark/audits/2024-05 - zksecurity - gnark std.pdf"},
+    {"anchor": "SC-GADGET-SOUNDNESS", "source": "zkSecurity, gnark std (2024-05)", "finding": "00 MultiCommitter Scheme May Converge To Using Constant Challenge 1", "published": "High", "ref": "gnark/audits/2024-05 - zksecurity - gnark std.pdf"},
+    {"anchor": "SC-GADGET-SOUNDNESS", "source": "zkSecurity, gnark std (2024-05)", "finding": "09 Missing Constraints In ToNAF Function", "published": "Medium", "ref": "gnark/audits/2024-05 - zksecurity - gnark std.pdf"},
+    {"anchor": "SC-GADGET-SOUNDNESS", "source": "GitHub advisory, gnark", "finding": "GHSA-3mvx-pp85-pm65 eleven std hint outputs consumed without binding", "published": "Critical", "ref": "https://github.com/Consensys/gnark/security/advisories/GHSA-3mvx-pp85-pm65"},
+    {"anchor": "SC-GADGET-SOUNDNESS", "source": "GitHub advisory, gnark", "finding": "GHSA-498w-5j49-vqjg full-width ToBinary accepts a and a + r", "published": "Moderate", "ref": "https://github.com/Consensys/gnark/security/advisories/GHSA-498w-5j49-vqjg"},
+    {"anchor": "SC-GADGET-SOUNDNESS", "source": "zkSecurity, Lighter (3)", "finding": "#00 Invalid Remainder Range Check Can Lead to Incorrect Result in div_rem", "published": "High", "ref": "https://reports.zksecurity.xyz/reports/lighter-3/"},
+    {"anchor": "SC-LATENT-UNREACHABLE", "source": "zkSecurity, gnark std (2024-05)", "finding": "0a wrapped_hash Is Not Collision Resistant With Input Of Different Length (callers use fixed lengths)", "published": "Low", "ref": "gnark/audits/2024-05 - zksecurity - gnark std.pdf"},
+    {"anchor": "SC-LATENT-UNREACHABLE", "source": "zkSecurity, gnark std (2024-05)", "finding": "05 Incorrect Condition May Lead To Overflow Native Field In IsZero (unreachable with current parameters; library audit)", "published": "Medium", "ref": "gnark/audits/2024-05 - zksecurity - gnark std.pdf"},
+    {"anchor": "SC-LATENT-UNREACHABLE", "source": "GitHub advisory, gnark", "finding": "GHSA-rjjm-x32p-m3f7 range checker accepted inputs up to 16 bits wider", "published": "Low", "ref": "https://github.com/Consensys/gnark/security/advisories/GHSA-rjjm-x32p-m3f7"},
+    {"anchor": "SC-UNUSED-FREE-VALUE", "source": "zkSecurity, zkLogin (Mysten Labs)", "finding": "#02 Underconstrained bit decomposition of nonce (deemed not a security risk in context)", "published": "Low", "ref": "https://reports.zksecurity.xyz/reports/mysten-labs-zklogin/"},
+    {"anchor": "SC-UNUSED-FREE-VALUE", "source": "zkSecurity, zkLighter wrapper", "finding": "#03 Unused Return Value in verify_aggregated_delta", "published": "Informational", "ref": "https://reports.zksecurity.xyz/reports/zklighter-wrapper/"},
+    {"anchor": "SC-UNUSED-FREE-VALUE", "source": "zkSecurity, gnark std (2024-05)", "finding": "0b Field API Is A Leaky Abstraction (no current misuse)", "published": "Informational", "ref": "gnark/audits/2024-05 - zksecurity - gnark std.pdf"},
+    {"anchor": "SC-MASKED-BYPASS", "source": "zkSecurity, Hinkal", "finding": "#03 Merkle tree construction allows crafting a Merkle proof for membership of the intermediate nodes", "published": "Low", "ref": "https://reports.zksecurity.xyz/reports/hinkal-audit/"},
+    {"anchor": "SC-MASKED-BYPASS", "source": "zkSecurity, RISC Zero Solana contracts", "finding": "#00 Groth16 Verifier Reduces Public Inputs", "published": "Low", "ref": "https://reports.zksecurity.xyz/reports/risc0-solana-contracts/"},
+    {"anchor": "SC-COMPLETENESS-EDGE", "source": "zkSecurity, Lighter (3)", "finding": "#05 conditional_div_rem Overconstrains Unused Branch", "published": "Low", "ref": "https://reports.zksecurity.xyz/reports/lighter-3/"},
+    {"anchor": "SC-COMPLETENESS-EDGE", "source": "zkSecurity, zkLogin (Mysten Labs)", "finding": "#03 Overconstrained bounds for RSA signature verification", "published": "Low", "ref": "https://reports.zksecurity.xyz/reports/mysten-labs-zklogin/"},
+    {"anchor": "SC-COMPLETENESS-EDGE", "source": "Kudelski, gnark-crypto (2022-10)", "finding": "KS-SBCF-F-04 Inversion of 0 element is not detected in field arithmetic", "published": "Low", "ref": "gnark/audits/2022-10 - Kudelski - gnark-crypto.pdf"},
+    {"anchor": "SC-BRICK-CORE", "source": "zkSecurity, zkLighter block", "finding": "#01 On-chain operation count can bypass the block limit, leading to denial of L1 withdrawals", "published": "High", "ref": "https://reports.zksecurity.xyz/reports/zklighter-block/"},
+    {"anchor": "SC-BRICK-CORE", "source": "zkSecurity, Zeko", "finding": "#07 Withdrawal Impossible Since L2 Bridge Account Is Missing Method To Receive Funds", "published": "Medium", "ref": "https://reports.zksecurity.xyz/reports/zeko/"},
+    {"anchor": "SC-BINDING-REPLAY", "source": "zkSecurity, Renegade", "finding": "#00 Deposits Can Be Stolen By Frontrunners", "published": "High", "ref": "https://reports.zksecurity.xyz/reports/renegade/"},
+    {"anchor": "SC-BINDING-REPLAY", "source": "zkSecurity, Hinkal", "finding": "#01 encryptedOutput and encryptedStakeCommitmentContent are not binding to the verified ZKP proofs", "published": "Medium", "ref": "https://reports.zksecurity.xyz/reports/hinkal-audit/"},
+    {"anchor": "SC-BINDING-REPLAY", "source": "zkSecurity, Aptos encrypted mempool", "finding": "#02 Epoch Not Bound to AggregatedSubtranscript Signature Enables Stale Transcript Replay", "published": "High", "ref": "https://reports.zksecurity.xyz/reports/aptos-encrypted-mempool/"},
+    {"anchor": "SC-TRUST-SOUNDNESS", "source": "zkSecurity, Aztec TGE", "finding": "#00 The ATP contract can upgrade the Staker to arbitrary address and withdraw the locked token", "published": "High", "ref": "https://reports.zksecurity.xyz/reports/aztec-tge/"},
+    {"anchor": "SC-TRUST-SOUNDNESS", "source": "zkSecurity, RISC Zero Helios", "finding": "#01 Next Sync Committee Might Be Arbitrarily Set (prover-chosen initial store)", "published": "Medium", "ref": "https://reports.zksecurity.xyz/reports/risc0-helios/"},
+    {"anchor": "SC-TRUST-AMPLIFIED", "source": "zkSecurity, HumanityLink", "finding": "#04 Constructors don't gate upgrades, allowing anyone to upgrade the Leo programs", "published": "High", "ref": "https://reports.zksecurity.xyz/reports/humanitylink-1/"},
+    {"anchor": "SC-TRUST-AMPLIFIED", "source": "zkSecurity, HumanityLink", "finding": "#00 Missing authorization checks in bulk_issue allow an attacker to drain the balance", "published": "High", "ref": "https://reports.zksecurity.xyz/reports/humanitylink-1/"},
+    {"anchor": "SC-SETUP-SINGLE-PARTY", "source": "0xPARC zk-bug-tracker", "finding": "Common vulnerability 7: Trusted Setup Leak (toxic waste lets its holder forge proofs)", "published": "unrated", "ref": "https://github.com/0xPARC/zk-bug-tracker"},
+    {"anchor": "SC-TRUST-LIVENESS", "source": "zkSecurity, randa-mu OnlySwaps", "finding": "#01 Admin Can Delay Upgrades Indefinitely", "published": "Medium", "ref": "https://reports.zksecurity.xyz/reports/randa-mu-onlyswaps/"},
+    {"anchor": "SC-TRUST-LIVENESS", "source": "zkSecurity, Renegade (3)", "finding": "#02 Admin Functions Are Inaccessible If the Darkpool Is Paused", "published": "Medium", "ref": "https://reports.zksecurity.xyz/reports/renegade-3/"},
+    {"anchor": "SC-TRUST-LIVENESS", "source": "zkSecurity, Demox Aleo standard programs", "finding": "#08 A Single Admin Can Manually Ban the Validator", "published": "Low", "ref": "https://reports.zksecurity.xyz/reports/demox-aleo-standard-programs/"},
+    {"anchor": "SC-TRUST-LIVENESS", "source": "zkSecurity, RISC Zero Helios", "finding": "#03 Updaters Can't Be Rotated", "published": "Low", "ref": "https://reports.zksecurity.xyz/reports/risc0-helios/"},
+    {"anchor": "SC-TRUST-HYGIENE", "source": "zkSecurity, intmax zERC20", "finding": "#06 Lack of Two-Step Process for Ownership Transfer", "published": "Informational", "ref": "https://reports.zksecurity.xyz/reports/intmax-zerc20-1/"},
+    {"anchor": "SC-TRUST-HYGIENE", "source": "zkSecurity, Renegade (3)", "finding": "#05 Lack of Two-Step Process for Ownership Transfer", "published": "Informational", "ref": "https://reports.zksecurity.xyz/reports/renegade-3/"},
+    {"anchor": "SC-PRIVACY-DEANON", "source": "zkSecurity, Silent Protocol", "finding": "#00 Broken anonymity in zero-fee registration", "published": "High", "ref": "https://reports.zksecurity.xyz/reports/silent2/"},
+    {"anchor": "SC-PRIVACY-DEANON", "source": "zkSecurity, Aleo synthesizer", "finding": "#04 Proof Delegation Leaks User Signing Key", "published": "High", "ref": "https://reports.zksecurity.xyz/reports/aleo-synthesizer/"},
+    {"anchor": "SC-PRIVACY-DEANON", "source": "GitHub advisory, gnark", "finding": "GHSA-9xcg-3q8v-7fq6 Groth16 commitments to private witnesses are not hiding", "published": "High", "ref": "https://github.com/Consensys/gnark/security/advisories/GHSA-9xcg-3q8v-7fq6"},
+    {"anchor": "SC-PRIVACY-PARTIAL", "source": "zkSecurity, ZK Email", "finding": "#04 The reveal array leaks inputs in a non-match", "published": "Medium", "ref": "https://reports.zksecurity.xyz/reports/zkemail/"},
+    {"anchor": "SC-PRIVACY-PARTIAL", "source": "zkSecurity, Demox Aleo standard programs", "finding": "#07 transfer_private Function May Leak Information with authorized_until Field", "published": "Medium", "ref": "https://reports.zksecurity.xyz/reports/demox-aleo-standard-programs/"},
+    {"anchor": "SC-PRIVACY-PARTIAL", "source": "zkSecurity, intmax zERC20", "finding": "#03 Nova Proof Leaks Last Leaf Index in Calldata", "published": "Low", "ref": "https://reports.zksecurity.xyz/reports/intmax-zerc20-1/"},
+    {"anchor": "SC-PRIVACY-PARTIAL", "source": "zkSecurity, Silent Protocol", "finding": "#07 Insecure randomness used for anonymity set sender position", "published": "Low", "ref": "https://reports.zksecurity.xyz/reports/silent2/"},
+    {"anchor": "SC-PRIVACY-OPERATOR", "source": "zkSecurity, intmax zERC20", "finding": "#01 Indexer Service Can Link Senders to Recipients", "published": "Low", "ref": "https://reports.zksecurity.xyz/reports/intmax-zerc20-1/"},
+    {"anchor": "SC-PRIVACY-OPERATOR", "source": "zkSecurity, HumanityLink", "finding": "#12 Beneficiary records and view keys are sent to the delegated prover and scanner in plaintext", "published": "Informational", "ref": "https://reports.zksecurity.xyz/reports/humanitylink-1/"},
+    {"anchor": "SC-LIVENESS-GRIEF", "source": "zkSecurity, Tongo", "finding": "#06 Hint Manipulation and Staleness Issues (front-run, stale hint)", "published": "Low", "ref": "https://reports.zksecurity.xyz/reports/tongo/"},
+    {"anchor": "SC-LIVENESS-GRIEF", "source": "zkSecurity, Zeko (2)", "finding": "#07 User can request arbitrary action state witness proofs from the Sequencer, allowing Denial of Service", "published": "Medium", "ref": "https://reports.zksecurity.xyz/reports/zeko-2/"},
+    {"anchor": "SC-DOS-SERVICE", "source": "GitHub advisory, gnark", "finding": "GHSA-cph5-3pgr-c82g crafted VK or proof exhausts memory on deserialization", "published": "Moderate", "ref": "https://github.com/Consensys/gnark/security/advisories/GHSA-cph5-3pgr-c82g"},
+    {"anchor": "SC-DOS-SERVICE", "source": "GitHub advisory, gnark", "finding": "GHSA-9fvj-xqr2-xwg8 fake-GLV decomposition hint stalls on some inputs", "published": "High", "ref": "https://github.com/Consensys/gnark/security/advisories/GHSA-9fvj-xqr2-xwg8"},
+    {"anchor": "SC-DOS-SERVICE", "source": "zkSecurity, OpenVM", "finding": "#0f Proof decoding allocates vectors of untrusted size", "published": "Low", "ref": "https://reports.zksecurity.xyz/reports/openvm/"},
+    {"anchor": "SC-DOS-SERVICE", "source": "Sigma Prime, KZG (2024-05)", "finding": "EKZG-03 Panics in UnmarshalText() for Go Bindings", "published": "High", "ref": "gnark/audits/2024-05 - Sigma Prime - kzg.pdf"},
+    {"anchor": "SC-DOS-SERVICE", "source": "Sigma Prime, KZG (2024-05)", "finding": "EKZG-04 Potential Panics Loading Trusted Setup (trusted input)", "published": "Low", "ref": "gnark/audits/2024-05 - Sigma Prime - kzg.pdf"},
+    {"anchor": "SC-DEPENDENCY-ADVISORY", "source": "Kudelski, gnark-crypto (2022-10)", "finding": "KS-SBCF-F-07 Dependency with security issue", "published": "Low", "ref": "gnark/audits/2022-10 - Kudelski - gnark-crypto.pdf"},
+    {"anchor": "SC-DEPENDENCY-ADVISORY", "source": "GitHub advisory, gnark", "finding": "GHSA-7fx8-hmgc-82jp fake-GLV hint result not checked on curve (ECDSA / P-256 forgery)", "published": "High", "ref": "https://github.com/Consensys/gnark/security/advisories/GHSA-7fx8-hmgc-82jp"},
+    {"anchor": "SC-NEGLIGIBLE", "source": "Sigma Prime, KZG (2024-05)", "finding": "EKZG-07 Random Oracle for Batch Proofs may be Zero (probability about 2^-256)", "published": "Informational", "ref": "gnark/audits/2024-05 - Sigma Prime - kzg.pdf"},
+    {"anchor": "SC-NEGLIGIBLE", "source": "Kudelski, gnark-crypto (2022-10)", "finding": "KS-SBCF-F-03 BN254 curve has a low security margin", "published": "Low", "ref": "gnark/audits/2022-10 - Kudelski - gnark-crypto.pdf"},
+    {"anchor": "SC-NEGLIGIBLE", "source": "zkSecurity, intmax zERC20", "finding": "#02 Collision attack complexity not as high as documented (about 2^89)", "published": "Low", "ref": "https://reports.zksecurity.xyz/reports/intmax-zerc20-1/"},
+    {"anchor": "SC-HYGIENE", "source": "zkSecurity, Lighter (3)", "finding": "#09 Dead Code and Inaccurate Comments", "published": "Informational", "ref": "https://reports.zksecurity.xyz/reports/lighter-3/"},
+    {"anchor": "SC-HYGIENE", "source": "zkSecurity, intmax zERC20", "finding": "#05 Documentation Does Not Match Implementation", "published": "Informational", "ref": "https://reports.zksecurity.xyz/reports/intmax-zerc20-1/"},
+    {"anchor": "SC-HYGIENE", "source": "Kudelski, gnark-crypto (2022-10)", "finding": "KS-SBCF-O-01 Pairing function does not check the group membership (documented precondition)", "published": "Informational", "ref": "gnark/audits/2022-10 - Kudelski - gnark-crypto.pdf"}
+  ]
+}
+```

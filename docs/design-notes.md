@@ -156,13 +156,147 @@ left open, it is recorded here with the reason.
    `T1`), `name`, `file`, optional `slice`, `group`, `shard`
    (`circuit` / `integration` / `prover` / `all`) and `profiles`. If the lens
    owns coverage, add `ledger: {classes: [...], seed: "circuit" |
-   "contract-fn", with: [...]}`; a class that needs a new subject kind (not
-   one unit per circuit or per contract function) also needs seeding code in
-   `internal/ledger/seed.go`.
+   "contract-fn" | "privileged", with: [...]}`; a class that needs a new
+   subject kind (not one unit per circuit, per contract function, or per
+   privileged surface) also needs seeding code in `internal/ledger/seed.go`.
 3. Run `make sync-profiles` and `make check`.
 
 Nothing else changes: bundles, ledger seeding and validation, the docs
 tables and `gnark-inventory profiles` all follow the entry.
+
+## Trusted parties (T1)
+
+- **Why a lens.** The pool fixture's two trusted-party items (the owner swaps
+  the verifier; the owner posts Merkle roots) were missed or half-credited in
+  every measured run, and the critic could not see the gap because no ledger
+  unit asked anyone to look (shramee/zk-audit#10). Admin powers were
+  checklist lines inside I2 and I3 and "do not report" in the shared rules.
+- **Deterministic surface.** The Solidity scan lists privileged functions
+  (access modifiers, sender checks, initializers, ungated writers of
+  verifier / VK / authority / implementation state), roles (Ownable and
+  AccessControl bases, role constants, authority-named address variables,
+  modifier parties) and upgrade paths (proxy bases, `upgradeTo`,
+  `_authorizeUpgrade`, `delegatecall`, `selfdestruct`). It is lexical like
+  the rest of the scan: a gate implemented in a base contract outside the
+  scanned files (an inherited `onlyOwner` used without the base in scope) is
+  still found by name, but a custom gate in an unscanned library is not.
+- **Ledger.** Class `trusted-party`, seed kind `privileged`: one unit per
+  privileged function (`contract-fn:`), declared role (`role:`) and
+  production setup site (`setup:`, from `FG-DEV-SETUP`). `role` and `setup`
+  are new unit kinds in the ledger schema.
+- **In quick too.** Quick missed both trusted-party items in the 2026-10-27
+  and 2026-10-29 runs; they were its only misses. A quick hunter costs about
+  49k tokens (20 agents for 9.16 USD in the 2026-10-29 run), so T1 adds about
+  5 % to a quick run. The alternative, leaving trusted parties to standard,
+  keeps quick's one systematic blind spot. T1 reads the `all` shard because
+  setup sites live in prover code.
+
+## Privacy (PR1)
+
+- **Lens and class.** PR1 owns the ledger class `privacy`, one unit per
+  production circuit (seed `circuit`, with the vector scan): privacy is a
+  property of a statement and of the flow that consumes it, so the circuit is
+  the subject; the lens reads the `all` shard for events, relayers and
+  prover services. Id `PR1`, not `P1`: `P0` is the Phase 0 pseudo-agent of
+  advisory records and the pool answer key numbers its items P1–P15.
+- **Profiles.** Standard and deep, not quick: quick's budget is about ten
+  minutes and the measured runs have no privacy item to justify the cost
+  there. The `V-privacy` vector-scan shard follows the same rule.
+- **Vectors.** `attack-vectors/privacy.md`, V-PR1–V-PR7: secret exposed
+  through public inputs, events or calldata; nullifier computable from public
+  data; a tag repeated across contexts; amount, timing and fee fingerprints;
+  relayer, indexer and sequencer metadata; the witness leaving the user
+  (delegated provers, services, timing); a distinguishable member of an
+  anonymity set. Sources are published zkSecurity reports (intmax zERC20,
+  ZK Email, Demox, Silent Protocol, Aleo synthesizer, HumanityLink), the
+  PLUME paper (eprint 2022/1255), Tutela (arXiv 2201.06811), "Blockchain is
+  Watching You" (arXiv 2005.14051), the Zcash anonymity study (USENIX Security
+  2018), the remote side-channel paper (eprint 2020/220), Semaphore v4 and the
+  Tornado Cash relayer at a pinned commit. All hosts were already on the
+  `lint-kb` allow-list; witness logging stays V-PV5 and commitments to
+  private values stay V-CM2, which the slice cross-references.
+- **PoC template.** `T-LINKAGE`: recompute the public value natively over a
+  realistic candidate set and show it singles out the user; the honest
+  control is the corrected formula, for which nothing matches.
+
+## Gas and liveness
+
+- **Vectors.** `attack-vectors/gas-liveness.md`, V-LV1–V-LV5: verification
+  gas above the block or relayer limit (gnark's Groth16 template does one
+  `ECMUL` and one `ECADD` per public input, EIP-1108 prices), unbounded loops
+  (SWC-128), unbounded proof or calldata payloads (GHSA-cph5, zkSecurity
+  OpenVM #0f), root windows that expire or can be flushed (Tornado Cash's
+  30-root ring buffer, Semaphore's root duration), and fillable capacity
+  (Tornado Cash's full tree, zkSecurity zkLighter block #01). Scanned by the
+  `V-liveness` shard in standard and deep.
+- **Ledger class `liveness`**, owned by I3 and seeded per verifying or
+  state-writing contract function, like `protocol-state`: whether an honest
+  proof can always be accepted in time is a property of the function that
+  accepts it. It doubles I3's contract-function units; a separate lens was
+  not worth a hunter, since the checks read the same state I3 already reads.
+- **Stale-root PoC.** `T-FOUNDRY-STALE-ROOT` in `poc-templates.md` (no
+  forge-std: it declares the two cheatcodes it uses) and a runnable copy on
+  the `testdata/liveness-roots` fixture (`evals/fixtures/liveness-roots/`:
+  key, answer key, `pocs/StaleRoot.t.sol`). `evals/run-pocs` now runs
+  Foundry fixtures: it copies `*.t.sol` into the directory named in
+  `PACKAGE`, fetches the solc pinned in `foundry.toml` with a compile-only
+  `forge build` when network is allowed, and runs `forge test --offline` in
+  the sandbox. `make eval-pocs` runs both fixtures; CI installs Foundry
+  v1.7.1 with `foundry-rs/foundry-toolchain`.
+
+## Report sections for trusted parties, privacy and coverage limits
+
+- **Section order.** Sections 7 (Trusted parties), 8 (Privacy) and 11 (Not
+  covered) are new; Hardening moved to 9 and Coverage to 10. Every
+  cross-reference in the rendered text uses the section constants, so the
+  numbers cannot drift.
+- **Trusted parties** lists records with a `trust` object (status: needs
+  validation, confirmed through an unprivileged path, lead, or accepted risk
+  with its `zk-audit.md` line), the top-level `accepted_risks` (risks the
+  guidance file accepts that no record covers), and the `trusted-party`
+  ledger coverage. An accepted record leaves the needs-validation table and
+  is counted separately in the posture totals; it is never dropped.
+- **Privacy** lists records with `property: privacy` (a new optional record
+  field), a `V-PR*` vector or `trust.breaks` privacy, and the `privacy`
+  ledger coverage, or says the profile does not run PR1.
+- **Not covered** is a fixed list of what the skill never examines (gnark
+  internals beyond advisories, other frameworks, cryptographic assumptions,
+  deployed state and off-repository infrastructure, economic and governance
+  attacks, formal verification), followed by run-specific lines computed
+  from `profiles.json`, the ledger and `companions`.
+
+## Severity calibration
+
+- **Anchors, not a table of adjectives.** `references/severity-calibration.md`
+  holds 21 anchors (`SC-*`), each a fact pattern with the verdicts and
+  severities it allows, the ledger classes and vectors it applies to, and a
+  rule for choosing inside the range. Records name their anchor in
+  `calibration`; `validate findings` refuses a verdict or severity outside
+  it and warns when a confirmed or needs-validation record names none. The
+  2026-10-29 runs rated an unused remainder hint `medium` three times (key:
+  low or info) and judged one owner-gated circuit check `confirmed low` twice
+  and `lead` once (shramee/zk-audit#10): `SC-UNUSED-FREE-VALUE` caps the first
+  at `low`, and Gate 4's "nobody is harmed" rules now send the second to
+  `SC-MASKED-BYPASS` (`confirmed low` with a chain) instead of "rejected or
+  lead".
+- **Published labels.** 60 published findings back the anchors: the
+  zkSecurity gnark std, Kudelski gnark-crypto and Sigma Prime KZG reports in
+  `gnark/audits/` (the Least Authority reports there carry no severity
+  labels), gnark GitHub advisories, and 29 public zkSecurity reports read on
+  2026-10-29. Where library audits rate a latent flaw higher than an
+  application audit would (zkSecurity gnark std 05, Medium, unreachable with
+  current parameters), the anchor says so and rates for application audits.
+  zkSecurity's scale has no Critical, so its High maps to `high` or
+  `critical`.
+- **Machine-readable copy.** The JSON lives in the tool
+  (`internal/calibration/calibration.json`, embedded) and in the reference's
+  fenced block; `lint-kb` keeps them identical (like the advisory table) and
+  checks that every anchor is in the human table, has a published example,
+  names existing vectors and ledger classes, and that every reference is an
+  allowed host or a report in `gnark/audits/`.
+- **Pool key unchanged.** The new rules move P13/P14 to `needs_validation`
+  and P6 to `confirmed`, both already in the key's expected verdicts; no new
+  verdict class was needed.
 
 ## Sandbox (PoCs and recon)
 
@@ -369,11 +503,13 @@ tables and `gnark-inventory profiles` all follow the entry.
   around verification are covered as checklist items in the I2 and I3 lens
   files instead of as catalog vectors, because no source in the allowed set
   documents them for gnark.
-- **Vector count.** 79 vectors in 12 slices (PLAN target "about 80"). Slice and
+- **Vector count.** 79 vectors in 12 slices at first (PLAN target "about
+  80"); 91 in 14 with the privacy and gas-liveness slices. Slice and
   id scheme: V-H (hints), V-R (range), V-F (field), V-S (selector), V-M (hash /
   Merkle), V-E (curves / signatures), V-CM (commitments / recursion), V-PI
   (public inputs), V-VC (verifier contracts), V-PS (protocol state), V-PV
-  (prover service), V-G (generic, ported from zkSecurity).
+  (prover service), V-G (generic, ported from zkSecurity), V-PR (privacy),
+  V-LV (gas and liveness).
 - **PoC templates were executed.** T-HINT-OVERRIDE, T-PROVE-VERIFY,
   T-ASSERT-OVERRIDE and T-ALIAS were run against gnark v0.14.0 on small
   circuits (a remainder hint without `r < b`, and `OmitModulusCheck`), and

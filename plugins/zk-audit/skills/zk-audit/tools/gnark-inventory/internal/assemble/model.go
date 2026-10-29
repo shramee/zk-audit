@@ -85,6 +85,30 @@ type Record struct {
 
 	CodeSmells []string `json:"code_smells"`
 	Unverified string   `json:"unverified"`
+
+	Trust       *Trust `json:"trust"`
+	Calibration string `json:"calibration"`
+	Property    string `json:"property"`
+}
+
+// Trust is a trusted-party record's trust object.
+type Trust struct {
+	Party      string   `json:"party"`
+	Role       string   `json:"role"`
+	Power      string   `json:"power"`
+	Breaks     []string `json:"breaks"`
+	Assumption string   `json:"assumption"`
+	Mitigation string   `json:"mitigation"`
+	Accepted   bool     `json:"accepted"`
+	Source     string   `json:"source"`
+	LeadReason string   `json:"lead_reason"`
+}
+
+// AcceptedRisk is a risk zk-audit.md accepts that no record covers.
+type AcceptedRisk struct {
+	Party  string `json:"party"`
+	Risk   string `json:"risk"`
+	Source string `json:"source"`
 }
 
 // Seen is loop mode's "seen in k of N passes".
@@ -108,17 +132,18 @@ type Companions struct {
 
 // Findings is findings.json.
 type Findings struct {
-	Repo             string      `json:"repo"`
-	Commit           string      `json:"commit"`
-	RunID            string      `json:"run_id"`
-	Profile          string      `json:"profile"`
-	NoFindings       bool        `json:"no_findings"`
-	NoFindingsReason string      `json:"no_findings_reason"`
-	Posture          string      `json:"posture"`
-	OutOfScope       []string    `json:"out_of_scope"`
-	Companions       *Companions `json:"companions"`
-	Hardening        []Hardening `json:"hardening"`
-	Records          []Record    `json:"records"`
+	Repo             string         `json:"repo"`
+	Commit           string         `json:"commit"`
+	RunID            string         `json:"run_id"`
+	Profile          string         `json:"profile"`
+	NoFindings       bool           `json:"no_findings"`
+	NoFindingsReason string         `json:"no_findings_reason"`
+	Posture          string         `json:"posture"`
+	OutOfScope       []string       `json:"out_of_scope"`
+	Companions       *Companions    `json:"companions"`
+	Hardening        []Hardening    `json:"hardening"`
+	AcceptedRisks    []AcceptedRisk `json:"accepted_risks"`
+	Records          []Record       `json:"records"`
 }
 
 // Unit is one coverage-ledger unit.

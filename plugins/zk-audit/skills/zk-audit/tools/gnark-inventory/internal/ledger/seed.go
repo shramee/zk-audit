@@ -136,6 +136,40 @@ func Seed(inv *inventory.Inventory, stack *detect.Stack, tool string) *Ledger {
 			}
 		}
 	}
+	// trusted parties: one unit per privileged function, declared role and
+	// production setup site, for each class seeded "privileged"
+	if priv := seeded("privileged"); len(priv) > 0 {
+		if inv.Contracts != nil {
+			for _, p := range inv.Contracts.Privileged {
+				for _, cc := range priv {
+					add("contract-fn", p.Contract+"."+p.Function, cc.class, cc.lenses, []string{fmt.Sprintf("%s:%d", p.File, p.Line)},
+						fmt.Sprintf("gate %s; party %s; powers %s", p.Gate, p.Party, strings.Join(p.Powers, ", ")))
+				}
+			}
+			for _, r := range inv.Contracts.Roles {
+				for _, cc := range priv {
+					add("role", r.Contract+"."+r.Name, cc.class, cc.lenses, []string{fmt.Sprintf("%s:%d", r.File, r.Line)}, r.Kind+"; "+r.Source)
+				}
+			}
+		}
+		setup := map[string]string{}
+		var setupFiles []string
+		for _, f := range inv.Footguns {
+			if f.InTest || f.ID != "FG-DEV-SETUP" {
+				continue
+			}
+			if _, ok := setup[f.Pos.File]; !ok {
+				setup[f.Pos.File] = pos(f.Pos)
+				setupFiles = append(setupFiles, f.Pos.File)
+			}
+		}
+		sort.Strings(setupFiles)
+		for _, f := range setupFiles {
+			for _, cc := range priv {
+				add("setup", f, cc.class, cc.lenses, []string{setup[f]}, "who runs this setup, and are its keys the deployed ones?")
+			}
+		}
+	}
 	// prover-service: non-test files that touch backends or deserialization
 	prover := map[string]bool{}
 	for _, f := range inv.Footguns {

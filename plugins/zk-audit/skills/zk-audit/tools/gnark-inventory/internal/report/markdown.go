@@ -247,6 +247,7 @@ func writeContracts(b *strings.Builder, c *solidity.Result) {
 		}
 		w("\n")
 	}
+	writePrivileged(b, c)
 	if len(c.StateVars) > 0 {
 		w("### Proof-related state\n\n| Variable | Kind | Declared | Accesses |\n|---|---|---|---|\n")
 		for _, s := range c.StateVars {
@@ -257,6 +258,38 @@ func writeContracts(b *strings.Builder, c *solidity.Result) {
 				}
 			}
 			w("| %s | %s | %s:%d | %s |\n", code(s.Contract+"."+s.Name), s.Kind, s.File, s.Line, esc(strings.Join(acc, "; ")))
+		}
+		w("\n")
+	}
+}
+
+// writePrivileged renders the trusted-party surfaces: privileged functions,
+// roles and upgrade paths. Facts only (gate, party, what changes); whether a
+// power is acceptable is judged later.
+func writePrivileged(b *strings.Builder, c *solidity.Result) {
+	w := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
+	w("### Privileged functions\n\n")
+	if len(c.Privileged) == 0 {
+		w("None found: no external or public function with an access modifier or a sender check, and no ungated write to verifier, verifying-key, authority or implementation state.\n\n")
+	} else {
+		w("External or public functions behind an access modifier or a sender check, and ungated writers of verifier, verifying-key, authority or implementation state (gate `none`). Each is a `trusted-party` ledger unit.\n\n")
+		w("| Function | Site | Gate | Party | Powers | Writes |\n|---|---|---|---|---|---|\n")
+		for _, p := range c.Privileged {
+			w("| %s | %s:%d | %s | %s | %s | %s |\n", code(p.Contract+"."+p.Function), p.File, p.Line, code(p.Gate), esc(p.Party), esc(strings.Join(p.Powers, ", ")), esc(strings.Join(p.Writes, ", ")))
+		}
+		w("\n")
+	}
+	if len(c.Roles) > 0 {
+		w("### Roles\n\n| Role | Kind | Declared | Source |\n|---|---|---|---|\n")
+		for _, r := range c.Roles {
+			w("| %s | %s | %s:%d | %s |\n", code(r.Contract+"."+r.Name), r.Kind, r.File, r.Line, esc(r.Source))
+		}
+		w("\n")
+	}
+	if len(c.Upgrades) > 0 {
+		w("### Upgrade and code-execution paths\n\n| Site | Contract.function | Kind | Text |\n|---|---|---|---|\n")
+		for _, u := range c.Upgrades {
+			w("| %s:%d | %s | %s | %s |\n", u.File, u.Line, code(strings.TrimSuffix(u.Contract+"."+u.Function, ".")), u.Kind, code(u.Text))
 		}
 		w("\n")
 	}

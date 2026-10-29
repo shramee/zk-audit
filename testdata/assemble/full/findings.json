@@ -11,10 +11,14 @@
     { "title": "Unused helper returns unconstrained hint outputs", "detail": "decompose is never called; delete it or constrain its outputs.", "location": { "file": "circuit/transfer.go", "line": 106, "scope": "decompose" } },
     { "title": "No test checks the public-input order against Pool.withdraw" }
   ],
+  "accepted_risks": [
+    { "party": "sequencer", "risk": "The sequencer orders withdrawals and can delay them.", "source": "zk-audit.md:9" }
+  ],
   "records": [
     {
       "fingerprint": "TransferCircuit|res[1]|hint-output-unconstrained",
       "verdict": "confirmed",
+      "calibration": "SC-UNUSED-FREE-VALUE",
       "title": "Remainder hint output is never constrained",
       "layer": "circuit",
       "bug_class": "hint-output-unconstrained",
@@ -113,6 +117,9 @@
       "description": "Inputs >= r could alias nullifiers.",
       "reason": "The verifier reverts with PublicInputNotInField.",
       "refuting_location": { "file": "contracts/Verifier.sol", "line": 13, "scope": "Verifier.verifyProof" }
-    }
+    },
+    {"fingerprint": "Pool|setVerifier|trusted-verifier-swap", "verdict": "needs_validation", "calibration": "SC-TRUST-SOUNDNESS", "title": "Owner swaps the verifier at any time", "layer": "integration", "bug_class": "trusted-verifier-swap", "location": {"file": "contracts/Pool.sol", "line": 20, "end_line": 23, "scope": "Pool.setVerifier"}, "detected_by": ["T1", "I2"], "description": "The owner replaces the verifier with no delay and can then accept any proof.", "severity": "high", "confidence": 80, "blockers": ["Is the owner a timelocked multisig, and who holds its keys?"], "validation_plan": "Read the deployed owner on chain and its timelock delay.", "trust": {"party": "owner of Pool", "role": "owner", "power": "replaces the verifier; a verifier that accepts everything drains the pool", "breaks": ["soundness", "funds"], "assumption": "The owner key never installs an unaudited verifier"}},
+    {"fingerprint": "Pool|addRoot|trusted-root-insert", "verdict": "needs_validation", "calibration": "SC-TRUST-SOUNDNESS", "title": "Owner posts Merkle roots", "layer": "integration", "bug_class": "trusted-root-insert", "location": {"file": "contracts/Pool.sol", "line": 25, "end_line": 28, "scope": "Pool.addRoot"}, "detected_by": ["T1"], "description": "Roots come from the owner, not from deposits, so the owner can add a root of any tree.", "severity": "high", "confidence": 80, "blockers": ["Does the owner derive each root from deposits?"], "validation_plan": "Compare posted roots with the deposit history.", "trust": {"party": "owner of Pool", "role": "owner", "power": "adds any root; a fake tree mints withdrawals", "breaks": ["soundness", "funds"], "assumption": "The owner posts only roots of the real deposit tree", "accepted": true, "source": "zk-audit.md:7"}},
+    {"fingerprint": "Pool|withdraw|fee-fingerprint", "verdict": "lead", "property": "privacy", "title": "Prover-chosen fees fingerprint withdrawals", "layer": "integration", "bug_class": "amount-fingerprint", "location": {"file": "contracts/Pool.sol", "line": 35, "end_line": 36, "scope": "Pool.withdraw"}, "detected_by": ["V-privacy"], "vector_ids": ["V-PR4"], "description": "Fees are free public inputs, so a unique fee pair links a withdrawal to its prover.", "code_smells": ["fee0 and fee1 are public and unbounded"], "unverified": "whether the frontend fixes the fees"}
   ]
 }

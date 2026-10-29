@@ -17,11 +17,18 @@ its options, how its result is used, and who can replace it.
 4. Commitments: are the prover's Solidity-target and hash-to-field options the
    ones the contract expects (V-VC4)?
 5. Who can change the verifier address or VK? Setter functions, proxies,
-   upgradeable storage, `delegatecall`, constructor-only assignment. If an admin
-   can swap it, record the trusted party and check for a timelock or event;
-   find any path where a non-admin influences it.
+   upgradeable storage, `delegatecall`, constructor-only assignment (the
+   inventory's privileged functions and upgrade paths). T1 owns the trust
+   assumption; you hunt the path where a non-admin influences it (ungated
+   setter, initializer, storage collision, a verifier read from a mutable
+   registry) and report a swap you see with the T1 fields rather than
+   leaving it out.
 6. Precompile calls in custom verifiers: is every `staticcall` success checked,
    and are point inputs validated?
+7. Gas: estimate verification gas for the production public-input count
+   (Groth16: about 6 150 gas per public input plus the pairing check) and for
+   batch or recursive paths, against the block gas limit and any relayer cap
+   (V-LV1).
 
 ## Extra output fields
 

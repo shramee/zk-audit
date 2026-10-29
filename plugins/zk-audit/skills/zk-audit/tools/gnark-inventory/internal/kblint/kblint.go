@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/advisory"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/calibration"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 )
 
 // Report of a lint run.
@@ -106,6 +108,7 @@ func Lint(skillDir string, ruleIDs map[string]bool, opts ...Options) (*Report, e
 	}
 	lintManifest(r, filepath.Join(refs, "attack-vectors", "index.md"), perSlice)
 	lintVersions(r, filepath.Join(refs, "gnark-versions.md"))
+	lintCalibration(r, filepath.Join(refs, "severity-calibration.md"), ids)
 	lintSkill(r, skillDir)
 	return r, nil
 }
@@ -345,6 +348,67 @@ func lintVersions(r *Report, path string) {
 		if !strings.Contains(table, a.ID) {
 			r.errf("gnark-versions.md: advisory %s missing from the human-readable table", a.ID)
 		}
+	}
+}
+
+// lintCalibration checks severity-calibration.md: its JSON block equals the
+// tool's embedded calibration.json, every anchor is in the human table, every
+// anchor's vectors exist in the catalog and its ledger classes in
+// profiles.json, and every published example cites an allowed host or a
+// report shipped in gnark/audits/.
+func lintCalibration(r *Report, path string, vectors map[string]string) {
+	md, err := os.ReadFile(path)
+	if err != nil {
+		r.errf("severity-calibration.md: %v", err)
+		return
+	}
+	r.Files++
+	block, err := VersionsBlock(md)
+	if err != nil {
+		r.errf("severity-calibration.md: %v", err)
+		return
+	}
+	same, err := SameJSON(block, calibration.Raw())
+	if err != nil {
+		r.errf("severity-calibration.md: json block: %v", err)
+		return
+	}
+	if !same {
+		r.errf("severity-calibration.md: json block differs from the tool's embedded calibration.json; keep them identical")
+	}
+	t, err := calibration.Parse(calibration.Raw())
+	if err != nil {
+		r.errf("calibration.json: %v", err)
+		return
+	}
+	table := string(md[:bytes.Index(md, []byte("```json"))])
+	classes := profile.Load().LedgerClasses()
+	for _, a := range t.Anchors {
+		at := "severity-calibration.md " + a.ID
+		if !strings.Contains(table, "`"+a.ID+"`") {
+			r.errf("%s: missing from the anchor table", at)
+		}
+		for _, v := range a.Vectors {
+			if _, ok := vectors[v]; !ok {
+				r.errf("%s: vector %s does not exist in attack-vectors/", at, v)
+			}
+		}
+		for _, c := range a.LedgerClasses {
+			if _, ok := classes[c]; !ok {
+				r.errf("%s: ledger class %s is owned by no lens in profiles.json", at, c)
+			}
+		}
+	}
+	for i, e := range t.Examples {
+		at := fmt.Sprintf("severity-calibration.md examples[%d] (%s)", i, e.Finding)
+		if strings.HasPrefix(e.Ref, "gnark/audits/") {
+			continue
+		}
+		if !strings.HasPrefix(e.Ref, "https://") {
+			r.errf("%s: ref must be an https URL or a gnark/audits/ report", at)
+			continue
+		}
+		lintSource(r, at, e.Ref, Options{})
 	}
 }
 

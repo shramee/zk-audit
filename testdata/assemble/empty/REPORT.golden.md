@@ -23,11 +23,11 @@ Totals: 0 confirmed · 0 needs validation · 0 leads · 0 rejected. Ledger: 2 of
 
 The run recorded no findings: no candidate survived judging in the 2 covered units.
 
-The absence of confirmed findings does not mean the code is free of bugs. Only the units listed as examined in section 8 were reviewed.
+The absence of confirmed findings does not mean the code is free of bugs. Only the units listed as examined in section 10 were reviewed.
 
 ## 3. Findings
 
-No confirmed findings in the examined units. Section 8 lists what was and was not examined.
+No confirmed findings in the examined units. Section 10 lists what was and was not examined.
 
 ## 4. Finding details
 
@@ -41,11 +41,23 @@ None.
 
 None.
 
-## 7. Hardening notes
+## 7. Trusted parties
+
+No trusted-party power was recorded.
+
+The ledger has no `trusted-party` unit: the inventory found no privileged function, role or setup site.
+
+## 8. Privacy
+
+No privacy finding was recorded.
+
+The privacy lens (PR1) is not part of the `quick` profile; privacy was examined only through other lenses' findings.
+
+## 9. Hardening notes
 
 None recorded.
 
-## 8. Coverage
+## 10. Coverage
 
 | Kind | Units | planned | in progress | covered | candidate | deferred | blocked | not applicable | out of scope |
 |---|---|---|---|---|---|---|---|---|---|
@@ -63,6 +75,23 @@ Rejected candidates: 0 (kept in `findings.json` so a later run does not raise th
 Companions: not recorded.
 
 Inventory load mode: not recorded (no `inventory.json`).
+
+## 11. Not covered
+
+This review never examines:
+
+- gnark itself: its backends, gnark-crypto and the internals of std, beyond matching the pinned version against known advisories and checking the preconditions of the gadgets the circuits call;
+- circuits written for other frameworks (Circom, Noir, Halo2), which are routed to companion skills or checked against the generic vectors only;
+- cryptographic assumptions: hash, curve and pairing security, the soundness of the proof system, and trusted-setup ceremony transcripts;
+- deployed state and infrastructure outside the repository: bytecode, verifying keys and owners on chain, servers, key management, and relayers, indexers and frontends as operated;
+- economic, governance and MEV attacks beyond the listed vectors;
+- formal verification: no property is proven.
+
+In this run:
+
+- lenses not part of the `quick` profile: C2, C3, C4, C5, C6, I2, I3, I4, PR1, V-liveness, V-privacy, G1, G3, A1, F1;
+- ledger units not examined: 1 of 3 applicable (section 10);
+- companions: not recorded.
 
 > This review is a time-boxed, best-effort search for bugs by an automated
 > agent. It is not a guarantee of security. Absence of a finding is not

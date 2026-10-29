@@ -46,7 +46,7 @@ func cmdLedger(args []string, stdout io.Writer) (int, error) {
 		fs.StringVar(&ch.Notes, "notes", "", "notes")
 		fs.IntVar(&ch.Wave, "wave", 0, "wave number")
 	case "add":
-		fs.StringVar(&u.Kind, "kind", "", "unit kind (circuit, hint, public-input, contract-fn, verifier, prover, dependency)")
+		fs.StringVar(&u.Kind, "kind", "", "unit kind (circuit, hint, public-input, contract-fn, verifier, role, setup, prover, dependency)")
 		fs.StringVar(&u.Subject, "subject", "", "subject (circuit, function, input)")
 		fs.StringVar(&u.Class, "class", "", "ledger class (gnark-inventory profiles lists the classes per lens)")
 		fs.Var(&lenses, "lens", "lens id (repeatable)")

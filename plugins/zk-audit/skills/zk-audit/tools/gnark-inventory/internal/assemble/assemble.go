@@ -173,7 +173,14 @@ func checkClaims(f *Findings) []string {
 		chk(fmt.Sprintf("hardening[%d]", i), h.Title+" "+h.Detail)
 	}
 	for i, r := range f.Records {
-		chk(fmt.Sprintf("records[%d] (%s)", i, r.Fingerprint), strings.Join([]string{r.Title, r.Description, r.Impact, r.Unverified, r.ValidationPlan}, " "))
+		text := []string{r.Title, r.Description, r.Impact, r.Unverified, r.ValidationPlan}
+		if t := r.Trust; t != nil {
+			text = append(text, t.Party, t.Power, t.Assumption, t.Mitigation)
+		}
+		chk(fmt.Sprintf("records[%d] (%s)", i, r.Fingerprint), strings.Join(text, " "))
+	}
+	for i, a := range f.AcceptedRisks {
+		chk(fmt.Sprintf("accepted_risks[%d]", i), a.Party+" "+a.Risk)
 	}
 	return out
 }

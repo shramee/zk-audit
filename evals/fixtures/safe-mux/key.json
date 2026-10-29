@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "case": "safe-mux",
+  "fixture": "safe-mux",
+  "items": [],
+  "decoys": [
+    {
+      "id": "D1",
+      "title": "the correctly constrained shape",
+      "ranges": [
+        {
+          "file": "circuit/circuit.go",
+          "anchors": [
+            "api.AssertIsEqual(c.Out, api.Select(c.Select, c.Lane1, c.Lane0))"
+          ]
+        }
+      ],
+      "match": "(?i)select|boolean|mux|selector"
+    }
+  ],
+  "other": []
+}

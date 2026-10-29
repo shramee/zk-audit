@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "case": "safe-zero",
+  "fixture": "safe-zero",
+  "items": [],
+  "decoys": [
+    {
+      "id": "D1",
+      "title": "the correctly constrained shape",
+      "ranges": [
+        {
+          "file": "circuit/circuit.go",
+          "anchors": [
+            "api.AssertIsEqual(c.Blocked, blocked)"
+          ]
+        }
+      ],
+      "match": "(?i)zero|inverse|iszero|blocked|hint"
+    }
+  ],
+  "other": []
+}

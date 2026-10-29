@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "case": "safe-epoch",
+  "fixture": "safe-epoch",
+  "items": [],
+  "decoys": [
+    {
+      "id": "D1",
+      "title": "the correctly constrained shape",
+      "ranges": [
+        {
+          "file": "circuit/circuit.go",
+          "anchors": [
+            "api.AssertIsEqual(h.Sum(), c.Commit)"
+          ]
+        }
+      ],
+      "match": "(?i)epoch|public input|replay|unconstrained|unused"
+    }
+  ],
+  "other": []
+}

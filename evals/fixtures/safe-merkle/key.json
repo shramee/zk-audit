@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "case": "safe-merkle",
+  "fixture": "safe-merkle",
+  "items": [],
+  "decoys": [
+    {
+      "id": "D1",
+      "title": "the correctly constrained shape",
+      "ranges": [
+        {
+          "file": "circuit/circuit.go",
+          "anchors": [
+            "api.AssertIsEqual(cur, c.Root)"
+          ]
+        }
+      ],
+      "match": "(?i)sentinel|empty|zero|leaf|member|merkle"
+    }
+  ],
+  "other": []
+}

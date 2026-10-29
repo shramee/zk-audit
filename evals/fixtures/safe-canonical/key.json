@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "case": "safe-canonical",
+  "fixture": "safe-canonical",
+  "items": [],
+  "decoys": [
+    {
+      "id": "D1",
+      "title": "the correctly constrained shape",
+      "ranges": [
+        {
+          "file": "circuit/circuit.go",
+          "anchors": [
+            "api.AssertIsEqual(c.Positive, b[len(b)-1])"
+          ]
+        }
+      ],
+      "match": "(?i)canonical|modulus|alias|reduc|tobinary|bit"
+    }
+  ],
+  "other": []
+}

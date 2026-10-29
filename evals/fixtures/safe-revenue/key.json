@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "case": "safe-revenue",
+  "fixture": "safe-revenue",
+  "items": [],
+  "decoys": [
+    {
+      "id": "D1",
+      "title": "the correctly constrained shape",
+      "ranges": [
+        {
+          "file": "circuit/circuit.go",
+          "anchors": [
+            "api.AssertIsEqual(c.Revenue, api.Mul(c.Price, c.Quantity))"
+          ]
+        }
+      ],
+      "match": "(?i)wrap|overflow|product|field|mul"
+    }
+  ],
+  "other": []
+}

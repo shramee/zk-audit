@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "case": "safe-bool",
+  "fixture": "safe-bool",
+  "items": [],
+  "decoys": [
+    {
+      "id": "D1",
+      "title": "the correctly constrained shape",
+      "ranges": [
+        {
+          "file": "circuit/circuit.go",
+          "anchors": [
+            "api.AssertIsEqual(c.Granted, api.Mul(c.FlagA, c.FlagB))"
+          ]
+        }
+      ],
+      "match": "(?i)boolean|flag|\\band\\b|domain"
+    }
+  ],
+  "other": []
+}

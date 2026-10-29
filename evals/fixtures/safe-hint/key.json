@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "case": "safe-hint",
+  "fixture": "safe-hint",
+  "items": [],
+  "decoys": [
+    {
+      "id": "D1",
+      "title": "the correctly constrained shape",
+      "ranges": [
+        {
+          "file": "circuit/circuit.go",
+          "anchors": [
+            "api.AssertIsEqual(c.Quotient, q)"
+          ]
+        }
+      ],
+      "match": "(?i)remainder|quotient|range|div|hint"
+    }
+  ],
+  "other": []
+}

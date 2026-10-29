@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "case": "safe-range",
+  "fixture": "safe-range",
+  "items": [],
+  "decoys": [
+    {
+      "id": "D1",
+      "title": "the correctly constrained shape",
+      "ranges": [
+        {
+          "file": "circuit/circuit.go",
+          "anchors": [
+            "AssertIsLessEq(c.Spend, c.Balance)"
+          ]
+        }
+      ],
+      "match": "(?i)bound|comparator|range|compare|overflow"
+    }
+  ],
+  "other": []
+}

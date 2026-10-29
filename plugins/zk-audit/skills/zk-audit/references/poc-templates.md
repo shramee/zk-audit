@@ -368,20 +368,32 @@ reject and show that it accepts it:
 | V-CV3, V-CV4 | a point off the curve, or a pairing input of another length | a failed precompile call is ignored |
 
 ```solidity
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+import {CustomVerifier} from "../src/CustomVerifier.sol"; // the verifier under test
+
 contract PoC_<FindingID> {
     CustomVerifier v;
     uint256 constant R = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
+
     function setUp() public { v = new CustomVerifier(); }
-    function test_sanity() public view { require(v.verifyProof(PROOF, INPUTS), "honest proof rejected"); }
+
+    // the honest proof and its public inputs (from the repository's tests)
+    function proof() internal pure returns (uint256[8] memory p) { /* p[0] = 0x...; */ }
+    function inputs() internal pure returns (uint256[2] memory x) { /* x[0] = ...; */ }
+
+    function test_sanity() public view {
+        require(v.verifyProof(proof(), inputs()), "honest proof rejected");
+    }
     function test_attack() public view {
-        uint256[N] memory shifted = INPUTS;
-        shifted[0] = INPUTS[0] + R; // the changed value: a different statement or proof bytes
-        require(v.verifyProof(PROOF, shifted), "changed input rejected: no bug on this path");
+        uint256[2] memory shifted = inputs();
+        shifted[0] += R; // the changed value: another statement, same proof
+        require(v.verifyProof(proof(), shifted), "changed input rejected: no bug on this path");
     }
     function test_control() public view {
-        uint256[N] memory wrong = INPUTS;
-        wrong[0] = INPUTS[0] + 1; // a change the verifier must reject, and does
-        require(!v.verifyProof(PROOF, wrong), "verifier accepts anything: harness is wrong");
+        uint256[2] memory wrong = inputs();
+        wrong[0] += 1; // a change the verifier must reject, and does
+        require(!v.verifyProof(proof(), wrong), "verifier accepts anything: harness is wrong");
     }
 }
 ```

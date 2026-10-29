@@ -6,5 +6,25 @@
      "ranges": [{"file": "circuit/circuit.go", "anchors": ["cmp.NewBoundedComparator(api, new(big.Int).Lsh(big.NewInt(1), 32), false).AssertIsLessEq(c.Spend, c.Balance)"]}],
      "match": "(?i)bound|comparator|range|precondition|2\\^32|operand|wrap|absdiff",
      "expect": ["confirmed"], "partial": ["needs_validation", "lead"], "severity": ["high", "critical", "medium"]}
-  ], "decoys": [], "other": []
+  ], "decoys": [], "other": [
+    {
+      "id": "O1",
+      "title": "gnark and gnark-crypto advisories reported from Phase 0 (the advisory table matches the pinned release)",
+      "ranges": [
+        {
+          "file": "go.mod",
+          "anchors": [
+            "github.com/consensys/gnark v0.14.0"
+          ]
+        },
+        {
+          "file": "go.mod",
+          "anchors": [
+            "github.com/consensys/gnark-crypto v0.19.0"
+          ]
+        }
+      ],
+      "match": "(?i)GHSA|CVE|advisor|gnark|v0\\.14|v0\\.19"
+    }
+  ]
 }

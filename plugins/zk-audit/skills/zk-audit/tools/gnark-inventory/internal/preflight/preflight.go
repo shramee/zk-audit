@@ -147,7 +147,7 @@ func Check(st *detect.Stack, opt Options) *Report {
 				}
 			}
 			if mc.UseGo != "" {
-				mc.Notes = append(mc.Notes, fmt.Sprintf("local %s is older than go %s; the cached toolchain %s works offline: use it as the go command (the sandbox keeps GOTOOLCHAIN=local)", opt.LocalGo, mc.NeedsGo, mc.UseGo))
+				mc.Notes = append(mc.Notes, fmt.Sprintf("local %s is older than go %s; the cached toolchain %s works offline: prefix the inventory command with ZK_AUDIT_GO=%s (typed loading needs the tool built with it) and run PoCs with it as the go command (the sandbox keeps GOTOOLCHAIN=local)", opt.LocalGo, mc.NeedsGo, mc.UseGo, mc.UseGo))
 			} else {
 				r.Missing = append(r.Missing, fmt.Sprintf("%s: needs go %s, local is %s, and no newer toolchain is in the module cache", m.Path, mc.NeedsGo, opt.LocalGo))
 				if t := toolchainName(mc.NeedsGo); toolchain == "" || modcache.CompareGo(t, toolchain) > 0 {

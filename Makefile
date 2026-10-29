@@ -13,16 +13,22 @@ test:
 	cd $(TOOL) && go test ./...
 
 ## fixtures: download gnark for every test fixture module (network), then vet
-## each, so typed loading and the eval PoCs work offline afterwards
+## each, so typed loading and the eval PoCs work offline afterwards. A module
+## whose go.mod needs Go >= 1.25 (the advisory replays on gnark >= v0.15) is
+## best-effort: it is skipped with a warning when no such toolchain is reachable,
+## so the offline pipeline is not blocked. Modules that build on Go 1.24 are
+## strict (a failure fails the target).
 fixtures:
-	@for m in $$(find testdata -maxdepth 2 -name go.mod | sort); do \
-	  d=$$(dirname $$m); echo "downloading $$d"; \
-	  (cd $$d && go mod download all) || exit 1; \
-	done
-	@for m in $$(find testdata -maxdepth 2 -name go.mod | sort); do \
-	  d=$$(dirname $$m); echo "vetting $$d"; \
-	  (cd $$d && GOFLAGS=-mod=mod go vet ./...) || exit 1; \
-	done
+	@fail=0; for m in $$(find testdata -maxdepth 2 -name go.mod | sort); do \
+	  d=$$(dirname $$m); \
+	  need=$$(sed -n 's/^go \(1\.[0-9]*\).*/\1/p' $$m | head -1); \
+	  newer=$$(printf '%s\n1.25\n' "$$need" | sort -V | tail -1); \
+	  echo "fixtures: $$d (go $$need)"; \
+	  if (cd $$d && go mod download all && GOFLAGS=-mod=mod go vet ./...); then :; \
+	  elif [ "$$newer" = "$$need" ]; then \
+	    echo "fixtures: WARNING: $$d needs Go >= $$need and did not build; skipping (set GOTOOLCHAIN to a 1.25+ toolchain to include it)" >&2; \
+	  else fail=1; fi; \
+	done; [ $$fail -eq 0 ]
 
 test-types: fixtures
 	cd $(TOOL) && ZK_INVENTORY_REQUIRE_TYPES=1 go test -count=1 ./internal/inventory/

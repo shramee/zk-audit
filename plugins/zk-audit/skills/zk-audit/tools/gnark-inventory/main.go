@@ -46,6 +46,7 @@ Usage:
   gnark-inventory preflight --repo DIR [--out DIR] [--json]
   gnark-inventory inventory --repo DIR --out DIR [--files a.go,dir/] [--syntax-only] [--allow-network]
   gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile P]
+  gnark-inventory estimate  --out DIR [--profile P]... [--passes N] [--no-poc] [--json]
   gnark-inventory profiles  [--profile P] [--markdown] [--check-docs SKILL_DIR] [--sync-docs SKILL_DIR]
   gnark-inventory validate  findings|ledger|stack FILE [--out DIR]
   gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F] [--file-output]
@@ -97,6 +98,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		code, err = cmdAssemble(args[1:], stdout)
 	case "bundle":
 		err = cmdBundle(args[1:], stdout)
+	case "estimate":
+		err = cmdEstimate(args[1:], stdout)
 	case "validate":
 		code, err = cmdValidate(args[1:], stdout)
 	case "lint-kb":

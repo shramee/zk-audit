@@ -77,21 +77,27 @@ parallel:
 4. Run the update check: `{skill}/scripts/check-version` (silent unless a
    newer release exists; never blocks the audit).
 
-Print the stack line and the companion line. Ask the single profile/model
-question (`AskUserQuestion`), or state the default, then print
-`profile: <profile> · model: <model>`.
+Print the stack line and the companion line.
 
 ## Turn 2 — Recon
 
 1. `{skill}/scripts/gnark-inventory inventory --repo <repo> --out <out> [--files …]`.
    If the load mode is not `types`, say so; offer `--allow-network` (it lets the
    go command download modules) only with the user's consent.
-2. Read `inventory.md`, every `Define`, and the contracts that call verifiers.
-3. Complete `binding-table.md` and write `system-map.md` (see `SKILL.md`
+2. Estimate the run before any agent starts:
+   `{skill}/scripts/gnark-inventory estimate --out <out>` (add `--no-poc` or
+   `--passes N` when the invocation has them). It prints agents, tokens, cost
+   and minutes per profile as ranges, calibrated on measured runs, and writes
+   `<out>/estimate.json`. Ask the single profile/model question
+   (`AskUserQuestion`) with each profile's cost and time range in its option
+   label, or state the default, then print `profile: <profile> · model:
+   <model>` and the chosen profile's range.
+3. Read `inventory.md`, every `Define`, and the contracts that call verifiers.
+4. Complete `binding-table.md` and write `system-map.md` (see `SKILL.md`
    Phase 1).
-4. Validate the ledger: `gnark-inventory validate ledger <out>/coverage-ledger.json`.
-5. Verifier provenance (below).
-6. For `/zk-audit recon`, stop here (`commands/recon.md` lists the output).
+5. Validate the ledger: `gnark-inventory validate ledger <out>/coverage-ledger.json`.
+6. Verifier provenance (below).
+7. For `/zk-audit recon`, stop here (`commands/recon.md` lists the output).
 
 ### Verifier provenance
 

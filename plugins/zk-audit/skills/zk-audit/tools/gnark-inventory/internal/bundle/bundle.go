@@ -37,13 +37,15 @@ type Shard struct {
 
 // Result describes one written bundle.
 type Result struct {
-	Agent  string `json:"agent"`
-	Shard  string `json:"shard"`
-	Path   string `json:"path"`
-	Lines  int    `json:"lines"`
-	Files  int    `json:"source_files"`
-	Status string `json:"status"` // written, skipped
-	Reason string `json:"reason,omitempty"`
+	Agent string `json:"agent"`
+	Shard string `json:"shard"`
+	Path  string `json:"path"`
+	Lines int    `json:"lines"`
+	Files int    `json:"source_files"`
+	// SourceLines is the line count of the shard's source files.
+	SourceLines int    `json:"source_lines,omitempty"`
+	Status      string `json:"status"` // written, skipped
+	Reason      string `json:"reason,omitempty"`
 }
 
 // Options for Build.
@@ -99,22 +101,15 @@ func Build(opt Options) ([]Result, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	var out []Result
-	if _, ok := profile.Load().Profile(opt.Profile); !ok {
-		return nil, fmt.Errorf("bundle: unknown profile %q (want one of %s)", opt.Profile, strings.Join(profile.Load().ProfileIDs(), ", "))
+	plan, err := Plan(&inv, shards, opt.Profile)
+	if err != nil {
+		return nil, err
 	}
-	for _, a := range profile.Load().Lenses {
-		if !a.In(opt.Profile) {
-			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: "not in profile " + opt.Profile})
-			continue
-		}
-		if a.When != "" && !ConditionHolds(a.When, &inv) {
-			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: profile.Conditions[a.When]})
-			continue
-		}
-		targets := shardsOf(shards, a.Shard)
-		if len(targets) == 0 {
-			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: "empty " + a.Shard + " shard"})
+	var out []Result
+	for _, p := range plan {
+		a := p.Lens
+		if p.Skip != "" {
+			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: p.Skip})
 			continue
 		}
 		lens, err := read(a.File)
@@ -127,20 +122,70 @@ func Build(opt Options) ([]Result, error) {
 				return nil, err
 			}
 		}
+		md := render(&inv, a, p.ID, p.Shard, string(binding), periph, known, sop, lens, slice, rules, opt.Profile, regen)
+		path := filepath.Join(dir, safeName(p.ID)+".md")
+		if err := os.WriteFile(path, []byte(md), 0o644); err != nil {
+			return nil, err
+		}
+		out = append(out, Result{Agent: p.ID, Shard: p.Shard.Name, Path: path, Lines: strings.Count(md, "\n"), Files: len(p.Shard.Files),
+			SourceLines: SourceLines(&inv, p.Shard), Status: "written"})
+	}
+	return out, nil
+}
+
+// Planned is one agent a profile selects for an inventory: a lens on one
+// shard, or the reason the lens gets no bundle.
+type Planned struct {
+	Lens  Agent
+	ID    string // agent id: the lens id, or <lens>@<shard> for per-package circuit shards
+	Shard Shard
+	Skip  string // why no bundle is written; "" when one is
+}
+
+// Plan lists, in profiles.json order, the agents a profile runs on an
+// inventory and the lenses it skips (not in the profile, `when` condition
+// false, empty shard). Build writes a bundle for each planned agent; the
+// cost estimate counts them.
+func Plan(inv *inventory.Inventory, shards []Shard, prof string) ([]Planned, error) {
+	if _, ok := profile.Load().Profile(prof); !ok {
+		return nil, fmt.Errorf("bundle: unknown profile %q (want one of %s)", prof, strings.Join(profile.Load().ProfileIDs(), ", "))
+	}
+	var out []Planned
+	for _, a := range profile.Load().Lenses {
+		if !a.In(prof) {
+			out = append(out, Planned{Lens: a, ID: a.ID, Skip: "not in profile " + prof})
+			continue
+		}
+		if a.When != "" && !ConditionHolds(a.When, inv) {
+			out = append(out, Planned{Lens: a, ID: a.ID, Skip: profile.Conditions[a.When]})
+			continue
+		}
+		targets := shardsOf(shards, a.Shard)
+		if len(targets) == 0 {
+			out = append(out, Planned{Lens: a, ID: a.ID, Skip: "empty " + a.Shard + " shard"})
+			continue
+		}
 		for _, sh := range targets {
 			id := a.ID
 			if sh.Name != sh.Kind {
 				id = a.ID + "@" + sh.Name
 			}
-			md := render(&inv, a, id, sh, string(binding), periph, known, sop, lens, slice, rules, opt.Profile, regen)
-			p := filepath.Join(dir, safeName(id)+".md")
-			if err := os.WriteFile(p, []byte(md), 0o644); err != nil {
-				return nil, err
-			}
-			out = append(out, Result{Agent: id, Shard: sh.Name, Path: p, Lines: strings.Count(md, "\n"), Files: len(sh.Files), Status: "written"})
+			out = append(out, Planned{Lens: a, ID: id, Shard: sh})
 		}
 	}
 	return out, nil
+}
+
+// SourceLines is the number of lines of the shard's source files (files
+// that cannot be read count zero).
+func SourceLines(inv *inventory.Inventory, sh Shard) int {
+	n := 0
+	for _, f := range sh.Files {
+		if c := lineCount(filepath.Join(inv.Repo, filepath.FromSlash(f))); c > 0 {
+			n += c
+		}
+	}
+	return n
 }
 
 // reGateway matches the interface or contract name of a verifier gateway

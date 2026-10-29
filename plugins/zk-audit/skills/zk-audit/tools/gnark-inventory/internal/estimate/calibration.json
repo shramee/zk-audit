@@ -1,0 +1,30 @@
+{
+  "$comment": "Measured runs the cost estimate is calibrated against. Change it only with a new measured baseline (evals/baseline/), and keep docs/design-notes.md ('Cost estimate and budget') in step.",
+  "schema_version": "1",
+  "source": "evals/baseline/pool-2026-10-29.md (shramee/zk-audit#10): one blind run per profile on the pool fixture at e198ed7, model claude-opus-5-5, 2026-10-29",
+  "fixture": "pool",
+  "reference_source_lines": 200,
+  "tokens_per_source_line": 25,
+  "usd_per_mtok": { "low": 11.4, "mid": 12.3, "high": 13.5,
+    "note": "session total_cost_usd divided by the tokens the subagents reported (quick 11.4, deep 12.0, standard 13.5); it carries the orchestrator's own share" },
+  "token_spread": { "low": 0.8, "high": 1.25 },
+  "roles": {
+    "hunter": { "quick": 49000, "standard": 57000, "deep": 58000, "library": 57000 },
+    "poc": 46000,
+    "refuter": 14000,
+    "critic": 135000,
+    "wave": 46000
+  },
+  "confirmed_per_reference": { "low": 0, "high": 7, "reference_lines": 286, "min_high": 2, "max_high": 15,
+    "note": "the pool fixture is dense with planted bugs (7 PoC builders for 286 in-scope lines in standard and deep), so it gives the high end; real code usually has fewer" },
+  "minutes": { "fixed": 4.5, "hunt_batch": 1.8, "poc_batch": 3.5, "refuter_batch": 1.0, "critic": 1.2, "wave": 0.7, "spread_low": 0.8, "spread_high": 1.3 },
+  "pool_size": 6,
+  "runs": [
+    { "profile": "quick", "flags": "--no-poc", "usd": 9.16, "minutes": 10.7, "agents": 20, "hunters": 15, "poc": 0, "refuters": 5, "critics": 0, "waves": 0, "subagent_mtok": 0.80 },
+    { "profile": "standard", "flags": "", "usd": 26.09, "minutes": 22.8, "agents": 43, "hunters": 27, "poc": 7, "refuters": 7, "critics": 1, "waves": 1, "subagent_mtok": 1.93, "note": "24 hunters and 3 retries after safeguard refusals" },
+    { "profile": "deep", "flags": "", "usd": 25.64, "minutes": 21.8, "agents": 42, "hunters": 27, "poc": 7, "refuters": 5, "critics": 2, "waves": 1, "subagent_mtok": 2.14, "note": "one pass ran: loop mode was not exercised in this run, so passes 2 and 3 are extrapolated" }
+  ],
+  "unmeasured": [
+    { "case": "ci-smoke", "profile": "quick", "flags": "--no-poc", "note": "one-circuit fixture on the eval-corpus branch; CI caps it at 4 USD; no measured run is committed, so it is not used for calibration" }
+  ]
+}

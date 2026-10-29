@@ -82,9 +82,13 @@ Lens ids and their files are listed in `references/orchestration.md`. The tool
 prints the same definitions as JSON: `{skill}/scripts/gnark-inventory profiles [--profile P]`.
 
 Before the first agent spawn, ask **one** question with `AskUserQuestion`
-(profile and model, recommended default preselected). If the runtime has no
-such tool, use the default and say so in one line. Do not ask anything else
-before recon finishes.
+(profile and model, recommended default preselected). Ask it right after the
+inventory (Phase 1), with the cost of each option from
+`{skill}/scripts/gnark-inventory estimate --out <out>`: a range per profile
+(`standard — 17-40 USD, 12-32 min`) and its calibration line, never one
+number. If the runtime has no such tool, use the default, print the
+estimate and say so in one line. Do not ask anything else before recon
+finishes.
 
 ## 3. Hard rules (apply to every phase and every agent)
 

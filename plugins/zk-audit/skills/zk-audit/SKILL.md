@@ -92,14 +92,27 @@ before recon finishes.
 2. **Output outside the repo.** Write everything to
    `~/.zk-audit/<repo-name>/<run-id>/` (run-id = `YYYYMMDD-HHMMSS`), or to
    `--out`.
-3. **PoCs run in a scratch git worktree** under the output directory, never in
-   the user's checkout: `git -C <repo> worktree add --detach <out>/worktree HEAD`.
-   Run them with a time limit and without network
-   (`GOFLAGS=-mod=mod GOPROXY=off timeout 600 go test -run PoC_ ./<pkg>/`).
-   `-mod=mod` lets the go command add `go.sum` lines for test-only imports
-   such as `gnark/test` from the module cache; it only rewrites the
-   worktree's `go.mod`, never the user's. If the module cache lacks the
-   target's dependencies, ask before running `go mod download`. `--no-poc` disables PoCs. Remove the worktree at the end
+3. **PoCs run in a scratch git worktree, inside the sandbox.** Never in the
+   user's checkout: `git -C <repo> worktree add --detach <out>/worktree HEAD`.
+   Every command that executes target code (PoC `go test`, `forge test`) goes
+   through `{skill}/scripts/sandbox`, with the worktree the only writable
+   tree:
+
+   ```bash
+   {skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- go -C <out>/worktree test -count=1 -run PoC_ ./<pkg>/
+   {skill}/scripts/sandbox --rw <out>/worktree --ro <repo> -- forge test --root <out>/worktree --offline --match-contract PoC_
+   ```
+
+   On Linux it uses bubblewrap: no network, read-only file system except the
+   `--rw` directories, home directory hidden, cgo off, local toolchain only,
+   `GOFLAGS=-mod=mod`, `GOPROXY=off`, a memory limit and a 600 s time limit
+   (exit 124). On macOS it uses `sandbox-exec` (network and writes denied;
+   reads not restricted). Without either it prints a warning and applies only
+   the limits; say so in the report's posture. `-mod=mod` lets the go command
+   add `go.sum` lines for test-only imports such as `gnark/test` from the
+   module cache; it only rewrites the worktree's `go.mod`. If the module
+   cache lacks the target's dependencies, ask before running `go mod
+   download`. `--no-poc` disables PoCs. Remove the worktree at the end
    (`git -C <repo> worktree remove --force <out>/worktree`).
 4. **No silent installs.** Never install a skill, a Go module, `forge` or
    anything else without the user's explicit yes. `/zk-audit setup` prints the
@@ -127,6 +140,11 @@ Before anything else, print this banner once (`<version>` from
 zk-audit v<version> · gnark circuits × verifiers × protocol state
 scope: <scope> · out: <out-dir>
 ```
+
+Run every command as one simple command: no `cd … &&`, `;`, pipes or
+`$(...)` (permission allowlists refuse compound commands); use `go -C <dir>`,
+`git -C <dir>` and `forge --root <dir>` instead of `cd`, and Read instead of
+`cat`.
 
 In the same turn run `{skill}/scripts/check-version` alongside Phase 0. It is
 silent unless a newer release exists; print its one line if it prints one,
@@ -165,6 +183,9 @@ The wrapper builds the tool on first use (needs Go ≥ 1.24). It reports the gna
 and gnark-crypto versions from `go.mod`, matching advisories, backend and curve
 hints, and whether Solidity, Foundry, Hardhat, Circom or Noir are present.
 
+- Check the sandbox: `{skill}/scripts/sandbox --check`. It prints the engine
+  (`bwrap`, `sandbox-exec` or `none`) and what it isolates; add it to the
+  stack line.
 - Any advisory that matches the pinned gnark version is reported as a finding
   candidate right away (see `references/gnark-versions.md` for required
   actions, e.g. regenerate keys).
@@ -175,7 +196,7 @@ hints, and whether Solidity, Foundry, Hardhat, Circom or Noir are present.
   stop.
 
 Print one stack line: `gnark v0.x.y (advisories: N) · groth16/plonk · bn254 ·
-solidity: yes · foundry: yes · companions: ✔ fp-check ✖ circom-auditor`.
+solidity: yes · foundry: yes · sandbox: bwrap · companions: ✔ fp-check ✖ circom-auditor`.
 Companion detection rules are in `references/companions.md`.
 
 ### Phase 1 — Recon (deterministic tool + one recon pass)
@@ -185,7 +206,10 @@ Companion detection rules are in `references/companions.md`.
 ```
 
 This writes `inventory.json`, `inventory.md`, `binding-table.md` (draft) and a
-seeded `coverage-ledger.json`. Then the orchestrator itself (no subagent):
+seeded `coverage-ledger.json`. Type loading runs the go command on the target,
+so the tool runs it inside the same sandbox as PoCs (repository read-only,
+only `<out>` writable, no network); `--sandbox on` makes a missing sandbox an
+error, `--sandbox off` loads in-process. Then the orchestrator itself (no subagent):
 
 1. Reads `inventory.md` and every circuit's `Define`.
 2. Completes `binding-table.md`: one row per public input in public-witness

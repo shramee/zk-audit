@@ -164,6 +164,48 @@ left open, it is recorded here with the reason.
 Nothing else changes: bundles, ledger seeding and validation, the docs
 tables and `gnark-inventory profiles` all follow the entry.
 
+## Sandbox (PoCs and recon)
+
+- **`gnark-inventory sandbox`** (wrapped by `scripts/sandbox`) is the one
+  way the skill executes target code: PoC `go test` and `forge test`, and
+  the inventory's `go list` (x-ray P-3, items 1 and 3). It is in the Go tool,
+  not a shell script, so the environment hardening is shared with the loader
+  and testable, and it needs no new dependency.
+- **Engines.** Linux: bubblewrap, probed once per process (a `bwrap` that
+  cannot create namespaces, e.g. on a host that restricts unprivileged user
+  namespaces, counts as absent). macOS: `sandbox-exec` with a deny-network,
+  deny-write-outside profile; it is not exercised in CI (no macOS runner), and
+  reads are not restricted there because a deny-read profile breaks the go
+  command in ways that cannot be tested here. Elsewhere, or with
+  `--engine none`: a warning on stderr and only the limits below.
+  `--require` turns the fallback into an error (exit 125).
+- **Limits without OS support.** The tool re-executes itself as a second
+  stage inside the sandbox that sets `RLIMIT_AS` (per process; a cgroup would
+  limit the total but needs privileges or systemd) and `RLIMIT_CORE=0`, then
+  execs the command. The wall-clock limit kills the whole process group (and
+  with bubblewrap the PID namespace, through `--die-with-parent`); exit 124
+  as `timeout(1)`.
+- **Build cache.** Sandboxed commands use `~/.zk-audit/gocache`, not the
+  user's `GOCACHE`: test code runs with write access to the build cache, and a
+  planted entry must not reach the user's own builds. The first sandboxed
+  type load or PoC run of a gnark project compiles gnark once (about 20 s
+  here).
+- **Home directory hidden.** bubblewrap mounts an empty tmpfs over `$HOME`
+  and re-binds only the module cache, Go root, the tool binary and Foundry's
+  directories read-only, so a PoC cannot read SSH keys or tokens. Running as
+  root still reads root-owned files outside `$HOME`.
+- **Recon.** `inventory` reruns itself in the sandbox (repository
+  read-only, output directory writable) unless `--syntax-only`,
+  `--sandbox off`, or already inside a sandbox. The loader itself also sets
+  `CGO_ENABLED=0`, `GOWORK=off`, an empty `GOFLAGS` and, offline,
+  `GOTOOLCHAIN=local` (x-ray G-14).
+- **Command forms.** Docs and agent briefs use `go -C <dir>`,
+  `forge test --root <dir>` and single commands, because the 2026-10-29
+  measurement runs showed permission allowlists refusing `cd … && …` and
+  pipes (shramee/zk-audit#10).
+- **Evals.** `evals/run-pocs` (and so `make eval-pocs` and CI) runs the pool
+  PoCs through the sandbox, offline.
+
 ## Invocation parsing
 
 - **`gnark-inventory args`** turns the words after `/zk-audit` into JSON

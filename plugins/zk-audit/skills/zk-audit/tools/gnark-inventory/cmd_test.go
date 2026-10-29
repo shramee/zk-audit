@@ -3,9 +3,23 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fixture"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/sandbox"
 )
+
+// TestMain lets the test binary stand in for the tool when a command
+// re-executes itself inside the sandbox (inventory type loading).
+func TestMain(m *testing.M) {
+	sandbox.Stage2()
+	if os.Getenv(sandbox.MarkerEnv) == "1" && os.Getenv("ZK_AUDIT_SELF_EXEC") == "1" {
+		os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	}
+	os.Exit(m.Run())
+}
 
 func TestArgsCommand(t *testing.T) {
 	repo := t.TempDir()
@@ -57,5 +71,28 @@ func TestProfilesCommand(t *testing.T) {
 	}
 	if code, err := cmdProfiles([]string{"--profile", "huge"}, &out); code != 2 || err == nil {
 		t.Fatalf("unknown profile: %d %v", code, err)
+	}
+}
+
+// TestInventoryInSandbox runs type loading inside the OS sandbox, the same
+// environment PoCs run in. With the fixture modules cached (make fixtures)
+// it must reach types mode.
+func TestInventoryInSandbox(t *testing.T) {
+	if e, _ := sandbox.Detect("auto"); e == nil || e.Name == sandbox.None {
+		t.Skip("no OS sandbox")
+	}
+	out := t.TempDir()
+	var buf bytes.Buffer
+	if err := cmdInventory([]string{"--repo", fixture.Dir(t, "pool"), "--out", out, "--sandbox", "on"}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "load: ") {
+		t.Fatalf("summary: %s", buf.String())
+	}
+	if os.Getenv("ZK_INVENTORY_REQUIRE_TYPES") == "1" && !strings.Contains(buf.String(), "load: types") {
+		t.Fatalf("sandboxed loading did not reach types mode: %s", buf.String())
+	}
+	if _, err := os.Stat(out + "/coverage-ledger.json"); err != nil {
+		t.Fatal(err)
 	}
 }

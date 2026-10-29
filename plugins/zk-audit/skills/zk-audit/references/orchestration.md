@@ -175,9 +175,12 @@ or `{skill}/agents/refuter.md`) as its brief, with the same tool limits.
 1. Create the scratch worktree: `git -C <repo> worktree add --detach <out>/worktree HEAD`.
 2. For each confirmed circuit finding (quick: Critical and High only), spawn
    `zk-audit:poc-builder` with the record, the vector's template from
-   `poc-templates.md`, and the worktree path. It writes `pocs/<finding-number>_poc_test.go`
-   (or `.t.sol`) under `<out>/pocs/`, copies it into the worktree, runs it with
-   a time limit and no network, and returns the result.
+   `poc-templates.md`, the worktree path, the repository path and the exact
+   sandbox command (`{skill}/scripts/sandbox --rw <out>/worktree --ro <repo> --
+   go -C <out>/worktree test ...`; `forge test --root <out>/worktree` for
+   contracts). It writes `pocs/<finding-number>_poc_test.go` (or `.t.sol`)
+   under `<out>/pocs/`, copies it into the worktree, runs it through the
+   sandbox, and returns the result.
 3. Spawn a fresh `zk-audit:refuter` (or `fp-check`) per confirmed item, with
    the prompt in `judging.md` §6. At most six at once.
 4. Update `evidence`, `poc`, `refuter` and confidence in each record.

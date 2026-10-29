@@ -26,7 +26,7 @@ if grep -RnE '\{plugin\}|\{skill\}/\.\.' --include='*.md' "$skill" | grep -v '/t
   echo "standalone-skill: the skill folder refers outside itself (lines above)" >&2
   exit 1
 fi
-for f in SKILL.md VERSION agents/poc-builder.md agents/refuter.md agents/hunter.md agents/critic.md references/modes/setup.md \
+for f in SKILL.md VERSION agents/poc-builder.md agents/refuter.md agents/hunter.md agents/critic.md scripts/sandbox references/modes/setup.md \
   references/modes/recon.md references/modes/diff.md schemas/findings.schema.json \
   scripts/check-version; do
   [ -e "$skill/$f" ] || { echo "standalone-skill: missing $f in the copy" >&2; exit 1; }
@@ -48,6 +48,9 @@ printf '%s\n' '{"schema_version":"1","repo":"pool","run_id":"20261028-000000","p
 "$skill/scripts/validate-findings" "$out/findings.json"
 step "assemble";          "$skill/scripts/assemble" --out "$out" --repo "$fixture" | tail -1
 [ -s "$out/REPORT.md" ] || { echo "standalone-skill: no REPORT.md" >&2; exit 1; }
+step "sandbox";           "$skill/scripts/sandbox" --check
+mkdir -p "$work/box"
+"$skill/scripts/sandbox" --rw "$work/box" -- go env CGO_ENABLED | grep -qx 0 || { echo "standalone-skill: sandbox did not disable cgo" >&2; exit 1; }
 step "lint-kb";           "$gi" lint-kb "$skill"
 step "update check (offline, must be silent)"
 [ -z "$("$skill/scripts/check-version")" ]

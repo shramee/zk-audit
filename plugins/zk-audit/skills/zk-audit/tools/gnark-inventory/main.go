@@ -24,6 +24,7 @@ import (
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/load"
 	profiles "github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/report"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/sandbox"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/validate"
 )
 
@@ -41,15 +42,19 @@ Usage:
   gnark-inventory profiles  [--profile P] [--markdown] [--check-docs SKILL_DIR] [--sync-docs SKILL_DIR]
   gnark-inventory validate  findings|ledger|stack FILE
   gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F]
+  gnark-inventory sandbox   [--rw DIR]... [--ro DIR]... [--cwd DIR] [--timeout SEC] [--mem MB] [--allow-network] [--engine E] [--require] [--check] -- CMD [ARGS...]
   gnark-inventory lint-kb   [--gnark-src DIR] SKILL_DIR
   gnark-inventory advisories [--version vX.Y.Z]
   gnark-inventory rules
   gnark-inventory version
 
-Exit status: 0 ok, 1 validation or lint failure, 2 usage or I/O error.
+Exit status: 0 ok, 1 validation or lint failure, 2 usage or I/O error;
+sandbox returns the command's status, 124 on the time limit, 125 when the
+sandbox cannot be set up, 127 when the command does not exist.
 `
 
 func main() {
+	sandbox.Stage2() // inside a sandbox: set limits and exec the command
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
@@ -81,6 +86,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = cmdAdvisories(args[1:], stdout)
 	case "args":
 		code, err = cmdArgs(args[1:], stdout)
+	case "sandbox":
+		code, err = cmdSandbox(args[1:], stdout, stderr)
 	case "profiles":
 		code, err = cmdProfiles(args[1:], stdout)
 	case "rules":
@@ -167,8 +174,14 @@ func cmdInventory(args []string, stdout io.Writer) error {
 	files := fs.String("files", "", "comma-separated repo-relative files or directories to report on")
 	syntax := fs.Bool("syntax-only", false, "skip go/packages type loading")
 	network := fs.Bool("allow-network", false, "let the go command download modules while loading")
+	sb := fs.String("sandbox", "auto", "run type loading (go list) in the OS sandbox: auto (when available), on (required) or off")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	switch *sb {
+	case "auto", "on", "off":
+	default:
+		return fmt.Errorf("inventory: --sandbox wants auto, on or off, got %q", *sb)
 	}
 	if *out == "" {
 		return fmt.Errorf("inventory: --out is required")
@@ -182,6 +195,20 @@ func cmdInventory(args []string, stdout io.Writer) error {
 	}
 	if inside(*out, root) {
 		fmt.Fprintln(os.Stderr, "gnark-inventory: warning: --out is inside the target repository")
+	}
+	if !*syntax && *sb != "off" && os.Getenv(sandbox.MarkerEnv) == "" {
+		absOut, err := filepath.Abs(*out)
+		if err != nil {
+			return err
+		}
+		inner := []string{"--repo", root, "--out", absOut, "--files", *files}
+		if *network {
+			inner = append(inner, "--allow-network")
+		}
+		done, err := inventoryInSandbox(inner, root, absOut, *network, *sb == "on", stdout)
+		if done || err != nil {
+			return err
+		}
 	}
 	var scope []string
 	for _, f := range strings.Split(*files, ",") {
@@ -228,6 +255,40 @@ func cmdInventory(args []string, stdout io.Writer) error {
 		}
 	}
 	return nil
+}
+
+// inventoryInSandbox reruns this inventory command inside the OS sandbox
+// (repository read-only, only the output directory and the sandbox build
+// cache writable, no network unless --allow-network), the same environment
+// PoCs run in. It reports done=false when no OS sandbox exists and the caller
+// should load in-process (auto mode).
+func inventoryInSandbox(args []string, root, out string, network, require bool, stdout io.Writer) (bool, error) {
+	eng, err := sandbox.Detect("auto")
+	if err != nil {
+		return true, err
+	}
+	if eng.Name == sandbox.None {
+		if require {
+			return true, fmt.Errorf("inventory: --sandbox on, but no OS sandbox is usable: %s", eng.Reason)
+		}
+		fmt.Fprintf(os.Stderr, "gnark-inventory: warning: no OS sandbox (%s); loading the target in-process with a hardened go environment\n", eng.Reason)
+		return false, nil
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return true, err
+	}
+	code, _, err := sandbox.Run(append([]string{self, "inventory"}, args...), sandbox.Options{
+		RW: []string{out}, RO: []string{root}, Cwd: out, Network: network, Require: true,
+		Env: []string{"ZK_AUDIT_SELF_EXEC=1"}, Stdout: stdout, Stderr: os.Stderr,
+	})
+	if err != nil {
+		return true, err
+	}
+	if code != 0 {
+		return true, fmt.Errorf("inventory: the sandboxed run exited with status %d", code)
+	}
+	return true, nil
 }
 
 // missingModules reports whether load errors look like an empty module cache

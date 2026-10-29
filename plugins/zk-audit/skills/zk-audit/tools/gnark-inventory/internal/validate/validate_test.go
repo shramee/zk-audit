@@ -290,3 +290,62 @@ func TestLedgerTruthfulness(t *testing.T) {
 		t.Errorf("no --out: %v", rep.Errors)
 	}
 }
+
+// trustDoc is one trusted-party record: an owner who swaps the verifier.
+func trustDoc(verdict, severity, extra, trustExtra string) string {
+	body := `"severity": "` + severity + `", "confidence": 70, "blockers": ["Is the owner a timelocked multisig, and who holds its keys?"], "validation_plan": "Read the deployed owner on chain."`
+	switch verdict {
+	case "lead":
+		body = `"code_smells": ["owner-only setter"], "unverified": "who holds the key"`
+	case "rejected":
+		body = `"reason": "the setter is internal", "refuting_location": {"file": "contracts/Vault.sol", "line": 9, "scope": "Vault"}`
+	case "confirmed":
+		body = `"severity": "` + severity + `", "confidence": 70, "evidence": "ANALYSIS", "proof": "anyone calls initialize first", "impact": "drains the vault", "gates": {"executes": "y", "reachable": "y", "unprivileged": "initializer is ungated", "impact": "funds"}`
+	}
+	return `{"schema_version": "1", "repo": "vault", "run_id": "20261029-101500", "profile": "standard", "records": [{
+	  "fingerprint": "Vault|setVerifier|trusted-verifier-swap", "verdict": "` + verdict + `", "title": "Owner swaps the verifier",
+	  "layer": "integration", "bug_class": "trusted-verifier-swap",
+	  "location": {"file": "contracts/Vault.sol", "line": 20, "scope": "Vault.setVerifier"},
+	  "detected_by": ["T1"], "description": "The owner replaces the verifier at any time.", ` + body + extra + `,
+	  "trust": {"party": "owner of Vault", "role": "owner", "power": "replaces the verifier", "breaks": ["soundness", "funds"],
+	            "assumption": "the owner is a timelocked multisig"` + trustExtra + `}}]}`
+}
+
+func TestTrustedPartyRules(t *testing.T) {
+	cases := []struct {
+		name, doc, wantErr, wantWarn string
+	}{
+		{"needs_validation high", trustDoc("needs_validation", "high", "", ""), "", ""},
+		{"lead without reason", trustDoc("lead", "", "", ""), "is not a lead", ""},
+		{"lead with reason", trustDoc("lead", "", "", `, "lead_reason": "the gate is in an unscanned base contract"`), "", ""},
+		{"low power over funds", trustDoc("needs_validation", "low", "", ""), "at least medium", ""},
+		{"medium without mitigation", trustDoc("needs_validation", "medium", "", ""), "needs trust.mitigation", ""},
+		{"medium with mitigation", trustDoc("needs_validation", "medium", "", `, "mitigation": "owner is TimelockController (deploy/Deploy.s.sol:14)"`), "", ""},
+		{"accepted without source", trustDoc("needs_validation", "high", "", `, "accepted": true`), "needs trust.source", ""},
+		{"accepted with source", trustDoc("needs_validation", "high", "", `, "accepted": true, "source": "zk-audit.md:12"`), "", ""},
+		{"accepted lead", trustDoc("lead", "", "", `, "accepted": true, "source": "zk-audit.md:12", "lead_reason": "x"`), "accepted risk", ""},
+		{"bad source", trustDoc("needs_validation", "high", "", `, "accepted": true, "source": "README.md:3"`), "does not match", ""},
+		{"confirmed amplifier", trustDoc("confirmed", "critical", "", ""), "", ""},
+		{"rejected", trustDoc("rejected", "", "", ""), "", ""},
+		{"blocker without party", strings.Replace(trustDoc("needs_validation", "high", "", ""), "Is the owner a timelocked multisig, and who holds its keys?", "Which address is deployed?", 1), "", "no blocker names the trusted party"},
+		{"trusted bug_class without trust", strings.Replace(trustDoc("lead", "", "", ""), `,
+	  "trust": {"party": "owner of Vault", "role": "owner", "power": "replaces the verifier", "breaks": ["soundness", "funds"],
+	            "assumption": "the owner is a timelocked multisig"}`, "", 1), "", "has no trust object"},
+	}
+	for _, c := range cases {
+		rep, err := Document("findings", []byte(c.doc))
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		errs, warns := strings.Join(rep.Errors, "\n"), strings.Join(rep.Warnings, "\n")
+		if c.wantErr == "" && !rep.OK() {
+			t.Errorf("%s: unexpected errors: %s", c.name, errs)
+		}
+		if c.wantErr != "" && !strings.Contains(errs, c.wantErr) {
+			t.Errorf("%s: want error %q, got %q", c.name, c.wantErr, errs)
+		}
+		if c.wantWarn != "" && !strings.Contains(warns, c.wantWarn) {
+			t.Errorf("%s: want warning %q, got %q", c.name, c.wantWarn, warns)
+		}
+	}
+}

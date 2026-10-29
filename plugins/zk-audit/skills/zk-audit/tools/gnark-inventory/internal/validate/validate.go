@@ -106,9 +106,97 @@ type record struct {
 		Demonstrates string `json:"demonstrates"`
 	} `json:"poc"`
 	Layer    string   `json:"layer"`
+	BugClass string   `json:"bug_class"`
 	Proof    string   `json:"proof"`
 	Chain    []string `json:"chain"`
 	Detected []string `json:"detected_by"`
+	Blockers []string `json:"blockers"`
+	Trust    *trust   `json:"trust"`
+}
+
+// trust is a record's trusted-party object (judging.md Gate 3).
+type trust struct {
+	Party      string   `json:"party"`
+	Role       string   `json:"role"`
+	Breaks     []string `json:"breaks"`
+	Mitigation string   `json:"mitigation"`
+	Accepted   bool     `json:"accepted"`
+	Source     string   `json:"source"`
+	LeadReason string   `json:"lead_reason"`
+}
+
+var sevOrder = map[string]int{"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
+
+// checkTrust enforces judging.md Gate 3 for trusted-party records: never a
+// bare lead; a power over soundness or funds is at least medium, and medium
+// only with a mitigation the repository shows; an accepted risk names its
+// zk-audit.md line and stays a reported verdict.
+func checkTrust(at string, r record, rep *Report) {
+	t := r.Trust
+	if t == nil {
+		if strings.HasPrefix(r.BugClass, "trusted-") {
+			rep.Warnings = append(rep.Warnings, at+": bug_class "+r.BugClass+" names a trusted-party power but the record has no trust object (judging.md Gate 3)")
+		}
+		return
+	}
+	switch r.Verdict {
+	case "lead":
+		if strings.TrimSpace(t.LeadReason) == "" {
+			rep.Errors = append(rep.Errors, at+": a trusted-party record is not a lead: make it needs_validation with the trust assumption as a blocker (judging.md Gate 3), or set trust.lead_reason to say why the power itself is not established")
+		}
+		if t.Accepted {
+			rep.Errors = append(rep.Errors, at+": an accepted risk (trust.accepted) is reported as needs_validation or confirmed, not as a lead")
+		}
+	case "rejected":
+		if t.Accepted {
+			rep.Errors = append(rep.Errors, at+": an accepted risk (trust.accepted) is reported as needs_validation or confirmed, not rejected")
+		}
+	case "needs_validation", "confirmed":
+		core := false
+		for _, b := range t.Breaks {
+			if b == "soundness" || b == "funds" {
+				core = true
+			}
+		}
+		if core {
+			switch {
+			case sevOrder[r.Severity] < sevOrder["medium"]:
+				rep.Errors = append(rep.Errors, at+": a trusted-party power that breaks soundness or funds is at least medium (high by default; judging.md Gate 3)")
+			case r.Severity == "medium" && strings.TrimSpace(t.Mitigation) == "":
+				rep.Errors = append(rep.Errors, at+": medium for a power over soundness or funds needs trust.mitigation (the timelock, multisig owner or multi-party ceremony the repository shows); otherwise high")
+			}
+		}
+		if r.Verdict == "needs_validation" && !t.Accepted && !blockerNamesParty(r.Blockers, t) {
+			rep.Warnings = append(rep.Warnings, at+": no blocker names the trusted party ("+t.Party+"); state the trust assumption as a question the code cannot answer")
+		}
+	}
+	if t.Accepted && strings.TrimSpace(t.Source) == "" {
+		rep.Errors = append(rep.Errors, at+": trust.accepted needs trust.source, the zk-audit.md line that accepts the risk")
+	}
+	if !t.Accepted && t.Source != "" {
+		rep.Warnings = append(rep.Warnings, at+": trust.source is set but trust.accepted is false")
+	}
+}
+
+// blockerNamesParty reports whether a blocker mentions the party (its first
+// word or its role).
+func blockerNamesParty(blockers []string, t *trust) bool {
+	needles := []string{strings.ToLower(t.Role)}
+	if f := strings.Fields(strings.ToLower(t.Party)); len(f) > 0 {
+		needles = append(needles, strings.Trim(f[0], "`'\".,"))
+	}
+	if t.Role == "setup" {
+		needles = append(needles, "ceremony", "key")
+	}
+	for _, b := range blockers {
+		l := strings.ToLower(b)
+		for _, n := range needles {
+			if n != "" && n != "other" && strings.Contains(l, n) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type findingsDoc struct {
@@ -150,6 +238,7 @@ func semanticFindings(doc []byte, rep *Report, opt Options) {
 		if r.Poc != nil {
 			checkPoC(at, r.Evidence == "POC", r.Poc.Path, r.Poc.Result, r.Poc.Demonstrates, opt, rep, referenced)
 		}
+		checkTrust(at, r, rep)
 		if r.Verdict != "confirmed" {
 			continue
 		}

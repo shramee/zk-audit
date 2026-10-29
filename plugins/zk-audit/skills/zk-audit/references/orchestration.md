@@ -247,9 +247,33 @@ profile's critics and targeted waves. Every unit still open gets `deferred` with
    nothing when an input is invalid. Never edit the report by hand.
 4. Print the findings table, the coverage line and the output path.
 
-## Loop mode (`--loop N`, deep)
+## Loop mode (`passes` > 1: deep, or `--loop N`)
 
-Run Turns 3–7 N times. Keep `<out>/memory.json`: every fingerprint seen, with
-the passes it appeared in. Tag records `NEW` or `KNOWN` and print
-`seen in k/N passes`. Stop early when a pass adds no new fingerprint and the
-critic returns no missing units.
+The args JSON gives `passes` (and `memory: true`). The tool holds the memory,
+the tags and the stop rule; do not keep them in prose.
+
+1. Before the first pass: `{skill}/scripts/gnark-inventory memory init --out <out> --passes <passes>`.
+2. A **pass** is Turns 3–7 in full: build bundles, hunt with every selected
+   lens, judge, prove and refute, run the coverage critic and its targeted
+   wave. A targeted wave alone is never a pass.
+   - From pass 2 on, `bundle` inlines the "Already known" list from
+     `<out>/memory.json` into every bundle (section 6a); hunters answer a
+     known item with one `KNOWN: <fingerprint>` line.
+   - The judge writes the pass's records to `<out>/passes/<p>/findings.json`
+     (a full findings document; a `KNOWN:` line becomes a copy of that
+     record, so it counts as seen again). Save the critic's JSON to
+     `<out>/passes/<p>/critic.json`.
+3. After each pass:
+   `{skill}/scripts/gnark-inventory memory merge --out <out> --pass <p> --critic <out>/passes/<p>/critic.json`.
+   It folds the pass into `memory.json` (rejected items stay, so they are not
+   raised again), rewrites `<out>/findings.json` as the union of all passes
+   with `run_tag` (`NEW`: first seen in the latest pass; `KNOWN`: seen
+   before) and `seen` (`k` of `N` passes), and prints
+   `{"pass", "new", "known", "missing_units", "stop", "reason"}`.
+4. If `stop` is true, end the loop and go to Turn 8; otherwise run pass
+   `p + 1`. The tool stops when the planned passes ran, or when a pass added
+   no new fingerprint and the critic reported no missing unit; it refuses to
+   merge a pass after a stop or out of order.
+5. Print `{skill}/scripts/gnark-inventory memory status --out <out>` (each
+   fingerprint with "seen in k/N passes") in the final summary. Turn 8 works
+   on the cumulative `<out>/findings.json`.

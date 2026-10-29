@@ -182,6 +182,7 @@ Examined (covered): X of Y applicable units (Z%).
   witness and impact, but no fix block unless one exists.
 - Keep a finding the refuter marked `not_exploitable` only if a gate still
   passed. The assembler then prints the gates next to the refuter's view.
-- KNOWN / NEW tags (`run_tag`, with `--loop`) go after the title: `[KNOWN]`.
-  The orchestrator prints `seen in k/N passes` itself.
+- KNOWN / NEW tags (`run_tag`) and `seen` are set by `gnark-inventory memory
+  merge` in loop mode, never by hand; the assembler prints them after the
+  title: `[KNOWN · seen in 2/3 passes]`.
 - The coverage section is mandatory, even with zero findings.

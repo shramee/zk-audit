@@ -210,7 +210,10 @@ func endSentence(s string) string {
 }
 
 func titleOf(r *Record) string {
-	if r.RunTag != "" {
+	switch {
+	case r.RunTag != "" && r.Seen != nil:
+		return fmt.Sprintf("%s [%s · seen in %d/%d passes]", r.Title, r.RunTag, r.Seen.Passes, r.Seen.Of)
+	case r.RunTag != "":
 		return r.Title + " [" + r.RunTag + "]"
 	}
 	return r.Title

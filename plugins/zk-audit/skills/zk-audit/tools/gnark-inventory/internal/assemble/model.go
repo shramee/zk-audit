@@ -64,6 +64,7 @@ type Record struct {
 	VectorIDs        []string   `json:"vector_ids"`
 	Description      string     `json:"description"`
 	RunTag           string     `json:"run_tag"`
+	Seen             *Seen      `json:"seen"`
 
 	Severity   string   `json:"severity"`
 	Confidence *int     `json:"confidence"`
@@ -84,6 +85,12 @@ type Record struct {
 
 	CodeSmells []string `json:"code_smells"`
 	Unverified string   `json:"unverified"`
+}
+
+// Seen is loop mode's "seen in k of N passes".
+type Seen struct {
+	Passes int `json:"passes"`
+	Of     int `json:"of"`
 }
 
 // Hardening is one hygiene note.

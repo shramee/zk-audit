@@ -287,6 +287,28 @@ tables and `gnark-inventory profiles` all follow the entry.
   assignments or setters, or public-input arrays are `verify-call-changed`.
   **VK files** by name.
 
+## Loop memory
+
+- **`gnark-inventory memory`** holds loop mode (PLAN §3 `--loop N`, deep's 3
+  passes). The 2026-10-29 deep run never ran a second pass: it counted a
+  targeted wave as "pass 2", tagged every record NEW, and stopped although
+  the critic still listed missing units (shramee/zk-audit#10). Now a pass is
+  defined as Turns 3–7 in full, each pass's judged records go to
+  `<out>/passes/<p>/findings.json`, and `memory merge` assigns NEW / KNOWN,
+  counts "seen in k/N", keeps rejected items, writes the cumulative
+  `findings.json`, and applies the stop rule (no new fingerprint and no
+  missing unit from the critic, or all planned passes). It refuses
+  out-of-order merges and passes after a stop; re-merging the last pass
+  replaces it.
+- **Known list.** `bundle` inlines `memory known` into every bundle when
+  `memory.json` exists, so hunters see what earlier passes found; they
+  answer a known item with a `KNOWN:` line, which the judge turns into a
+  copy of the record so the pass counts it.
+- **Schema.** `run_tag` (existing) and `seen: {passes, of}` (new) are set
+  only by `memory merge`; the assembler prints `[KNOWN · seen in 2/3 passes]`.
+- **Not cross-run.** Memory lives in one run's output directory; seeding a
+  run from an earlier run's `memory.json` is not implemented.
+
 ## Invocation parsing
 
 - **`gnark-inventory args`** turns the words after `/zk-audit` into JSON

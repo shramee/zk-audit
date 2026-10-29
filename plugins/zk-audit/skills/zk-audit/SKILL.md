@@ -245,7 +245,9 @@ Glob only), else a general-purpose agent briefed with `{skill}/agents/hunter.md`
 and limited to those tools by prompt. Run at most **6
 agents at a time** and keep the `Agent Progress` table current. Agents return
 FINDING / LEAD blocks only. `--local` runs the same lenses one after another in
-this context.
+this context. With more than one pass (deep, `--loop N`), follow "Loop mode" in
+`references/orchestration.md`: `gnark-inventory memory` holds the
+fingerprints, NEW / KNOWN tags and the stop rule.
 
 ### Phase 3 — Judge
 

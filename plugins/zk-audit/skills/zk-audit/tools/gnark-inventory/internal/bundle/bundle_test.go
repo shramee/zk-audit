@@ -11,6 +11,7 @@ import (
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/inventory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/load"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/memory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/report"
 )
 
@@ -52,6 +53,23 @@ func TestBundles(t *testing.T) {
 	}
 	b, _ := os.ReadFile(written["C1"].Path)
 	s := string(b)
+	if strings.Contains(s, "Already known") {
+		t.Error("no memory.json, but an Already known section")
+	}
+	// loop mode: a merged pass makes later bundles inline the known list
+	if _, err := memory.Init(out, 2); err != nil {
+		t.Fatal(err)
+	}
+	pass := `{"schema_version":"1","repo":"pool","run_id":"20261029-101010","profile":"deep","records":[{"fingerprint":"Vote|tally|hint-output-unconstrained","verdict":"lead","title":"t","layer":"circuit","bug_class":"x","location":{"file":"c.go","line":3,"scope":"S"},"detected_by":["C1"],"description":"d","code_smells":["s"],"unverified":"u"}]}`
+	if _, err := memory.Merge(out, 1, []byte(pass), 0, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Build(Options{Out: out, Skill: filepath.Join("..", "..", "..", ".."), Profile: "quick"}); err != nil {
+		t.Fatal(err)
+	}
+	if b2, _ := os.ReadFile(written["C1"].Path); !strings.Contains(string(b2), "## 6a. Already known (loop memory)") || !strings.Contains(string(b2), "Vote|tally|hint-output-unconstrained") {
+		t.Error("the known list is not inlined after a merged pass")
+	}
 	for _, want := range []string{"`circuit/transfer.go` | 113", "hint H1", "#### 1. Feynman", "## 7. Shared rules", "Lens C1: hint soundness"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("C1 bundle lacks %q", want)

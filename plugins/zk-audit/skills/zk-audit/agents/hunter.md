@@ -34,4 +34,7 @@ Only FINDING and LEAD blocks, exactly as the shared rules in your bundle
 specify, each with `detected_by: <your agent id>` (no suffix). A FINDING needs
 a concrete `proof:` field; otherwise write a LEAD. Every block carries a
 `code:` line copied verbatim from its `location`. With nothing to report,
-return the single line `no findings: <what you read>`.
+return the single line `no findings: <what you read>`. In a loop run your bundle may
+list fingerprints that are already known (section 6a): answer one you meet
+again with a single `KNOWN: <fingerprint> — <file:line> — still present`
+line, unless you have new evidence.

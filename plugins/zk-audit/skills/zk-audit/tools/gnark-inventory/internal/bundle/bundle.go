@@ -22,6 +22,7 @@ import (
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/detect"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/fsutil"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/inventory"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/memory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
 )
 
@@ -68,6 +69,12 @@ func Build(opt Options) ([]Result, error) {
 	}
 	binding, _ := os.ReadFile(filepath.Join(opt.Out, "binding-table.md"))
 	periph := peripheral(opt.Out)
+	known := ""
+	if m, ok, err := memory.Load(opt.Out); err != nil {
+		return nil, fmt.Errorf("bundle: %w", err)
+	} else if ok {
+		known = m.Known()
+	}
 	refs := filepath.Join(opt.Skill, "references")
 	read := func(rel string) (string, error) {
 		x, err := os.ReadFile(filepath.Join(refs, rel))
@@ -121,7 +128,7 @@ func Build(opt Options) ([]Result, error) {
 			if sh.Name != sh.Kind {
 				id = a.ID + "@" + sh.Name
 			}
-			md := render(&inv, a, id, sh, string(binding), periph, sop, lens, slice, rules, opt.Profile)
+			md := render(&inv, a, id, sh, string(binding), periph, known, sop, lens, slice, rules, opt.Profile)
 			p := filepath.Join(dir, safeName(id)+".md")
 			if err := os.WriteFile(p, []byte(md), 0o644); err != nil {
 				return nil, err
@@ -277,7 +284,7 @@ func lineCount(abs string) int {
 	return n
 }
 
-func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, periph, sop, lens, slice, rules, profile string) string {
+func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, periph, known, sop, lens, slice, rules, profile string) string {
 	var b strings.Builder
 	w := func(format string, x ...any) { fmt.Fprintf(&b, format, x...) }
 	w("# Bundle %s\n\n", id)
@@ -327,6 +334,9 @@ func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, per
 	w("## 5. Lens\n\n%s\n\n", demote(lens))
 	if slice != "" {
 		w("## 6. Vector slice\n\n%s\n\n", demote(slice))
+	}
+	if known != "" {
+		w("## 6a. Already known (loop memory)\n\n%s\n", known)
 	}
 	w("## 7. Shared rules\n\n%s\n", demote(rules))
 	return b.String()

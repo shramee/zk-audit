@@ -44,6 +44,7 @@ Usage:
   gnark-inventory validate  findings|ledger|stack FILE [--out DIR]
   gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F] [--file-output]
   gnark-inventory diff      --repo DIR --base REV [--head REV] [--out DIR]
+  gnark-inventory memory    init --out DIR --passes N | merge --out DIR --pass P [--findings F] [--critic F] | known --out DIR | status --out DIR
   gnark-inventory ledger    mark --out DIR (--unit ID|--match S|--lens L|--kind K|--class C)... [--from STATUS] [--status S] [--agent A]... [--reviewed P]... [--fingerprint F]... [--reason R] [--notes T] [--wave N]
   gnark-inventory ledger    add  --out DIR --kind K --subject S --class C --lens L [--path FILE:LINE] [--notes T]
   gnark-inventory ledger    show --out DIR
@@ -95,6 +96,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		code, err = cmdArgs(args[1:], stdout)
 	case "diff":
 		err = cmdDiff(args[1:], stdout)
+	case "memory":
+		code, err = cmdMemory(args[1:], stdout)
 	case "ledger":
 		code, err = cmdLedger(args[1:], stdout)
 	case "agents":

@@ -73,7 +73,14 @@
         "detected_by": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/nonEmpty" } },
         "vector_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^V-[A-Z]+[0-9]+$" } },
         "description": { "$ref": "#/$defs/nonEmpty" },
-        "run_tag": { "enum": ["NEW", "KNOWN"] }
+        "run_tag": { "enum": ["NEW", "KNOWN"], "description": "Loop mode, set by `gnark-inventory memory merge`: NEW when first seen in the latest pass, KNOWN when seen in an earlier one" },
+        "seen": {
+          "type": "object",
+          "required": ["passes", "of"],
+          "additionalProperties": false,
+          "description": "Loop mode, set by `gnark-inventory memory merge`: in how many of the passes run so far the fingerprint was reported",
+          "properties": { "passes": { "type": "integer", "minimum": 1 }, "of": { "type": "integer", "minimum": 1 } }
+        }
       }
     },
     "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
@@ -144,7 +151,7 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "confirmed" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true,
+        "description": true, "run_tag": true, "seen": true,
         "severity": { "$ref": "#/$defs/severity" },
         "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
         "evidence": { "enum": ["POC", "ANALYSIS"] },
@@ -165,7 +172,7 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "needs_validation" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true,
+        "description": true, "run_tag": true, "seen": true,
         "severity": { "$ref": "#/$defs/severity" },
         "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
         "proof": { "type": "string" },
@@ -185,7 +192,7 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "rejected" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true,
+        "description": true, "run_tag": true, "seen": true,
         "reason": { "$ref": "#/$defs/nonEmpty" },
         "refuting_location": { "$ref": "#/$defs/location" },
         "poc": { "$ref": "#/$defs/poc" },
@@ -200,7 +207,7 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "lead" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true,
+        "description": true, "run_tag": true, "seen": true,
         "code_smells": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmpty" } },
         "unverified": { "$ref": "#/$defs/nonEmpty" },
         "poc": { "$ref": "#/$defs/poc", "description": "A demoted record keeps the PoC that was built for it" },

@@ -24,7 +24,7 @@ fixtures:
 	  need=$$(sed -n 's/^go \(1\.[0-9]*\).*/\1/p' $$m | head -1); \
 	  newer=$$(printf '%s\n1.25\n' "$$need" | sort -V | tail -1); \
 	  echo "fixtures: $$d (go $$need)"; \
-	  if (cd $$d && go mod download all && GOFLAGS=-mod=mod go vet ./...); then :; \
+	  if (cd $$d && go mod download && GOFLAGS=-mod=mod go vet ./...); then :; \
 	  elif [ "$$newer" = "$$need" ]; then \
 	    echo "fixtures: WARNING: $$d needs Go >= $$need and did not build; skipping (set GOTOOLCHAIN to a 1.25+ toolchain to include it)" >&2; \
 	  else fail=1; fi; \

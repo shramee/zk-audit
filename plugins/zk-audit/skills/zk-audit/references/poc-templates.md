@@ -63,12 +63,21 @@ Every PoC has three parts. Without all three the evidence is `ANALYSIS`, not
 3. **Sanity control**: a true statement still passes, so the circuit under test
    is the one that ships.
 
-The Go templates were checked against gnark v0.14.0, and every API they use
-exists in gnark v0.16.4 (`constraint/solver/options.go` `OverrideHint`,
-`constraint/solver/hint.go` `GetHintID` / `GetHintName`,
-`test/assert_options.go` `WithSolverOpts`, `backend/backend.go`
-`WithSolverOptions`). Keep slice lengths in the circuit value identical to
-production, or the compiled constraint system differs.
+The Go templates run unchanged on gnark v0.10.0 to v0.16.4 (version matrix
+in `references/gnark-versions.md`). Version notes:
+
+- gnark < v0.9 has no `constraint/solver`: no `OverrideHint`, `GetHintID`
+  or `ccs.Solve` (use `ccs.IsSolved`). A hint cannot be replaced at solve
+  time there; use T-INVALID-ASSIGNMENT or T-CONSTRAINT-MODEL.
+- `test.WithReplacementHint` (test engine) exists from v0.15.0 only.
+- The Groth16 verifier gnark exports takes `uint256[8] proof` from v0.9.0
+  and `bytes proof` from v0.15.0 (T-FOUNDRY-VERIFIER).
+- gnark ≥ v0.15 needs Go ≥ 1.25.7 (v0.16.4: 1.26.8). The sandbox runs the
+  local toolchain only; run the PoC with the `use_go` binary that
+  `gnark-inventory preflight` prints.
+
+Keep slice lengths in the circuit value identical to production, or the
+compiled constraint system differs.
 
 ---
 
@@ -157,7 +166,7 @@ func TestPoC_<FindingID>(t *testing.T) {
 }
 ```
 
-On gnark ≥ v0.15 the test engine can also replace a hint:
+On gnark ≥ v0.15 (not before; version matrix) the test engine can also replace a hint:
 `test.IsSolved(&MyCircuit{}, &falseAssignment, field, test.WithReplacementHint(id, evil))`
 (`test/engine.go`).
 

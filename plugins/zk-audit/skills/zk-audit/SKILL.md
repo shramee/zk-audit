@@ -193,7 +193,9 @@ hints, and whether Solidity, Foundry, Hardhat, Circom or Noir are present.
   fetch what is missing. Show them and ask before running any (hard rules 4
   and 8); never fetch silently. When the local Go is too old but a newer
   toolchain is cached, it prints that toolchain's `go` binary (`use_go`):
-  run PoCs with it inside the sandbox. If the user declines, continue: std
+  prefix every `gnark-inventory` command with `ZK_AUDIT_GO=<use_go>` (typed
+  loading of gnark ≥ v0.15 needs the tool built with it) and run PoCs with
+  it inside the sandbox. If the user declines, continue: std
   is "not available" in the bundles and typed loading falls back to syntax
   mode; say so in the report's posture.
 - Check the sandbox: `{skill}/scripts/sandbox --check`. It prints the engine

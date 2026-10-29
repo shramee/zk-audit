@@ -1,0 +1,50 @@
+// Command export writes Verifier.sol and proof.txt (eight proof words, then
+// the public input) for the shared circuit, with an honest Groth16 proof.
+// This form is for gnark < v0.9 (no constraint/solver package).
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"math/big"
+	"os"
+
+	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark/backend"
+	"github.com/consensys/gnark/backend/groth16"
+	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/frontend/cs/r1cs"
+)
+
+func main() {
+	field := ecc.BN254.ScalarField()
+	ccs, err := frontend.Compile(field, r1cs.NewBuilder, &Circuit{})
+	must(err)
+	pk, vk, err := groth16.Setup(ccs)
+	must(err)
+	w, err := frontend.NewWitness(&Circuit{A: 17, B: 5, Q: 3}, field)
+	must(err)
+	proof, err := groth16.Prove(ccs, pk, w, backend.WithHints(divHint))
+	must(err)
+	sol, err := os.Create(os.Args[1])
+	must(err)
+	must(vk.ExportSolidity(sol))
+	must(sol.Close())
+	var raw bytes.Buffer
+	_, err = proof.WriteRawTo(&raw)
+	must(err)
+	b := raw.Bytes()
+	out, err := os.Create(os.Args[2])
+	must(err)
+	for i := 0; i < 8; i++ { // Ar (2 words), Bs (4), Krs (2)
+		fmt.Fprintln(out, new(big.Int).SetBytes(b[32*i:32*i+32]).String())
+	}
+	fmt.Fprintln(out, 3)
+	must(out.Close())
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
+}

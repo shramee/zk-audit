@@ -103,7 +103,53 @@ Also check:
   fixed by a gnark-crypto commit). Report its version next to gnark's.
 - More than one gnark version across modules: the key-generation code and the
   prover may disagree.
-- Go toolchain: gnark v0.15 and later need Go ≥ 1.25; v0.16.4 needs Go 1.26.
+- Go toolchain: gnark v0.15 and later need Go ≥ 1.25.7; v0.16.4 needs Go
+  1.26.8 (version matrix below; `gnark-inventory preflight` checks it).
+
+## Version support matrix
+
+`test/versions/run --foundry` in the zk-audit repository (not shipped with
+the skill) runs each Go PoC template, the per-gadget harness, a Foundry
+test against the Groth16 verifier gnark exports and the inventory against
+each release, with the Go toolchain the release's `go` directive needs
+(`GOTOOLCHAIN=auto`). Last run: 2026-10-29. CI reruns three columns.
+
+| Template / check | v0.8.1 | v0.10.0 | v0.11.0 | v0.12.0 | v0.13.0 | v0.14.0 | v0.15.0 | v0.16.4 |
+|---|---|---|---|---|---|---|---|---|
+| T-HINT-OVERRIDE (`ccs.Solve`, `solver.OverrideHint`) | API differs (1) | works | works | works | works | works | works | works |
+| T-PROVE-VERIFY, Groth16 | API differs (1) | works | works | works | works | works | works | works |
+| T-PROVE-VERIFY, PLONK (`unsafekzg.NewSRS`) | API differs (1) | works | works | works | works | works | works | works |
+| T-ASSERT-OVERRIDE (`test.WithSolverOpts`, `NoTestEngine`) | API differs (1) | works | works | works | works | works | works | works |
+| T-ASSERT-OVERRIDE on the test engine (`test.WithReplacementHint`) | API differs (1) | API differs (2) | API differs (2) | API differs (2) | API differs (2) | API differs (2) | works | works |
+| T-ALIAS (`bits.OmitModulusCheck`, hint by name) | API differs (1) | works | works | works | works | works | works | works |
+| T-INVALID-ASSIGNMENT | works | works | works | works | works | works | works | works |
+| T-COMPLETENESS (`ccs.Solve`) | API differs (3) | works | works | works | works | works | works | works |
+| T-LINKAGE (native and in-circuit MiMC agree) | works | works | works | works | works | works | works | works |
+| T-GADGET-HARNESS (`gnark-inventory harness` output compiles) | API differs (1) | works | works | works | works | works | works | works |
+| T-FOUNDRY-VERIFIER (exported verifier, honest proof, wrong input rejected) | works (4) | works (5) | works (5) | works (5) | works (5) | works (5) | works (6) | works (6) |
+| Inventory, tool built with the local Go 1.24 | types | types | types | types | types | types | syntax (7) | syntax (7) |
+| Inventory with `ZK_AUDIT_GO` = the toolchain gnark needs | types | types | types | types | types | types | types (Go 1.25.7) | types (Go 1.26.8) |
+| gnark `go` directive | 1.18 | 1.21 | 1.22 | 1.22 | 1.23.0 | 1.24.0 | 1.25.7 | 1.26.8 |
+
+1. gnark < v0.9 has no `constraint/solver` package: no `OverrideHint`,
+   `GetHintID`, `WithHints` there or `ccs.Solve`. Hints are
+   `backend/hint.Function`, registered with `hint.Register` or passed with
+   `backend.WithHints`, and a hint is identified by its function name, so
+   it cannot be replaced at solve time. On v0.8 use T-INVALID-ASSIGNMENT,
+   or T-CONSTRAINT-MODEL with the hint copied into a model circuit.
+2. `test.WithReplacementHint` exists from v0.15.0. Before, use
+   `test.WithSolverOpts(solver.OverrideHint(...))` with `test.NoTestEngine()`.
+3. v0.8: `ccs.IsSolved(witness)` instead of `ccs.Solve`.
+4. `verifyProof(uint256[2] a, uint256[2][2] b, uint256[2] c, uint256[N] input) returns (bool)`.
+5. `verifyProof(uint256[8] proof, uint256[N] input)`, reverts on an invalid proof.
+6. `verifyProof(bytes proof, uint256[N] input)`, reverts; without
+   commitments `proof` is the eight words packed (256 bytes).
+   `gnark-inventory verifier abi` knows all three forms.
+7. The tool's type checker refuses packages whose `go` directive is newer
+   than the Go it was built with ("package requires newer Go version").
+   `gnark-inventory preflight` prints a cached toolchain as `use_go`; prefix
+   the inventory command with `ZK_AUDIT_GO=<use_go>` and the wrapper builds
+   the tool with that toolchain and puts it first on `PATH`.
 
 ## Machine-readable table
 

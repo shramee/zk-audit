@@ -12,13 +12,17 @@ vet:
 test:
 	cd $(TOOL) && go test ./...
 
-## fixtures: download gnark for the test fixtures (network), then run the
-## typed-mode tests that are otherwise skipped
+## fixtures: download gnark for every test fixture module (network), then vet
+## each, so typed loading and the eval PoCs work offline afterwards
 fixtures:
-	cd testdata/pool && go mod download
-	cd testdata/edge && go mod download
-	cd testdata/pool && go vet ./...
-	cd testdata/edge && go vet ./...
+	@for m in $$(find testdata -maxdepth 2 -name go.mod | sort); do \
+	  d=$$(dirname $$m); echo "downloading $$d"; \
+	  (cd $$d && go mod download all) || exit 1; \
+	done
+	@for m in $$(find testdata -maxdepth 2 -name go.mod | sort); do \
+	  d=$$(dirname $$m); echo "vetting $$d"; \
+	  (cd $$d && GOFLAGS=-mod=mod go vet ./...) || exit 1; \
+	done
 
 test-types: fixtures
 	cd $(TOOL) && ZK_INVENTORY_REQUIRE_TYPES=1 go test -count=1 ./internal/inventory/
@@ -31,10 +35,10 @@ lint-kb:
 standalone:
 	test/standalone-skill.sh
 
-## eval-pocs: run the pool fixture's eval PoCs in a sanitized scratch copy
+## eval-pocs: run every fixture's eval PoCs in sanitized scratch copies
 ## (network for the fixture modules, like test-types)
 eval-pocs: fixtures
-	EVAL_GOPROXY="$$(go env GOPROXY)" evals/run-pocs pool "$$(mktemp -d)"
+	EVAL_GOPROXY="$$(go env GOPROXY)" evals/run-pocs all "$$(mktemp -d)"
 
 ## sync-schemas: copy the canonical schemas into the tool's embed directory
 sync-schemas:

@@ -76,7 +76,9 @@ for c in "${cases[@]}"; do
   name="$(basename "$dir")"
   [ -f "$dir/prompt.md" ] && [ -f "$dir/scaffold.sh" ] ||
     { echo "run-audit: $dir needs prompt.md and scaffold.sh" >&2; exit 2; }
-  fixture="$(sed -n 's/.*scaffold-audit[" ]* \([A-Za-z0-9_-]*\).*/\1/p' "$dir/scaffold.sh" | head -1)"
+  # scaffold-audit <fixture> and scaffold-real <fixture-key> <module@ver> both
+  # name the evals/fixtures/<key> directory holding key.json as their first arg.
+  fixture="$(sed -n 's/.*scaffold-\(audit\|real\)[" ]* \([A-Za-z0-9_-]*\).*/\2/p' "$dir/scaffold.sh" | head -1)"
   key="$here/fixtures/$fixture/key.json"
   [ -f "$key" ] || { echo "run-audit: $dir: no answer key $key" >&2; exit 2; }
   prompt="$(prompt_body "$dir/prompt.md")$harness_note"

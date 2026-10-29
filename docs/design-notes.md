@@ -191,6 +191,34 @@ tables and `gnark-inventory profiles` all follow the entry.
   keeps quick's one systematic blind spot. T1 reads the `all` shard because
   setup sites live in prover code.
 
+## Privacy (PR1)
+
+- **Lens and class.** PR1 owns the ledger class `privacy`, one unit per
+  production circuit (seed `circuit`, with the vector scan): privacy is a
+  property of a statement and of the flow that consumes it, so the circuit is
+  the subject; the lens reads the `all` shard for events, relayers and
+  prover services. Id `PR1`, not `P1`: `P0` is the Phase 0 pseudo-agent of
+  advisory records and the pool answer key numbers its items P1–P15.
+- **Profiles.** Standard and deep, not quick: quick's budget is about ten
+  minutes and the measured runs have no privacy item to justify the cost
+  there. The `V-privacy` vector-scan shard follows the same rule.
+- **Vectors.** `attack-vectors/privacy.md`, V-PR1–V-PR7: secret exposed
+  through public inputs, events or calldata; nullifier computable from public
+  data; a tag repeated across contexts; amount, timing and fee fingerprints;
+  relayer, indexer and sequencer metadata; the witness leaving the user
+  (delegated provers, services, timing); a distinguishable member of an
+  anonymity set. Sources are published zkSecurity reports (intmax zERC20,
+  ZK Email, Demox, Silent Protocol, Aleo synthesizer, HumanityLink), the
+  PLUME paper (eprint 2022/1255), Tutela (arXiv 2201.06811), "Blockchain is
+  Watching You" (arXiv 2005.14051), the Zcash anonymity study (USENIX Security
+  2018), the remote side-channel paper (eprint 2020/220), Semaphore v4 and the
+  Tornado Cash relayer at a pinned commit. All hosts were already on the
+  `lint-kb` allow-list; witness logging stays V-PV5 and commitments to
+  private values stay V-CM2, which the slice cross-references.
+- **PoC template.** `T-LINKAGE`: recompute the public value natively over a
+  realistic candidate set and show it singles out the user; the honest
+  control is the corrected formula, for which nothing matches.
+
 ## Sandbox (PoCs and recon)
 
 - **`gnark-inventory sandbox`** (wrapped by `scripts/sandbox`) is the one
@@ -381,11 +409,12 @@ tables and `gnark-inventory profiles` all follow the entry.
   around verification are covered as checklist items in the I2 and I3 lens
   files instead of as catalog vectors, because no source in the allowed set
   documents them for gnark.
-- **Vector count.** 79 vectors in 12 slices (PLAN target "about 80"). Slice and
+- **Vector count.** 79 vectors in 12 slices at first (PLAN target "about
+  80"); 86 in 13 with the privacy slice. Slice and
   id scheme: V-H (hints), V-R (range), V-F (field), V-S (selector), V-M (hash /
   Merkle), V-E (curves / signatures), V-CM (commitments / recursion), V-PI
   (public inputs), V-VC (verifier contracts), V-PS (protocol state), V-PV
-  (prover service), V-G (generic, ported from zkSecurity).
+  (prover service), V-G (generic, ported from zkSecurity), V-PR (privacy).
 - **PoC templates were executed.** T-HINT-OVERRIDE, T-PROVE-VERIFY,
   T-ASSERT-OVERRIDE and T-ALIAS were run against gnark v0.14.0 on small
   circuits (a remainder hint without `r < b`, and `OmitModulusCheck`), and

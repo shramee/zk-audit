@@ -29,6 +29,7 @@ command takes it from the module cache and edits only the worktree's
 | a solver-computed wire (`DivUnchecked(0, 0)`) | a model circuit | T-CONSTRAINT-MODEL (evidence stays `ANALYSIS`) |
 | an honest input that cannot be proven | an honest witness that fails | T-COMPLETENESS |
 | the contract (binding, replay, state) | a Foundry test | T-FOUNDRY-VERIFIER / T-FOUNDRY-REPLAY |
+| a public value that singles out the user (privacy) | a candidate set with one match | T-LINKAGE |
 
 Practical rules (all learned on the eval fixtures):
 
@@ -270,6 +271,33 @@ and show that it is exceeded:
 ```
 
 Never run a memory-exhaustion PoC without a container or `ulimit -v` limit.
+
+## T-LINKAGE
+
+Use for privacy findings where a public value identifies the user or links
+two actions (V-PR1, V-PR2, V-PR3, V-PR7). Recompute the public value natively
+for every candidate in a small, realistic candidate set (the addresses or
+keys that interacted with the contract, the amounts in range, the decoys of a
+set) and show that exactly one candidate matches what the proof published:
+
+```go
+	// candidates: public data an observer has (addresses, public keys, amounts)
+	var matches []int
+	for i, c := range candidates {
+		if publicTag(c) == observedTag { // publicTag: the circuit's formula, computed natively
+			matches = append(matches, i)
+		}
+	}
+	if len(matches) != 1 || matches[0] != realIndex {
+		t.Fatalf("expected the tag to single out candidate %d, got %v", realIndex, matches)
+	}
+```
+
+The honest control is the fixed formula (the tag with the secret or the
+per-context input mixed in) for which no candidate matches. Compute the hash
+with the same gnark-crypto function the circuit uses and say so. When the
+link needs chain data (timing, fee values, relayer logs), write the
+correlation as `proof:` text and keep `evidence: ANALYSIS`.
 
 ## T-ANALYSIS
 

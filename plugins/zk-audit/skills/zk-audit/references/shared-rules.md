@@ -51,7 +51,7 @@ output.
 
 - **Vector-scan shards** classify every vector in their slice (Skip / Drop /
   Investigate) before anything else. Then they hunt the Investigate set.
-- **Single-lens agents** (C1–C6, I1–I4, T1, A1, F1) own one lens. Cross-flag
+- **Single-lens agents** (C1–C6, I1–I4, T1, PR1, A1, F1) own one lens. Cross-flag
   freely: a duplicate is cheap, a miss is not.
 - **Gap hunters** (G1–G3) own the seams between lenses. **Drop any finding
   that one lens alone can express.**

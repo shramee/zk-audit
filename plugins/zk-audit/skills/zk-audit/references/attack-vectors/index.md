@@ -46,8 +46,9 @@ Rules for this catalog, checked by `gnark-inventory lint-kb`:
 | `attack-vectors/protocol-state.md` | nullifiers, roots, identity derivation | V-PS1–V-PS4 | 4 |
 | `attack-vectors/prover-service.md` | Go code outside Define: setup, keys, deserialization, logs | V-PV1–V-PV6 | 6 |
 | `attack-vectors/generic-zk.md` | generic ZK shapes ported from zkSecurity's Circom catalog | V-G1–V-G6 | 6 |
+| `attack-vectors/privacy.md` | public inputs, events and calldata, linkable tags, correlation, relayers and indexers, witness exposure | V-PR1–V-PR7 | 7 |
 
-Total: 79 vectors.
+Total: 86 vectors.
 
 ## Mantras
 

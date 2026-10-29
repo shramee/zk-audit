@@ -10,9 +10,9 @@ Rendered by `gnark-inventory assemble` from `findings.json` and `coverage-ledger
 | Run | 20261027-101500 |
 | Commit | `3f9c2a1b7d5e4f60718293a4b5c6d7e8f9012345` |
 | Files reviewed | `circuit/hints.go` · `circuit/transfer.go` · `contracts/Pool.sol` |
-| Stack | gnark v0.14.0 (advisories: 3) · groth16 · bn254 · solidity: yes · foundry: yes |
+| Stack | gnark v0.14.0 (advisories: 3) · gnark-crypto v0.19.0 (advisories: 1) · groth16 · bn254 · solidity: yes · foundry: yes |
 | Versions | `go.mod`: gnark v0.14.0, gnark-crypto v0.19.0, go 1.24.0 |
-| Advisories | GHSA-7fx8-hmgc-82jp (high, fixed v0.16.4) · GHSA-3mvx-pp85-pm65 (critical, fixed v0.16.2) · GHSA-fwf3-jmp7-gmrj (moderate, fixed v0.16.0) |
+| Advisories | GHSA-7fx8-hmgc-82jp (high, fixed v0.16.4) · GHSA-3mvx-pp85-pm65 (critical, fixed v0.16.2) · GHSA-fwf3-jmp7-gmrj (moderate, fixed v0.16.0) · GHSA-fj2x-735w-74vq (gnark-crypto v0.19.0, high, affected >= v0.9.1, < v0.18.1; >= v0.19.0, < v0.19.2) (advisory table as of 2026-10-29) |
 | Companions | ✔ fp-check · ✖ circom-auditor · ✖ solidity-auditor |
 | Agents | C1, I1, I2, I3, T1, V-hash, V-hints, V-privacy, V-prover, V-pubin, V-range, G2 |
 | Out of scope | Verifier.sol internals: a stub, not a generated verifier · 1 ledger unit marked out_of_scope (section 10) |

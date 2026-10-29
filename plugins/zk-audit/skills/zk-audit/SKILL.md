@@ -186,9 +186,12 @@ hints, and whether Solidity, Foundry, Hardhat, Circom or Noir are present.
 - Check the sandbox: `{skill}/scripts/sandbox --check`. It prints the engine
   (`bwrap`, `sandbox-exec` or `none`) and what it isolates; add it to the
   stack line.
-- Any advisory that matches the pinned gnark version is reported as a finding
-  candidate right away (see `references/gnark-versions.md` for required
-  actions, e.g. regenerate keys).
+- Any advisory that matches the pinned gnark or gnark-crypto version is
+  reported as a finding candidate right away (see
+  `references/gnark-versions.md` for required actions, e.g. regenerate
+  keys). The table is embedded and dated; to compare it with OSV, ask first,
+  then run `{skill}/scripts/gnark-inventory advisories --repo <repo> --osv`
+  (network).
 - `.circom` in scope → delegate to `circom-auditor` if installed, else apply the
   generic vectors in `references/attack-vectors/generic-zk.md`.
 - `Nargo.toml` → out of scope for v1. Say so in the report.

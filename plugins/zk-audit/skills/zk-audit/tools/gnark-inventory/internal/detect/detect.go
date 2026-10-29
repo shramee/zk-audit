@@ -48,6 +48,8 @@ type Gnark struct {
 	Present    bool          `json:"present"`
 	Versions   []string      `json:"versions"`
 	Advisories []AdvisoryHit `json:"advisories"`
+	// AdvisoryTableAsOf is the date of the embedded advisory table.
+	AdvisoryTableAsOf string `json:"advisory_table_as_of,omitempty"`
 	Backends   []string      `json:"backends"`
 	Builders   []string      `json:"builders"`
 	Curves     []string      `json:"curves"`
@@ -101,6 +103,7 @@ func Detect(root, toolVersion string) (*Stack, error) {
 	if err != nil {
 		return nil, err
 	}
+	st.Gnark.AdvisoryTableAsOf = tab.AsOf
 	files, err := fsutil.Walk(root, nil)
 	if err != nil {
 		return nil, err
@@ -136,6 +139,11 @@ func Detect(root, toolVersion string) (*Stack, error) {
 			}
 			if v, _, ok := m.Version(gnarkCryptoModule); ok {
 				mod.GnarkCrypto = v
+				if v != "" {
+					for _, hit := range tab.AffectingModule(advisory.GnarkCrypto, v) {
+						st.Gnark.Advisories = append(st.Gnark.Advisories, AdvisoryHit{Match: hit, Module: f.Rel, Version: v})
+					}
+				}
 			}
 			st.GoModules = append(st.GoModules, mod)
 		case base == "foundry.toml":

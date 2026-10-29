@@ -33,7 +33,8 @@
         "verified": false,
         "status": "affected",
         "module": "go.mod",
-        "version": "v0.14.0"
+        "version": "v0.14.0",
+        "package": "github.com/consensys/gnark"
       },
       {
         "id": "GHSA-3mvx-pp85-pm65",
@@ -50,7 +51,8 @@
         "verified": false,
         "status": "affected",
         "module": "go.mod",
-        "version": "v0.14.0"
+        "version": "v0.14.0",
+        "package": "github.com/consensys/gnark"
       },
       {
         "id": "GHSA-fwf3-jmp7-gmrj",
@@ -67,7 +69,36 @@
         "verified": false,
         "status": "affected",
         "module": "go.mod",
-        "version": "v0.14.0"
+        "version": "v0.14.0",
+        "package": "github.com/consensys/gnark"
+      },
+      {
+        "id": "GHSA-fj2x-735w-74vq",
+        "aliases": [
+          "GO-2025-4087"
+        ],
+        "package": "github.com/consensys/gnark-crypto",
+        "severity": "high",
+        "class": "availability",
+        "component": "gnark-crypto Vector.ReadFrom (field-element vector deserialization, reached when gnark reads proofs, keys and witnesses)",
+        "summary": "A 4-byte length read from untrusted input sizes an allocation without a bound, so a crafted proof or key can make a verifier or prover allocate up to 128 GB and crash.",
+        "introduced": "v0.9.1",
+        "fixed": "v0.18.1",
+        "extra_ranges": [
+          {
+            "introduced": "v0.19.0",
+            "fixed": "v0.19.2"
+          }
+        ],
+        "action": "Upgrade gnark-crypto to v0.18.1 (0.18 line) or v0.19.2 or later; never deserialize proofs, keys or witnesses from untrusted sources without a size limit. Circuits and keys are unaffected.",
+        "regenerate_keys": false,
+        "url": "https://github.com/Consensys/gnark-crypto/security/advisories/GHSA-fj2x-735w-74vq",
+        "verified": true,
+        "verified_by": "osv",
+        "evidence": "OSV record GHSA-fj2x-735w-74vq (two ranges) and GO-2025-4087.",
+        "status": "affected",
+        "module": "go.mod",
+        "version": "v0.19.0"
       }
     ],
     "backends": [
@@ -83,7 +114,8 @@
       "emulated-arithmetic",
       "export-solidity",
       "signatures"
-    ]
+    ],
+    "advisory_table_as_of": "2026-10-29"
   },
   "solidity": {
     "present": true,

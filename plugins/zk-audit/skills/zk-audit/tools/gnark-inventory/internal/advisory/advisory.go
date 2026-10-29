@@ -1,5 +1,5 @@
-// Package advisory holds the embedded gnark advisory table and the version
-// matching used by `detect` and `advisories`.
+// Package advisory holds the embedded gnark and gnark-crypto advisory table
+// and the version matching used by `detect` and `advisories`.
 package advisory
 
 import (
@@ -13,28 +13,56 @@ import (
 //go:embed advisories.json
 var raw []byte
 
+// Module paths the table covers.
+const (
+	Gnark       = "github.com/consensys/gnark"
+	GnarkCrypto = "github.com/consensys/gnark-crypto"
+)
+
+// Range is one affected range [Introduced, Fixed); Introduced "0" means
+// every version before Fixed.
+type Range struct {
+	Introduced string `json:"introduced"`
+	Fixed      string `json:"fixed"`
+}
+
 // Advisory is one row of the advisory table.
 type Advisory struct {
-	ID             string   `json:"id"`
-	Aliases        []string `json:"aliases"`
-	Severity       string   `json:"severity"`
-	Class          string   `json:"class"`
-	Component      string   `json:"component"`
-	Summary        string   `json:"summary"`
-	Introduced     string   `json:"introduced"`
-	Fixed          string   `json:"fixed"`
-	Action         string   `json:"action"`
-	RegenerateKeys bool     `json:"regenerate_keys"`
-	URL            string   `json:"url"`
-	Verified       bool     `json:"verified"`
+	ID      string   `json:"id"`
+	Aliases []string `json:"aliases"`
+	// Package is the Go module the advisory is published for: gnark or
+	// gnark-crypto.
+	Package    string `json:"package"`
+	Severity   string `json:"severity"`
+	Class      string `json:"class"`
+	Component  string `json:"component"`
+	Summary    string `json:"summary"`
+	Introduced string `json:"introduced"`
+	Fixed      string `json:"fixed"`
+	// ExtraRanges are further affected ranges after [Introduced, Fixed)
+	// (a fix backported to an older minor line leaves two ranges).
+	ExtraRanges    []Range `json:"extra_ranges,omitempty"`
+	Action         string  `json:"action"`
+	RegenerateKeys bool    `json:"regenerate_keys"`
+	URL            string  `json:"url"`
+	// Verified is true when the affected range was checked against a
+	// source that could be read: VerifiedBy names it ("osv": the OSV
+	// record; "source": the fix located in the released source of the
+	// module, the advisory text itself not being reachable).
+	Verified   bool   `json:"verified"`
+	VerifiedBy string `json:"verified_by,omitempty"`
+	// Evidence says what was checked and where.
+	Evidence string `json:"evidence,omitempty"`
 }
 
 // Table is the whole embedded document.
 type Table struct {
-	SchemaVersion string     `json:"schema_version"`
-	Package       string     `json:"package"`
-	Sources       []string   `json:"sources"`
-	Advisories    []Advisory `json:"advisories"`
+	SchemaVersion string `json:"schema_version"`
+	// AsOf is the date the table was last compared with its sources.
+	AsOf       string     `json:"as_of"`
+	Packages   []string   `json:"packages"`
+	Sources    []string   `json:"sources"`
+	Advisories []Advisory `json:"advisories"`
 }
 
 // Raw returns the embedded JSON bytes.
@@ -56,20 +84,52 @@ func Parse(b []byte) (*Table, error) {
 	if len(t.Advisories) == 0 {
 		return nil, fmt.Errorf("advisory table: no advisories")
 	}
+	if t.AsOf == "" {
+		return nil, fmt.Errorf("advisory table: as_of is required")
+	}
+	pkgs := map[string]bool{}
+	for _, p := range t.Packages {
+		pkgs[p] = true
+	}
+	seen := map[string]bool{}
 	for _, a := range t.Advisories {
-		if a.ID == "" || a.Fixed == "" || a.URL == "" {
-			return nil, fmt.Errorf("advisory table: incomplete row %q", a.ID)
+		if a.ID == "" || a.Fixed == "" || a.URL == "" || !pkgs[a.Package] || seen[a.ID] {
+			return nil, fmt.Errorf("advisory table: incomplete or duplicate row %q (id, package from packages, fixed and url are required)", a.ID)
 		}
-		if a.Introduced != "0" {
-			if _, err := ParseVersion(a.Introduced); err != nil {
-				return nil, fmt.Errorf("advisory %s introduced: %w", a.ID, err)
+		seen[a.ID] = true
+		if a.Verified != (a.VerifiedBy != "") {
+			return nil, fmt.Errorf("advisory %s: verified and verified_by go together", a.ID)
+		}
+		for _, r := range a.Ranges() {
+			if r.Introduced != "0" {
+				if _, err := ParseVersion(r.Introduced); err != nil {
+					return nil, fmt.Errorf("advisory %s introduced: %w", a.ID, err)
+				}
 			}
-		}
-		if _, err := ParseVersion(a.Fixed); err != nil {
-			return nil, fmt.Errorf("advisory %s fixed: %w", a.ID, err)
+			if _, err := ParseVersion(r.Fixed); err != nil {
+				return nil, fmt.Errorf("advisory %s fixed: %w", a.ID, err)
+			}
 		}
 	}
 	return &t, nil
+}
+
+// Ranges returns every affected range of the advisory.
+func (a Advisory) Ranges() []Range {
+	return append([]Range{{Introduced: a.Introduced, Fixed: a.Fixed}}, a.ExtraRanges...)
+}
+
+// Affected renders the ranges as ">= v0.12.0, < v0.13.0; …".
+func (a Advisory) Affected() string {
+	var parts []string
+	for _, r := range a.Ranges() {
+		if r.Introduced == "0" || r.Introduced == "" {
+			parts = append(parts, "< "+r.Fixed)
+		} else {
+			parts = append(parts, ">= "+r.Introduced+", < "+r.Fixed)
+		}
+	}
+	return strings.Join(parts, "; ")
 }
 
 // Match is the result of checking one version against one advisory.
@@ -80,12 +140,22 @@ type Match struct {
 	Status string `json:"status"`
 }
 
-// Affecting returns every advisory that affects version, or every advisory
-// with status possibly_affected when the version cannot be parsed.
+// Affecting returns every gnark advisory that affects version, or every
+// gnark advisory with status possibly_affected when the version cannot be
+// parsed.
 func (t *Table) Affecting(version string) []Match {
+	return t.AffectingModule(Gnark, version)
+}
+
+// AffectingModule is Affecting for the advisories of one module (Gnark or
+// GnarkCrypto).
+func (t *Table) AffectingModule(module, version string) []Match {
 	var out []Match
 	v, err := ParseVersion(version)
 	for _, a := range t.Advisories {
+		if a.Package != module {
+			continue
+		}
 		if err != nil {
 			out = append(out, Match{Advisory: a, Status: "possibly_affected"})
 			continue
@@ -97,19 +167,29 @@ func (t *Table) Affecting(version string) []Match {
 	return out
 }
 
-// Affects reports whether v is in [Introduced, Fixed).
+// Affects reports whether v is in one of the advisory's ranges.
 func (a Advisory) Affects(v Version) bool {
-	fixed, err := ParseVersion(a.Fixed)
+	for _, r := range a.Ranges() {
+		if r.Affects(v) {
+			return true
+		}
+	}
+	return false
+}
+
+// Affects reports whether v is in [Introduced, Fixed).
+func (r Range) Affects(v Version) bool {
+	fixed, err := ParseVersion(r.Fixed)
 	if err != nil {
 		return true
 	}
 	if Compare(v, fixed) >= 0 {
 		return false
 	}
-	if a.Introduced == "0" || a.Introduced == "" {
+	if r.Introduced == "0" || r.Introduced == "" {
 		return true
 	}
-	intro, err := ParseVersion(a.Introduced)
+	intro, err := ParseVersion(r.Introduced)
 	if err != nil {
 		return true
 	}

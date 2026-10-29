@@ -68,6 +68,31 @@ left open, it is recorded here with the reason.
 - **Advisory table.** The canonical machine-readable table is
   `internal/advisory/advisories.json` in the tool. `references/gnark-versions.md`
   carries the same JSON in a fenced block; a unit test fails if they differ.
+- **Advisory table v2 (gnark and gnark-crypto).** Each row names its
+  `package`; `detect` matches gnark rows against the gnark version and
+  gnark-crypto rows against the gnark-crypto version of every `go.mod`. A
+  row may carry `extra_ranges` (GHSA-fj2x has a fix backported to the 0.18
+  line). `verified` now needs `verified_by`: `osv` (the OSV record matches)
+  or `source` (OSV and the Go vulnerability database do not list the
+  advisory and its GitHub page is unreachable from the build environment, so
+  the fix was located in the released gnark source in the module cache;
+  `evidence` names the file and version). The three gnark rows that were
+  `verified: false` are `source` rows: the fix versions (v0.16.4, v0.16.2,
+  v0.16.0) are confirmed in code, the advisory texts are not. The table has
+  an `as_of` date that `detect` copies into `stack.json` and the report
+  prints.
+- **`advisories --osv` (opt-in network).** Offline by default. With
+  `--osv` it posts the module name and pinned version of gnark and
+  gnark-crypto to `api.osv.dev/v1/query`, and diffs the result: OSV ids no
+  row covers (by id or alias) are `new`; a row whose own OSV record (or,
+  when that is not returned, an alias record such as `GO-…`) has other
+  ranges is `changed`; a row that affects the pin but that OSV does not
+  return is looked up by id, and is `not_in_osv` when OSV does not have it.
+  It is the only network call the tool makes, so the skill asks first
+  (hard rules 4 and 8). Tests replay OSV responses recorded on 2026-10-29
+  from `testdata/osv/` through `httptest`; no test uses the network. Known
+  difference: GO-2025-3929 lists GHSA-9fvj with no lower bound, the GHSA
+  record (and the table) start at v0.12.0.
 - **Fallback loader.** If `go/packages` cannot type-check the target (missing
   dependencies, wrong toolchain), the tool falls back to `go/parser` and marks
   unresolved items (`resolved: false`). gnark ≥ v0.15 needs Go ≥ 1.25 and

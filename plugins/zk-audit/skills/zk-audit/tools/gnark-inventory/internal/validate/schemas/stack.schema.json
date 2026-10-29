@@ -45,7 +45,8 @@
         "backends": { "type": "array", "items": { "enum": ["groth16", "plonk"] } },
         "builders": { "type": "array", "items": { "enum": ["r1cs", "scs"] } },
         "curves": { "type": "array", "items": { "type": "string" } },
-        "features": { "type": "array", "items": { "type": "string" } }
+        "features": { "type": "array", "items": { "type": "string" } },
+        "advisory_table_as_of": { "type": "string", "description": "date of the embedded advisory table (gnark-inventory advisories --osv compares it with OSV)" }
       }
     },
     "solidity": {

@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "case": "hint-remainder",
+  "fixture": "hint-remainder",
+  "items": [
+    {
+      "id": "H1",
+      "class": "soundness",
+      "critical": true,
+      "title": "Euclidean remainder not range-checked, so the quotient is free",
+      "ranges": [{"file": "circuit/circuit.go", "anchors": ["NewHint(euclid, 2, c.Count, c.Size)", "api.AssertIsEqual(c.Quotient, q)"]}],
+      "match": "(?i)remainder|quotient|range|euclid|div|r < |modulo|wrap",
+      "expect": ["confirmed"],
+      "partial": ["needs_validation", "lead"],
+      "severity": ["high", "critical", "medium"]
+    }
+  ],
+  "decoys": [],
+  "other": []
+}

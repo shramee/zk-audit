@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "case": "hint-helper",
+  "fixture": "hint-helper",
+  "items": [
+    {
+      "id": "H1",
+      "class": "soundness",
+      "critical": true,
+      "title": "Helper returns hint outputs without constraining them",
+      "ranges": [{"file": "circuit/circuit.go", "anchors": ["func toByte(", "return out"]}],
+      "match": "(?i)helper|hint|boolean|recompos|unconstrained|bit|tobyte",
+      "expect": ["confirmed"],
+      "partial": ["needs_validation", "lead"],
+      "severity": ["high", "critical", "medium"]
+    }
+  ],
+  "decoys": [],
+  "other": []
+}

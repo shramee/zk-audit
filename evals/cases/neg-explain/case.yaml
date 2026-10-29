@@ -1,0 +1,28 @@
+schema_version: "1.1"
+name: neg-explain
+description: "Explaining a circuit must not start an audit."
+tags: [trigger, negative, cheap]
+plugins: ["../../../plugins/zk-audit"]
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+graders:
+  - name: no-subagents
+    type: tool_used
+    tool: Agent
+    min: 0
+    max: 0
+    arm: both
+  - name: no-audit-banner
+    type: regex
+    pattern: "zk-audit v[0-9]|Agent Progress|## zk-audit Progress"
+    match: not_contains
+    arm: both
+  - name: explains
+    type: llm
+    criteria: |
+      PASS if the reply explains what the circuit computes (for example the
+      nullifier hash and the Merkle membership check, plus some of the later
+      checks) without running an audit. It may mention a security concern in
+      passing. FAIL if it announces or runs an audit, or does not explain the
+      circuit.

@@ -31,13 +31,13 @@ var Regions = []Region{
 // ProfileTable is the profile table of SKILL.md §2.
 func (s *Set) ProfileTable() string {
 	var b strings.Builder
-	b.WriteString("| Profile | Agents | PoC | Critics | Passes |\n|---|---|---|---|---|\n")
+	b.WriteString("| Profile | Agents | PoC | Refuters | Critics | Passes |\n|---|---|---|---|---|---|\n")
 	for _, p := range s.Profiles {
 		name := "`" + p.ID + "`"
 		if p.Default {
 			name += " (default)"
 		}
-		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", name, s.agentsCell(p.ID), p.PoC.Text, s.criticsCell(&p), passesCell(&p))
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s |\n", name, s.agentsCell(p.ID), p.PoC.Text, p.Refuters.Text, s.criticsCell(&p), passesCell(&p))
 	}
 	return b.String()
 }

@@ -93,7 +93,7 @@ func TestSyncDocsRewrites(t *testing.T) {
 
 func TestParseRejects(t *testing.T) {
 	base := `{"schema_version":"1","critics":[{"id":"coverage","name":"c","agent":"critic"}],
-"profiles":[{"id":"quick","default":true,"poc":{"layers":["circuit"],"severities":["high"],"text":"x"},"critics":[],"passes":1}],
+"profiles":[{"id":"quick","default":true,"poc":{"layers":["circuit"],"severities":["high"],"text":"x"},"refuters":{"verdicts":["confirmed"],"text":"one"},"critics":[],"passes":1}],
 "lenses":[%s]}`
 	cases := map[string]string{
 		"duplicate id":   `{"id":"C1","name":"a","file":"f","group":"g","shard":"circuit","profiles":["quick"]},{"id":"C1","name":"a","file":"f","group":"g","shard":"circuit","profiles":["quick"]}`,

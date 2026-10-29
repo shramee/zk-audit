@@ -64,12 +64,20 @@ type PoC struct {
 	Text       string   `json:"text"`
 }
 
+// Refuters is a profile's refuter policy: one fresh refuter per record of
+// these verdicts, never one for several records.
+type Refuters struct {
+	Verdicts []string `json:"verdicts"`
+	Text     string   `json:"text"`
+}
+
 // Profile is one audit profile.
 type Profile struct {
 	ID            string   `json:"id"`
 	Default       bool     `json:"default,omitempty"`
 	Summary       string   `json:"summary"`
 	PoC           PoC      `json:"poc"`
+	Refuters      Refuters `json:"refuters"`
 	Critics       []string `json:"critics"`
 	TargetedWaves int      `json:"targeted_waves"`
 	Passes        int      `json:"passes"`
@@ -154,6 +162,9 @@ func Parse(b []byte) (*Set, error) {
 		}
 		if p.PoC.Text == "" || len(p.PoC.Layers) == 0 {
 			bad("profile %s: poc needs layers and text (use layers [] for none)", p.ID)
+		}
+		if len(p.Refuters.Verdicts) == 0 || p.Refuters.Text == "" {
+			bad("profile %s: refuters need verdicts and text", p.ID)
 		}
 		for _, c := range p.Critics {
 			if !critics[c] {

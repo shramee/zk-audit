@@ -47,12 +47,15 @@
   "profiles": [
     { "id": "quick", "summary": "vector scan, hint soundness, public-input binding and binding gaps; about ten minutes",
       "poc": { "layers": ["circuit"], "severities": ["critical", "high"], "text": "confirmed Critical/High circuit findings only" },
+      "refuters": { "verdicts": ["confirmed"], "text": "one per confirmed finding (also with --no-poc)" },
       "critics": [], "targeted_waves": 0, "passes": 1 },
     { "id": "standard", "default": true, "summary": "every circuit and integration lens, binding gaps and first principles",
       "poc": { "layers": ["circuit"], "severities": ["critical", "high", "medium", "low", "info"], "text": "every confirmed circuit finding" },
+      "refuters": { "verdicts": ["confirmed"], "text": "one per confirmed finding" },
       "critics": ["coverage"], "targeted_waves": 1, "passes": 1 },
     { "id": "deep", "summary": "everything, including numerical and composition gaps and asymmetry, over several passes with memory",
       "poc": { "layers": ["circuit", "integration", "prover", "dependency", "setup"], "severities": ["critical", "high", "medium", "low", "info"], "text": "every confirmed finding" },
+      "refuters": { "verdicts": ["confirmed"], "text": "one per confirmed finding" },
       "critics": ["coverage", "final-clean"], "targeted_waves": 1, "passes": 3, "memory": true }
   ]
 }

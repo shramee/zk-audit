@@ -326,6 +326,26 @@ func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, per
 			n++
 		}
 	}
+	if c := inv.Contracts; c != nil {
+		for _, p := range c.Privileged {
+			if in[p.File] {
+				w("- privileged %s at `%s:%d`: gate `%s`, party %s, powers %s\n", p.Contract+"."+p.Function, p.File, p.Line, p.Gate, p.Party, strings.Join(p.Powers, ", "))
+				n++
+			}
+		}
+		for _, r := range c.Roles {
+			if in[r.File] {
+				w("- role %s.%s (%s) at `%s:%d`: %s\n", r.Contract, r.Name, r.Kind, r.File, r.Line, r.Source)
+				n++
+			}
+		}
+		for _, u := range c.Upgrades {
+			if in[u.File] {
+				w("- upgrade path %s at `%s:%d`: `%s`\n", u.Kind, u.File, u.Line, u.Text)
+				n++
+			}
+		}
+	}
 	if n == 0 {
 		w("_none_\n")
 	}

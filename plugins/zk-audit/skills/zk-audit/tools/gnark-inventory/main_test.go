@@ -189,6 +189,12 @@ func TestInventoryCommand(t *testing.T) {
 			t.Errorf("binding table lacks %q:\n%s", want, bt)
 		}
 	}
+	md, _ := os.ReadFile(filepath.Join(out, "inventory.md"))
+	for _, want := range []string{"### Privileged functions", "| `Pool.setVerifier` | contracts/Pool.sol:20 | `require(msg.sender == owner, \"owner\")` | owner | verifier | verifier |", "| `Pool.addRoot` | contracts/Pool.sol:25 |", "| `Pool.owner` | owner |"} {
+		if !strings.Contains(string(md), want) {
+			t.Errorf("inventory.md lacks %q", want)
+		}
+	}
 	if !strings.Contains(buf.String(), "circuits: 3") {
 		t.Errorf("summary line: %s", buf.String())
 	}

@@ -85,6 +85,11 @@ type Result struct {
 	InputAssigns []InputAssign `json:"public_input_assignments"`
 	StateVars    []StateVar    `json:"state_vars"`
 	StateAccess  []StateAccess `json:"state_accesses"`
+	// Privileged, Roles and Upgrades are the trusted-party surfaces
+	// (privileged.go).
+	Privileged []Privileged `json:"privileged_functions"`
+	Roles      []Role       `json:"roles"`
+	Upgrades   []Upgrade    `json:"upgrades"`
 }
 
 // ScanFiles scans every file; rel names are used in the output.
@@ -113,7 +118,8 @@ func ScanSource(rel, src string) *Result {
 
 func newResult() *Result {
 	return &Result{Files: []string{}, Verifiers: []Verifier{}, VerifyCalls: []VerifyCall{},
-		InputAssigns: []InputAssign{}, StateVars: []StateVar{}, StateAccess: []StateAccess{}}
+		InputAssigns: []InputAssign{}, StateVars: []StateVar{}, StateAccess: []StateAccess{},
+		Privileged: []Privileged{}, Roles: []Role{}, Upgrades: []Upgrade{}}
 }
 
 func (r *Result) sort() {
@@ -129,6 +135,15 @@ func (r *Result) sort() {
 	})
 	sort.SliceStable(r.StateAccess, func(i, j int) bool {
 		return less(r.StateAccess[i].File, r.StateAccess[i].Line, r.StateAccess[j].File, r.StateAccess[j].Line)
+	})
+	sort.SliceStable(r.Privileged, func(i, j int) bool {
+		return less(r.Privileged[i].File, r.Privileged[i].Line, r.Privileged[j].File, r.Privileged[j].Line)
+	})
+	sort.SliceStable(r.Roles, func(i, j int) bool {
+		return less(r.Roles[i].File, r.Roles[i].Line, r.Roles[j].File, r.Roles[j].Line)
+	})
+	sort.SliceStable(r.Upgrades, func(i, j int) bool {
+		return less(r.Upgrades[i].File, r.Upgrades[i].Line, r.Upgrades[j].File, r.Upgrades[j].Line)
 	})
 }
 
@@ -293,11 +308,11 @@ func scanSource(res *Result, rel, raw string) {
 		if kind == "interface" {
 			continue
 		}
-		scanContract(res, rel, src, li, body)
+		scanContract(res, rel, src, li, body, src[m[0]:m[1]])
 	}
 }
 
-func scanContract(res *Result, rel, src string, li lineIndex, c block) {
+func scanContract(res *Result, rel, src string, li lineIndex, c block, header string) {
 	body := src[c.start:c.end]
 	// classify verifier contracts
 	isVerifier := false
@@ -307,11 +322,7 @@ func scanContract(res *Result, rel, src string, li lineIndex, c block) {
 		isVerifier = true
 	}
 	// collect function bodies, and blank them to find contract-level decls
-	type fn struct {
-		name       string
-		start, end int
-	}
-	var fns []fn
+	var fns []sigFn
 	level := []byte(body)
 	for _, m := range reFunction.FindAllStringSubmatchIndex(body, -1) {
 		name := "constructor"
@@ -340,7 +351,7 @@ func scanContract(res *Result, rel, src string, li lineIndex, c block) {
 		if bclose < 0 {
 			continue
 		}
-		fns = append(fns, fn{name: name, start: j + 1, end: bclose})
+		fns = append(fns, sigFn{name: name, header: body[m[0]:j], headerOff: m[0], start: j + 1, end: bclose})
 		for k := m[0]; k <= bclose; k++ {
 			if level[k] != '\n' {
 				level[k] = ' '
@@ -379,6 +390,7 @@ func scanContract(res *Result, rel, src string, li lineIndex, c block) {
 		// a generated verifier's own internals are not integration call sites
 		return
 	}
+	scanPrivileged(res, rel, src, li, c, header, fns, string(level))
 	for _, f := range fns {
 		scanFunction(res, rel, src, li, c.name, f.name, c.start+f.start, c.start+f.end, stateNames)
 	}

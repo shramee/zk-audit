@@ -45,7 +45,12 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable
-      - name: Foundry PoCs on sanitized copies of the integration fixtures
+      - name: Install the pinned solc (solc_version in the fixtures' foundry.toml)
+        run: |
+          d="$(mktemp -d)"; mkdir -p "$d/src"
+          printf 'pragma solidity 0.8.35;\ncontract Probe {}\n' > "$d/src/Probe.sol"
+          (cd "$d" && forge build --use 0.8.35)
+      - name: Foundry PoCs on sanitized copies of the integration fixtures (offline)
         run: evals/run-foundry-pocs all "$(mktemp -d)"
 
   ci-smoke:

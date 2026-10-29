@@ -22,7 +22,9 @@ run_one() {
   "$here/sanitize" "$n" "$dest" >/dev/null
   mkdir -p "$dest/test"
   cp "$pocs"/*.t.sol "$dest/test/"
-  (cd "$dest" && FOUNDRY_OFFLINE=true forge test)
+  # Offline by default: the pinned solc (solc_version in foundry.toml) must be
+  # installed first (CI does `forge build --use <version>` in a scratch project).
+  (cd "$dest" && FOUNDRY_OFFLINE="${FOUNDRY_OFFLINE:-true}" forge test)
 }
 
 if [ "$name" = "all" ]; then

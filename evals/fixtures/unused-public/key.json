@@ -1,0 +1,7 @@
+{"schema_version":"1","case":"unused-public","fixture":"unused-public",
+ "items":[{"id":"P1","class":"soundness","critical":true,
+  "title":"Public input Epoch is never constrained",
+  "ranges":[{"file":"circuit/circuit.go","anchors":["api.AssertIsEqual(h.Sum(), c.Commit)"]}],
+  "match":"(?i)epoch|public input|unconstrained|unused|never (used|constrained)|not bound|free|replay",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["high","medium","critical"]}],
+ "decoys":[],"other":[]}

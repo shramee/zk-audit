@@ -1,0 +1,7 @@
+{"schema_version":"1","case":"boolean-missing","fixture":"boolean-missing",
+ "items":[{"id":"P1","class":"soundness","critical":true,
+  "title":"Flags used in boolean algebra without AssertIsBoolean",
+  "ranges":[{"file":"circuit/circuit.go","anchors":["api.AssertIsEqual(c.Granted, api.Mul(c.FlagA, c.FlagB))"]}],
+  "match":"(?i)boolean|assertisboolean|flag|non.?boolean|and|{0, ?1}|domain",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["high","medium","critical"]}],
+ "decoys":[],"other":[]}

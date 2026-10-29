@@ -244,6 +244,27 @@ tables and `gnark-inventory profiles` all follow the entry.
   the sandbox. `make eval-pocs` runs both fixtures; CI installs Foundry
   v1.7.1 with `foundry-rs/foundry-toolchain`.
 
+## Report sections for trusted parties, privacy and coverage limits
+
+- **Section order.** Sections 7 (Trusted parties), 8 (Privacy) and 11 (Not
+  covered) are new; Hardening moved to 9 and Coverage to 10. Every
+  cross-reference in the rendered text uses the section constants, so the
+  numbers cannot drift.
+- **Trusted parties** lists records with a `trust` object (status: needs
+  validation, confirmed through an unprivileged path, lead, or accepted risk
+  with its `zk-audit.md` line), the top-level `accepted_risks` (risks the
+  guidance file accepts that no record covers), and the `trusted-party`
+  ledger coverage. An accepted record leaves the needs-validation table and
+  is counted separately in the posture totals; it is never dropped.
+- **Privacy** lists records with `property: privacy` (a new optional record
+  field), a `V-PR*` vector or `trust.breaks` privacy, and the `privacy`
+  ledger coverage, or says the profile does not run PR1.
+- **Not covered** is a fixed list of what the skill never examines (gnark
+  internals beyond advisories, other frameworks, cryptographic assumptions,
+  deployed state and off-repository infrastructure, economic and governance
+  attacks, formal verification), followed by run-specific lines computed
+  from `profiles.json`, the ledger and `companions`.
+
 ## Severity calibration
 
 - **Anchors, not a table of adjectives.** `references/severity-calibration.md`

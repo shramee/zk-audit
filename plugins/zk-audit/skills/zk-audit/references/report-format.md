@@ -23,8 +23,11 @@ Where each part comes from:
 | Posture | `findings.json` `posture` (written by the orchestrator), then computed totals |
 | Findings, details, leads, needs validation | `records`, by verdict |
 | Constraint / code quote | the lines `location.line`–`end_line` of `<repo>/<file>`, verbatim, at most 30 |
+| Trusted parties | records with a `trust` object (accepted risks among them), `findings.json` `accepted_risks`, ledger units of class `trusted-party` |
+| Privacy | records with `property: privacy`, a `V-PR*` vector or `trust.breaks` privacy; ledger units of class `privacy` |
 | Hardening notes | `findings.json` `hardening` |
 | Coverage | ledger statuses only (examined = `covered`); load mode from `inventory.json` |
+| Not covered | fixed text, then the lenses outside the profile (`profiles.json`), the ledger units not examined and the missing companions |
 | PoC lines, `pocs/MANIFEST.json` | `poc` objects of every verdict, and the files in `<out>/pocs/` |
 
 The assembler rejects the claims listed under Language in any free-text field.
@@ -93,7 +96,7 @@ and the single most important action. No marketing.>
 Totals: 1 confirmed (1 high) · 0 needs validation · 2 leads · 1 rejected. Ledger: 14 of 20 applicable units examined.
 
 (With no confirmed finding, the assembler adds that this does not mean the code
-is free of bugs and points to section 8.)
+is free of bugs and points to section 10.)
 
 ## 3. Findings
 
@@ -105,7 +108,7 @@ is free of bugs and points to section 8.)
 
 ### 1. <Title>
 
-`TallyCircuit.Define` · `tally/circuit.go:40-44` · severity **high** · confidence 90 · evidence **POC** · detected by C1, V-hints · vectors V-H3
+`TallyCircuit.Define` · `tally/circuit.go:40-44` · severity **high** · confidence 90 · evidence **POC** · detected by C1, V-hints · vectors V-H3 · calibration SC-FORGE-ANY
 
 **Description.** <one sentence from the record>
 
@@ -148,12 +151,29 @@ Trails worth manual work. No severity, no fix.
 | Item | Severity | Confidence | Blockers | How to validate |
 |---|---|---|---|---|
 
-## 7. Hardening notes
+## 7. Trusted parties
+
+| Party | Power | Breaks | Assumption | Status | Severity | Where |
+|---|---|---|---|---|---|---|
+| owner of Ballot (owner) | replaces the verifier | soundness, funds | the owner never installs an unaudited verifier | needs validation | high | Owner swaps the verifier `contracts/Ballot.sol:12-15` |
+
+Accepted in `zk-audit.md` without a record: (accepted_risks, if any)
+
+Trusted-party units examined: X of Y.
+
+## 8. Privacy
+
+| Item | Verdict | Severity | Where | Detected by |
+|---|---|---|---|---|
+
+Privacy units examined: X of Y. (Or: the privacy lens is not part of the profile.)
+
+## 9. Hardening notes
 
 Optional, short: hygiene that is not a vulnerability (stale verifier file in the
 repo, no public-input-order test, `api.Println` in a circuit).
 
-## 8. Coverage
+## 10. Coverage
 
 | Kind | Units | planned | in progress | covered | candidate | deferred | blocked | not applicable | out of scope |
 |---|---|---|---|---|---|---|---|---|---|
@@ -167,6 +187,17 @@ Examined (covered): X of Y applicable units (Z%).
 - Rejected candidates: N (kept in `findings.json`).
 - Companions not available.
 - Load mode of the inventory (`types` / `syntax` / `mixed`) and its errors.
+
+## 11. Not covered
+
+This review never examines: gnark itself beyond advisories and gadget
+preconditions; other frameworks natively; cryptographic assumptions and
+ceremony transcripts; deployed state and infrastructure outside the
+repository; economic, governance and MEV attacks beyond the vectors; formal
+verification. (Fixed text, the same in every report.)
+
+In this run: the lenses outside the profile, the ledger units not examined
+(count), the companions not available.
 
 > This review is a time-boxed, best-effort search for bugs by an automated
 > agent. It is not a guarantee of security. Absence of a finding is not
@@ -186,3 +217,8 @@ Examined (covered): X of Y applicable units (Z%).
   merge` in loop mode, never by hand; the assembler prints them after the
   title: `[KNOWN · seen in 2/3 passes]`.
 - The coverage section is mandatory, even with zero findings.
+- The trusted-parties, privacy and not-covered sections are always printed.
+  A record whose `trust.accepted` is true (`zk-audit.md` accepts the risk)
+  appears under Trusted parties as an accepted risk and not in the
+  needs-validation table; the posture totals count it separately. It is
+  never dropped.

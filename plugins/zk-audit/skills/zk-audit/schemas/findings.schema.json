@@ -38,6 +38,20 @@
         }
       }
     },
+    "accepted_risks": {
+      "type": "array",
+      "description": "Risks zk-audit.md accepts that no record covers (a record of an accepted risk carries trust.accepted instead); listed under Trusted parties",
+      "items": {
+        "type": "object",
+        "required": ["party", "risk", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "party": { "$ref": "#/$defs/nonEmpty" },
+          "risk": { "$ref": "#/$defs/nonEmpty" },
+          "source": { "type": "string", "pattern": "^zk-audit\\.md(:[0-9]+(-[0-9]+)?)?$" }
+        }
+      }
+    },
     "records": { "type": "array", "items": { "$ref": "#/$defs/record" } }
   },
   "$defs": {
@@ -84,6 +98,7 @@
       }
     },
     "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+    "property": { "enum": ["soundness", "completeness", "privacy", "liveness"], "description": "What the record breaks; privacy records are listed in the report's Privacy section" },
     "calibration": { "type": "string", "pattern": "^SC-[A-Z0-9]+(-[A-Z0-9]+)*$", "description": "The severity-calibration anchor the record fits (references/severity-calibration.md); validate findings checks the verdict and severity against it" },
     "trust": {
       "type": "object",
@@ -169,7 +184,7 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "confirmed" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" },
+        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" }, "property": { "$ref": "#/$defs/property" },
         "severity": { "$ref": "#/$defs/severity" },
         "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
         "evidence": { "enum": ["POC", "ANALYSIS"] },
@@ -190,7 +205,7 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "needs_validation" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" },
+        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" }, "property": { "$ref": "#/$defs/property" },
         "severity": { "$ref": "#/$defs/severity" },
         "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
         "proof": { "type": "string" },
@@ -210,7 +225,7 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "rejected" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" },
+        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" }, "property": { "$ref": "#/$defs/property" },
         "reason": { "$ref": "#/$defs/nonEmpty" },
         "refuting_location": { "$ref": "#/$defs/location" },
         "poc": { "$ref": "#/$defs/poc" },
@@ -225,7 +240,7 @@
       "properties": {
         "fingerprint": true, "verdict": { "const": "lead" }, "title": true, "layer": true, "bug_class": true,
         "location": true, "related_locations": true, "detected_by": true, "vector_ids": true,
-        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" },
+        "description": true, "run_tag": true, "seen": true, "trust": { "$ref": "#/$defs/trust" }, "calibration": { "$ref": "#/$defs/calibration" }, "property": { "$ref": "#/$defs/property" },
         "code_smells": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmpty" } },
         "unverified": { "$ref": "#/$defs/nonEmpty" },
         "poc": { "$ref": "#/$defs/poc", "description": "A demoted record keeps the PoC that was built for it" },

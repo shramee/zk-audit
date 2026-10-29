@@ -289,7 +289,10 @@ deep also runs a final-clean critic. Units left open stay `planned` or
 1. Write `findings.json` (schema in `{skill}/schemas/findings.schema.json`).
    Besides `records`, fill the report-only fields the assembler cannot
    derive: `posture` (three to six sentences), `out_of_scope`, `companions`
-   (`present` / `missing`) and `hardening`. With zero records, set
+   (`present` / `missing`), `hardening` and `accepted_risks` (risks
+   `zk-audit.md` accepts that no record covers). Give privacy records
+   `property: privacy` so the report's Privacy section lists them. With
+   zero records, set
    `no_findings: true` and a `no_findings_reason` that says what was examined.
 2. Close the ledger with the tool, never by rewriting the file: every unit
    still `planned` or `in_progress` becomes `deferred` or `blocked` with a

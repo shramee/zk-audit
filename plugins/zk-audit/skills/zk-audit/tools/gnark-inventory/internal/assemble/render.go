@@ -113,7 +113,7 @@ func render(in *input) string {
 	w("Rendered by `gnark-inventory assemble` from `findings.json` and `coverage-ledger.json`. Coverage statements come only from the ledger.\n\n")
 
 	confirmed := in.byVerdict("confirmed")
-	needs := in.byVerdict("needs_validation")
+	needs := in.needsOpen()
 	leads := in.byVerdict("lead")
 	rejected := in.byVerdict("rejected")
 	sortRanked(confirmed)
@@ -124,7 +124,7 @@ func render(in *input) string {
 
 	w("## 3. Findings\n\n")
 	if len(confirmed) == 0 {
-		w("No confirmed findings in the examined units. Section 8 lists what was and was not examined.\n\n")
+		w("No confirmed findings in the examined units. Section %d lists what was and was not examined.\n\n", secCoverage)
 	} else {
 		w("| # | Title | Severity | Confidence | Evidence | Detected by |\n|---|---|---|---|---|---|\n")
 		for i, r := range confirmed {
@@ -168,6 +168,9 @@ func render(in *input) string {
 	}
 
 	w("## 6. Needs validation\n\n")
+	if n := len(in.accepted()); n > 0 {
+		w("%s accepted in `zk-audit.md` %s listed in section %d, not here.\n\n", plural(n, "trusted-party risk"), map[bool]string{true: "is", false: "are"}[n == 1], secTrusted)
+	}
 	if len(needs) == 0 {
 		w("None.\n\n")
 	} else {
@@ -183,7 +186,10 @@ func render(in *input) string {
 		}
 	}
 
-	w("## 7. Hardening notes\n\n")
+	in.writeTrusted(&b)
+	in.writePrivacy(&b)
+
+	w("## %d. Hardening notes\n\n", secHardening)
 	if len(in.f.Hardening) == 0 {
 		w("None recorded.\n\n")
 	} else {
@@ -201,6 +207,7 @@ func render(in *input) string {
 	}
 
 	in.writeCoverage(&b, len(rejected))
+	in.writeNotCovered(&b)
 	w("%s", disclaimer)
 	return b.String()
 }
@@ -346,7 +353,7 @@ func (in *input) writeScope(b *strings.Builder) {
 		}
 	}
 	if n > 0 {
-		oos = append(oos, plural(n, "ledger unit") + " marked out_of_scope (section 8)")
+		oos = append(oos, plural(n, "ledger unit")+fmt.Sprintf(" marked out_of_scope (section %d)", secCoverage))
 	}
 	if len(oos) == 0 {
 		w("| Out of scope | none recorded |\n\n")
@@ -378,13 +385,17 @@ func (in *input) writePosture(b *strings.Builder, confirmed, needs, leads, rejec
 		line += " (" + strings.Join(sev, ", ") + ")"
 	}
 	ex, app := in.examined()
-	line += fmt.Sprintf(" · %d needs validation · %s · %d rejected. Ledger: %d of %s examined.", len(needs), plural(len(leads), "lead"), len(rejected), ex, plural(app, "applicable unit"))
+	line += fmt.Sprintf(" · %d needs validation", len(needs))
+	if n := len(in.accepted()); n > 0 {
+		line += " · " + plural(n, "accepted risk")
+	}
+	line += fmt.Sprintf(" · %s · %d rejected. Ledger: %d of %s examined.", plural(len(leads), "lead"), len(rejected), ex, plural(app, "applicable unit"))
 	w("%s\n\n", line)
 	if len(confirmed) == 0 {
 		if in.f.NoFindings {
 			w("The run recorded no findings: %s\n\n", endSentence(inline(in.f.NoFindingsReason)))
 		}
-		w("The absence of confirmed findings does not mean the code is free of bugs. Only the units listed as examined in section 8 were reviewed.\n\n")
+		w("The absence of confirmed findings does not mean the code is free of bugs. Only the units listed as examined in section %d were reviewed.\n\n", secCoverage)
 	}
 }
 
@@ -395,6 +406,9 @@ func (in *input) writeDetail(b *strings.Builder, n int, r *Record) {
 		code(r.Location.Scope), code(locStr(r.Location)), r.Severity, conf(r), r.Evidence, strings.Join(agentOrder(r.DetectedBy), ", "))
 	if len(r.VectorIDs) > 0 {
 		meta += " · vectors " + strings.Join(r.VectorIDs, ", ")
+	}
+	if r.Calibration != "" {
+		meta += " · calibration " + r.Calibration
 	}
 	w("%s\n\n", meta)
 	if len(r.RelatedLocations) > 0 {
@@ -584,7 +598,7 @@ var kinds = []string{"circuit", "hint", "public-input", "contract-fn", "verifier
 
 func (in *input) writeCoverage(b *strings.Builder, rejected int) {
 	w := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }
-	w("## 8. Coverage\n\n")
+	w("## %d. Coverage\n\n", secCoverage)
 	counts := map[string]map[string]int{}
 	total := map[string]int{}
 	for _, u := range in.l.Units {

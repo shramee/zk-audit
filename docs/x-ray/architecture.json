@@ -18,7 +18,7 @@
       "y": 474,
       "w": 430,
       "h": 222,
-      "label": "read-only by prompt (refuter: tool allow-list)"
+      "label": "read-only agent types in a plugin install (by prompt standalone)"
     },
     {
       "id": "exec",
@@ -26,7 +26,7 @@
       "y": 474,
       "w": 510,
       "h": 242,
-      "label": "runs target code: timeout + GOPROXY=off, no OS sandbox"
+      "label": "runs target code in the sandbox: no network, writes only to the worktree"
     }
   ],
   "nodes": [
@@ -58,7 +58,7 @@
       "w": 260,
       "h": 60,
       "title": "Knowledge base {skill}/references/",
-      "sub": "SOP · 16 lenses · 79 vectors · judging · PoC"
+      "sub": "SOP · 20 lenses · 111 vectors · PoC"
     },
     {
       "id": "net",
@@ -78,13 +78,14 @@
       "w": 220,
       "h": 190,
       "title": "Entry points",
-      "sub": "skill + plugin commands",
+      "sub": "skill + plugin commands; args parses",
       "lines": [
-        "/zk-audit [quick|standard|deep]",
-        "/zk-audit setup | recon | diff",
-        "/zk-audit:setup|recon|diff (plugin)",
-        "--local --loop N --no-poc",
-        "--file-output --out DIR",
+        "/zk-audit quick|standard|deep",
+        "/zk-audit library",
+        "/zk-audit setup|recon|diff",
+        "/zk-audit resume [run-id]",
+        "--loop N --no-poc --budget USD",
+        "--local --file-output --out",
         "questions → guidance mode"
       ]
     },
@@ -100,10 +101,10 @@
       "lines": [
         "P0 Detect → P1 Recon → P2 Hunt → P3 Judge",
         "→ P4 Prove → P5 Critique → P6 Report",
-        "asks one question (profile, model)",
-        "completes binding-table.md, writes system-map.md",
-        "saves agents/<ID>.md, updates the ledger",
-        "writes findings.json; never edits REPORT.md"
+        "one question after the estimate",
+        "budget check before each wave; resume",
+        "agents save + ledger mark, no hand edits",
+        "critic-check decisions; writes findings.json"
       ]
     },
     {
@@ -116,12 +117,15 @@
       "title": "gnark-inventory (Go, offline)",
       "sub": "{skill}/scripts → ~/.zk-audit/bin",
       "lines": [
-        "detect → stack.json",
-        "inventory → inventory.json/.md,",
-        "  binding-table.md, ledger (seeded)",
-        "bundle → bundles/<ID>.md",
-        "validate findings|ledger|stack",
-        "assemble → REPORT.md",
+        "args · detect · preflight",
+        "threat-model → threat-model.json",
+        "inventory → inventory.json, ledger",
+        "estimate · bundle (profiles.json)",
+        "agents · ledger · memory · budget",
+        "status · critic-check · diff",
+        "verifier · convert · harness",
+        "validate · assemble → REPORT.md",
+        "sandbox: go list, PoCs (bwrap)",
         "lint-kb · advisories · rules"
       ]
     },
@@ -135,15 +139,16 @@
       "title": "Output (outside the repo)",
       "sub": "~/.zk-audit/<repo>/<run-id>/",
       "lines": [
-        "stack.json",
-        "inventory.json · inventory.md",
+        "run.json · stack.json",
+        "inventory.json · .md",
         "binding-table.md",
         "system-map.md",
+        "threat-model.json",
+        "estimate.json · spend.json",
         "coverage-ledger.json",
-        "bundles/<ID>.md",
-        "agents/<ID>.md",
-        "findings.json",
-        "REPORT.md",
+        "bundles/ · agents/ · passes/",
+        "critic-check.json · memory.json",
+        "findings.json · REPORT.md",
         "pocs/ · worktree/ (scratch)"
       ]
     },
@@ -160,7 +165,7 @@
         "go.mod · circuits · hints",
         "*.sol verifier + callers",
         "prover service Go",
-        "zk-audit.md (optional)"
+        "zk-audit.md (threat model)"
       ]
     },
     {
@@ -171,11 +176,11 @@
       "w": 230,
       "h": 104,
       "title": "Hunting agents (≤ 6 at once)",
-      "sub": "general-purpose, one per bundle",
+      "sub": "zk-audit:hunter, one per bundle",
       "lines": [
-        "C1–6 · I1–4 · V-* · G1–3 · A1 · F1",
-        "read bundle + source shard",
-        "return FINDING / LEAD blocks"
+        "C1–6 · I1–4 · S1 · T1 · PR1 · L1",
+        "V-* · G1–3 · A1 · F1",
+        "FINDING / LEAD → agents save"
       ]
     },
     {
@@ -185,8 +190,8 @@
       "y": 610,
       "w": 230,
       "h": 60,
-      "title": "Coverage critic",
-      "sub": "missing_units: ledger + agents/"
+      "title": "Coverage critic (zk-audit:critic)",
+      "sub": "lens-level gaps (tool: critic-check)"
     },
     {
       "id": "refuter",
@@ -214,7 +219,7 @@
       "sub": "Read · Write · Edit · Bash",
       "lines": [
         "writes pocs/<n>_poc_test.go",
-        "copies it into the worktree",
+        "runs it via scripts/sandbox",
         "attack + 2 controls"
       ]
     },
@@ -226,9 +231,9 @@
       "w": 490,
       "h": 70,
       "title": "Scratch git worktree <out>/worktree",
-      "sub": "go test -run PoC_ (timeout 600, GOPROXY=off) · forge test",
+      "sub": "go test -run PoC_ · forge test --offline (in the sandbox)",
       "lines": [
-        "the target's packages compile and run here"
+        "no network, writes only here, 600 s, memory limit"
       ]
     }
   ],
@@ -361,7 +366,7 @@
           390
         ]
       ],
-      "label": "reads: go/parser + go list (GOPROXY=off)",
+      "label": "reads: go/parser + go list in the sandbox",
       "lx": 300,
       "ly": 409
     },
@@ -475,7 +480,7 @@
           622
         ]
       ],
-      "label": "go test / forge",
+      "label": "sandbox",
       "lx": 836,
       "ly": 612
     },
@@ -500,8 +505,8 @@
     }
   ],
   "footer": [
-    "Artifact chain: stack.json → inventory.json + binding-table.md + coverage-ledger.json → bundles/<ID>.md → agents/<ID>.md → findings.json → REPORT.md (+ pocs/).",
-    "Deterministic steps (tool): detect, inventory, bundle, validate, assemble. Judgment steps (model): binding-table completion, system map, hunting, judging, PoC, critique, report prose fields.",
-    "Network: none during the audit except the update check; module downloads only with consent (--allow-network). Install routes: /plugin marketplace, or copy {skill} to ~/.claude/skills/zk-audit."
+    "Artifacts: run.json → stack.json → inventory.json + ledger (+ threat-model.json) → estimate.json → bundles/ → agents/ + spend.json → critic-check.json → findings.json → REPORT.md.",
+    "Tool (deterministic): args, detect, inventory, estimate, bundle, ledger, agents, budget, status, critic-check, validate, assemble, sandbox. Model: hunt, judge, PoCs, critique, prose.",
+    "Network: none during the audit except the update check; module downloads, OSV and RPC only with consent. Install: /plugin marketplace, or copy {skill} to ~/.claude/skills/zk-audit."
   ]
 }

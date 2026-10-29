@@ -11,7 +11,7 @@
 #   exits 1 on a difference (CI).
 #
 # Needs the network on first use (gnark modules and, for gnark >= v0.15,
-# a newer Go toolchain via GOTOOLCHAIN=auto and proxy.golang.org); later
+# the Go toolchain its go directive names, via proxy.golang.org); later
 # runs reuse the module cache. Prints a Markdown table and writes
 # <out>/results.json. Never touches this repository except reading it.
 set -euo pipefail
@@ -72,6 +72,36 @@ for v in "${versions[@]}"; do
   gdir="$(GOFLAGS=-mod=mod go mod download -json "github.com/consensys/gnark@$v" | python3 -c 'import json,sys; print(json.load(sys.stdin)["Dir"])')"
   godir="$(awk '$1=="go"{print $2; exit}' "$gdir/go.mod")"
   printf 'module example.com/vmatrix\n\ngo %s\n\nrequire github.com/consensys/gnark %s\n' "$godir" "$v" >"$d/mod/go.mod"
+  # the toolchain: the local Go when it is new enough, else exactly the
+  # release gnark's go directive names (downloaded once; never "latest")
+  need="go$godir"
+  case "$godir" in *.*.*) ;; *) need="go$godir.0" ;; esac
+  tc="$(python3 -c 'import re,sys
+def k(v): return [int(x) for x in re.findall(r"\d+", v)[:3]] + [0] * 3
+print("local" if k(sys.argv[1])[:3] >= k(sys.argv[2])[:3] else sys.argv[2])' "$(GOTOOLCHAIN=local go env GOVERSION)" "$need")"
+  export GOTOOLCHAIN="$tc" GOFLAGS=-mod=mod CGO_ENABLED=0
+  # Resolve the module graph online from a stub that imports only the
+  # packages the templates use that exist in this release: tidying the
+  # templates themselves would upgrade gnark to a release that has a
+  # package an old one lacks.
+  mkdir -p "$d/mod/tpl/deps"
+  {
+    echo "package deps"
+    echo
+    echo "import ("
+    for p in frontend frontend/cs/r1cs frontend/cs/scs backend backend/groth16 backend/plonk constraint/solver backend/hint test test/unsafekzg std/math/bits std/hash/mimc std/math/emulated std/math/emulated/emparams; do
+      [ -d "$gdir/$p" ] && echo "	_ \"github.com/consensys/gnark/$p\""
+    done
+    echo "	_ \"github.com/consensys/gnark-crypto/ecc\""
+    echo "	_ \"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc\""
+    echo ")"
+  } >"$d/mod/tpl/deps/deps.go"
+  # -e: test-only dependencies of dependencies may want a newer Go; they
+  # are not built
+  if ! go -C "$d/mod" mod tidy -e >"$d/tidy.log" 2>&1; then
+    record "$v" "setup" "fails" "$(tail -1 "$d/tidy.log")"
+    continue
+  fi
   for t in "${templates[@]}"; do
     mkdir -p "$d/mod/tpl/$t"
     cp "$here/templates/$t/"*.go "$d/mod/tpl/$t/"
@@ -85,15 +115,6 @@ for v in "${versions[@]}"; do
     cp "$here/templates/foundry/main_v08.go.tmpl" "$d/mod/cmd/export/main.go"
   fi
   sed "s/^package PKG$/package main/" "$here/templates/circuit.go.tmpl" >"$d/mod/cmd/export/circuit.go"
-  export GOTOOLCHAIN=auto GOFLAGS=-mod=mod CGO_ENABLED=0
-  # download gnark's module graph (and the toolchain it needs) with the
-  # network, then tidy offline: online, tidy would upgrade gnark to a
-  # release that has a package an old one lacks
-  if ! go -C "$d/mod" mod download >"$d/tidy.log" 2>&1 ||
-    ! GOPROXY=off go -C "$d/mod" mod tidy -e >>"$d/tidy.log" 2>&1; then
-    record "$v" "setup" "fails" "$(tail -1 "$d/tidy.log")"
-    continue
-  fi
   pinned="$(GOPROXY=off go -C "$d/mod" list -m -f '{{.Version}}' github.com/consensys/gnark 2>/dev/null || true)"
   if [ "$pinned" != "$v" ]; then
     record "$v" "setup" "fails" "gnark resolved to $pinned, not $v"
@@ -126,7 +147,7 @@ for v in "${versions[@]}"; do
   record "$v" "inventory-local" "info" "$mode"
   # the same through the skill's wrapper with ZK_AUDIT_GO set to the
   # toolchain the module needs (preflight's use_go)
-  groot="$(GOTOOLCHAIN=auto go -C "$d/invmod" env GOROOT)"
+  groot="$(GOTOOLCHAIN="$tc" go -C "$d/invmod" env GOROOT)"
   ZK_AUDIT_BIN="$out/bin" ZK_AUDIT_GO="$groot/bin/go" "$repo/plugins/zk-audit/skills/zk-audit/scripts/gnark-inventory" \
     inventory --repo "$d/invmod" --out "$d/inv2" --sandbox off >"$d/inv2.log" 2>&1 || true
   mode2="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["load_mode"], len(d["circuits"]), len(d["hints"]), len(d["gadgets"]))' "$d/inv2/inventory.json" 2>/dev/null || echo "error")"
@@ -134,7 +155,7 @@ for v in "${versions[@]}"; do
   # per-gadget harness: generate into a copy (never into the inventoried tree), compile it
   cp -R "$d/invmod" "$d/wt"
   if "$gi" harness --out "$d/inv" --gadget harness.QuoRem --worktree "$d/wt" >"$d/harness.log" 2>&1 &&
-    GOTOOLCHAIN=auto GOFLAGS=-mod=mod go -C "$d/wt" vet ./tpl/harness/ >>"$d/harness.log" 2>&1; then
+    GOTOOLCHAIN="$tc" GOFLAGS=-mod=mod go -C "$d/wt" vet ./tpl/harness/ >>"$d/harness.log" 2>&1; then
     record "$v" "harness" "works" ""
   else
     record "$v" "harness" "$(grep -qE 'undefined|cannot use|not enough|no required module|cannot find' "$d/harness.log" && echo api-differs || echo fails)" "$(firsterr "$d/harness.log")"
@@ -145,7 +166,7 @@ for v in "${versions[@]}"; do
     f="$d/foundry"
     mkdir -p "$f/src" "$f/test"
     printf '[profile.default]\nsrc = "src"\ntest = "test"\nout = "out"\n' >"$f/foundry.toml"
-    if ! GOTOOLCHAIN=auto GOFLAGS=-mod=mod go -C "$d/mod" run ./cmd/export "$f/src/Verifier.sol" "$d/proof.txt" >"$d/export.log" 2>&1; then
+    if ! GOTOOLCHAIN="$tc" GOFLAGS=-mod=mod go -C "$d/mod" run ./cmd/export "$f/src/Verifier.sol" "$d/proof.txt" >"$d/export.log" 2>&1; then
       record "$v" "foundry" "api-differs" "$(firsterr "$d/export.log")"
     elif ! python3 "$here/foundry_test.py" "$f/src/Verifier.sol" "$d/proof.txt" "$f/test/Version.t.sol" >"$d/abi.txt" 2>&1; then
       record "$v" "foundry" "api-differs" "$(cat "$d/abi.txt")"
@@ -195,7 +216,14 @@ for r in rows:
         st = r["detail"].split(" (")[0]
     got[(r["version"], r["item"])] = st
 bad = []
+for v in set(r["version"] for r in rows):
+    for item in exp.get(v, {}):
+        if (v, item) not in got and not (item == "foundry" and not foundry) and (v, "setup") not in got:
+            bad.append("%s %s: not run" % (v, item))
 for (v, item), st in got.items():
+    if item == "setup":
+        bad.append("%s setup: %s" % (v, st))
+        continue
     want = exp.get(v, {}).get(item)
     if want is None or (item == "foundry" and not foundry):
         continue

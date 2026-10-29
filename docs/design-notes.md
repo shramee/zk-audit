@@ -81,11 +81,14 @@ left open, it is recorded here with the reason.
   list of constraining calls. "reached" means "flows into at least one
   constraint", never "bound". Outputs that leave the function (return, struct
   field, call to a non-API helper, composite literal) are `escapes`.
-- **Fixtures.** `testdata/pool` and `testdata/edge` are separate modules that
+- **Fixtures.** `testdata/pool` and `testdata/edge` (repository root, outside
+  the plugin directory) are separate modules that
   compile against gnark v0.14.0 (the newest release whose `go` directive works
   with Go 1.24). CI's offline step skips the typed-mode tests when the fixture
   dependencies are not cached; `make test-types` downloads them and requires
-  typed mode.
+  typed mode. Tests find them through `internal/fixture`, which walks up to
+  the repository root and skips in a standalone copy of the skill folder.
+  The assembler's golden reports are in `testdata/assemble/`.
 - **`bundle` subcommand (M3 skeleton).** Context sharding is implemented in the
   Go tool rather than a separate `scripts/build-context`: circuit, integration,
   prover and all shards, with one circuit shard per package when there are more
@@ -109,10 +112,12 @@ left open, it is recorded here with the reason.
 ## Evals
 
 - **Blind runs.** Fixtures keep their `// BUG:` comments for the inventory
-  tests. `plugins/zk-audit/evals/sanitize` copies a fixture outside the
+  tests. `evals/sanitize` copies a fixture outside the
   repository, strips the hints with a per-fixture sed script and fails if
-  hint text survives. Answer keys and eval PoCs live in `evals/<fixture>/`,
-  which no skill file references; a docs test keeps fixture identifiers out
+  hint text survives. Answer keys and eval PoCs live in `evals/<fixture>/`.
+  `evals/` and `testdata/` are at the repository root, so neither a plugin
+  install nor a standalone skill copy carries them
+  (`TestInstallShipsNoFixtures`); no skill file references them, and a docs test keeps fixture identifiers out
   of every plugin doc so hunters are not primed.
 - **Answer keys score real impact, not the planted comment.** Several pool
   `BUG:` comments describe patterns that are harmless in context (one is a

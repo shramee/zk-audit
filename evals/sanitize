@@ -3,7 +3,7 @@
 # an audit run cannot read the answers from the source.
 #
 # Usage: evals/sanitize <fixture-name> <dest-dir>
-#   fixture-name: a directory under skills/zk-audit/tools/gnark-inventory/testdata with a
+#   fixture-name: a directory under testdata/ with a
 #                 matching evals/<fixture-name>/sanitize.sed
 #   dest-dir:     must not exist yet and must be outside this repository
 #
@@ -11,11 +11,10 @@
 # work. Answer keys stay in evals/ and are never copied.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-plugin="$(cd "$here/.." && pwd)"
-repo_root="$(cd "$plugin/../.." && pwd)"
+repo_root="$(cd "$here/.." && pwd)"
 name="${1:?fixture name}"
 dest="${2:?destination directory}"
-src="$plugin/skills/zk-audit/tools/gnark-inventory/testdata/$name"
+src="$repo_root/testdata/$name"
 rules="$here/$name/sanitize.sed"
 [ -d "$src" ] || { echo "sanitize: no fixture $src" >&2; exit 2; }
 [ -f "$rules" ] || { echo "sanitize: no rules $rules" >&2; exit 2; }

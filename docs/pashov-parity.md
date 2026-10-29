@@ -180,9 +180,9 @@ Observations from the live runs, not fixed here:
 - Both routes put the skill outside the audited repository, so a session
   that restricts Bash to the working directory prompts for every tool call
   under `{skill}` or `~/.zk-audit`. pashov skills have the same property.
-- The plugin cache also receives `evals/` (answer keys) and the tool's
-  `testdata/` (fixtures with `BUG:` comments). The standalone copy carries
-  `testdata/` too. See the x-ray "worth investigating" list.
+- Neither route receives eval answer keys or fixtures: `evals/` and
+  `testdata/` sit at the repository root, outside `plugins/zk-audit/`, and
+  `TestInstallShipsNoFixtures` keeps them there.
 
 ### (e) From GitHub
 

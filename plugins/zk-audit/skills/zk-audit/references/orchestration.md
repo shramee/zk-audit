@@ -27,6 +27,7 @@ install, write into the target repo, or use the network.
 | I2 | verifier contracts | `agents/I2-verifier-contract.md` | integration | integration | standard, deep |
 | I3 | protocol state | `agents/I3-protocol-state.md` | integration | integration | standard, deep |
 | I4 | prover service | `agents/I4-prover-service.md` | integration | prover | standard, deep |
+| T1 | trusted parties | `agents/T1-trusted-parties.md` | integration | all | quick, standard, deep |
 | V-hints | vector scan: hints | `agents/vector-scan.md` + `attack-vectors/hints.md` | vector scan | circuit | quick, standard, deep |
 | V-range | vector scan: range and bits | `agents/vector-scan.md` + `attack-vectors/range-bits.md` | vector scan | circuit | quick, standard, deep |
 | V-field | vector scan: field arithmetic | `agents/vector-scan.md` + `attack-vectors/field-arith.md` | vector scan | circuit | quick, standard, deep |
@@ -45,9 +46,9 @@ install, write into the target repo, or use the network.
 | A1 | asymmetry | `agents/A1-asymmetry.md` | cross | all | deep |
 | F1 | first principles | `agents/F1-first-principles.md` | cross | all | standard, deep |
 
-- **quick**: C1, I1, G2 + 12 vector-scan shards (V-*).
-- **standard**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, G2, F1 + 12 vector-scan shards (V-*).
-- **deep**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, G1, G2, G3, A1, F1 + 12 vector-scan shards (V-*).
+- **quick**: C1, I1, T1, G2 + 12 vector-scan shards (V-*).
+- **standard**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, T1, G2, F1 + 12 vector-scan shards (V-*).
+- **deep**: C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, T1, G1, G2, G3, A1, F1 + 12 vector-scan shards (V-*).
 
 <!-- end generated:agent-table -->
 

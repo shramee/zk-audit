@@ -45,11 +45,22 @@ func TestSeedValidates(t *testing.T) {
 	// 2 production circuits x 6 classes; 9 public-input groups (Fees is one
 	// group of 2); 3 production hint sites; 1 verifier; 4 functions that
 	// verify or write proof state (constructor, setVerifier, addRoot,
-	// withdraw) x 3 classes; 1 prover file; 1 dependency
-	want := map[string]int{"circuit": 12, "public-input": 9, "hint": 3, "verifier": 1, "contract-fn": 12, "prover": 1, "dependency": 1}
+	// withdraw) x 3 classes, plus the 2 owner-gated setters (setVerifier,
+	// addRoot) x trusted-party; 1 role (Pool.owner); 1 setup site
+	// (cmd/setup); 1 prover file; 1 dependency
+	want := map[string]int{"circuit": 12, "public-input": 9, "hint": 3, "verifier": 1, "contract-fn": 14, "role": 1, "setup": 1, "prover": 1, "dependency": 1}
 	for k, v := range want {
 		if kinds[k] != v {
 			t.Errorf("kind %s: %d units, want %d (all %v)", k, kinds[k], v, kinds)
+		}
+	}
+	ids := map[string]bool{}
+	for _, u := range l.Units {
+		ids[u.ID] = true
+	}
+	for _, id := range []string{"contract-fn:Pool.setVerifier|trusted-party", "contract-fn:Pool.addRoot|trusted-party", "role:Pool.owner|trusted-party", "setup:cmd/setup/main.go|trusted-party"} {
+		if !ids[id] {
+			t.Errorf("missing trusted-party unit %s", id)
 		}
 	}
 	for _, u := range l.Units {

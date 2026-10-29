@@ -59,14 +59,18 @@ func locStr(l Location) string {
 	return fmt.Sprintf("%s:%d", l.File, l.Line)
 }
 
-// agentOrder sorts agent ids C*, I*, V-*, G*, A*, F*, then anything else.
+// agentOrder sorts agent ids C*, I*, T*, PR*, V-*, G*, A*, F*, then
+// anything else.
 func agentOrder(ids []string) []string {
 	group := func(s string) int {
-		switch {
-		case strings.HasPrefix(s, "V-"):
-			return 2
-		case len(s) == 2 && s[1] >= '0' && s[1] <= '9':
-			if i := strings.IndexByte("CIVGAF", s[0]); i >= 0 {
+		for i, p := range []string{"C", "I", "T", "PR", "V-", "G", "A", "F"} {
+			if p == "V-" {
+				if strings.HasPrefix(s, p) {
+					return i
+				}
+				continue
+			}
+			if strings.HasPrefix(s, p) && len(s) > len(p) && s[len(p)] >= '0' && s[len(p)] <= '9' {
 				return i
 			}
 		}
@@ -576,7 +580,7 @@ func (in *input) quote(l Location) (string, string, bool) {
 }
 
 var statuses = []string{"planned", "in_progress", "covered", "candidate", "deferred", "blocked", "not_applicable", "out_of_scope"}
-var kinds = []string{"circuit", "hint", "public-input", "contract-fn", "verifier", "prover", "dependency"}
+var kinds = []string{"circuit", "hint", "public-input", "contract-fn", "verifier", "role", "setup", "prover", "dependency"}
 
 func (in *input) writeCoverage(b *strings.Builder, rejected int) {
 	w := func(format string, a ...any) { fmt.Fprintf(b, format, a...) }

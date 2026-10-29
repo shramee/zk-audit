@@ -156,13 +156,40 @@ left open, it is recorded here with the reason.
    `T1`), `name`, `file`, optional `slice`, `group`, `shard`
    (`circuit` / `integration` / `prover` / `all`) and `profiles`. If the lens
    owns coverage, add `ledger: {classes: [...], seed: "circuit" |
-   "contract-fn", with: [...]}`; a class that needs a new subject kind (not
-   one unit per circuit or per contract function) also needs seeding code in
-   `internal/ledger/seed.go`.
+   "contract-fn" | "privileged", with: [...]}`; a class that needs a new
+   subject kind (not one unit per circuit, per contract function, or per
+   privileged surface) also needs seeding code in `internal/ledger/seed.go`.
 3. Run `make sync-profiles` and `make check`.
 
 Nothing else changes: bundles, ledger seeding and validation, the docs
 tables and `gnark-inventory profiles` all follow the entry.
+
+## Trusted parties (T1)
+
+- **Why a lens.** The pool fixture's two trusted-party items (the owner swaps
+  the verifier; the owner posts Merkle roots) were missed or half-credited in
+  every measured run, and the critic could not see the gap because no ledger
+  unit asked anyone to look (shramee/zk-audit#10). Admin powers were
+  checklist lines inside I2 and I3 and "do not report" in the shared rules.
+- **Deterministic surface.** The Solidity scan lists privileged functions
+  (access modifiers, sender checks, initializers, ungated writers of
+  verifier / VK / authority / implementation state), roles (Ownable and
+  AccessControl bases, role constants, authority-named address variables,
+  modifier parties) and upgrade paths (proxy bases, `upgradeTo`,
+  `_authorizeUpgrade`, `delegatecall`, `selfdestruct`). It is lexical like
+  the rest of the scan: a gate implemented in a base contract outside the
+  scanned files (an inherited `onlyOwner` used without the base in scope) is
+  still found by name, but a custom gate in an unscanned library is not.
+- **Ledger.** Class `trusted-party`, seed kind `privileged`: one unit per
+  privileged function (`contract-fn:`), declared role (`role:`) and
+  production setup site (`setup:`, from `FG-DEV-SETUP`). `role` and `setup`
+  are new unit kinds in the ledger schema.
+- **In quick too.** Quick missed both trusted-party items in the 2026-10-27
+  and 2026-10-29 runs; they were its only misses. A quick hunter costs about
+  49k tokens (20 agents for 9.16 USD in the 2026-10-29 run), so T1 adds about
+  5 % to a quick run. The alternative, leaving trusted parties to standard,
+  keeps quick's one systematic blind spot. T1 reads the `all` shard because
+  setup sites live in prover code.
 
 ## Sandbox (PoCs and recon)
 

@@ -41,9 +41,10 @@ type Ledger struct {
 	// Classes are the ledger unit classes this lens owns.
 	Classes []string `json:"classes"`
 	// Seed is the subject kind the seeder creates one unit per class for:
-	// "circuit" (each production circuit) or "contract-fn" (each verifying or
-	// state-writing contract function). Empty: units are seeded by
-	// kind-specific code in the ledger package, or not at all.
+	// "circuit" (each production circuit), "contract-fn" (each verifying or
+	// state-writing contract function) or "privileged" (each privileged
+	// contract function, declared role and setup site). Empty: units are
+	// seeded by kind-specific code in the ledger package, or not at all.
 	Seed string `json:"seed,omitempty"`
 	// With are further lenses listed on seeded units ("V" is the vector scan).
 	With []string `json:"with,omitempty"`
@@ -111,8 +112,11 @@ func Load() *Set {
 // Shards a lens may read.
 var Shards = map[string]bool{"circuit": true, "integration": true, "prover": true, "all": true}
 
-// SeedKinds the ledger seeder understands.
-var SeedKinds = map[string]bool{"circuit": true, "contract-fn": true}
+// SeedKinds the ledger seeder understands: "circuit" (each production
+// circuit), "contract-fn" (each verifying or state-writing contract
+// function) and "privileged" (each privileged contract function, declared
+// role and setup site; internal/ledger seeds it).
+var SeedKinds = map[string]bool{"circuit": true, "contract-fn": true, "privileged": true}
 
 var (
 	reLensID  = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*(-[a-z0-9]+)?$`)

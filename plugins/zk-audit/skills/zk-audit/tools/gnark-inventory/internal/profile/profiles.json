@@ -22,6 +22,8 @@
       "ledger": { "classes": ["protocol-state"], "seed": "contract-fn", "with": ["G2"] } },
     { "id": "I4", "name": "prover service", "file": "agents/I4-prover-service.md", "group": "integration", "shard": "prover", "profiles": ["standard", "deep"],
       "ledger": { "classes": ["prover-service", "gnark-version"] } },
+    { "id": "T1", "name": "trusted parties", "file": "agents/T1-trusted-parties.md", "group": "integration", "shard": "all", "profiles": ["quick", "standard", "deep"],
+      "ledger": { "classes": ["trusted-party"], "seed": "privileged" } },
     { "id": "V-hints", "name": "vector scan: hints", "file": "agents/vector-scan.md", "slice": "attack-vectors/hints.md", "group": "vector scan", "shard": "circuit", "profiles": ["quick", "standard", "deep"] },
     { "id": "V-range", "name": "vector scan: range and bits", "file": "agents/vector-scan.md", "slice": "attack-vectors/range-bits.md", "group": "vector scan", "shard": "circuit", "profiles": ["quick", "standard", "deep"] },
     { "id": "V-field", "name": "vector scan: field arithmetic", "file": "agents/vector-scan.md", "slice": "attack-vectors/field-arith.md", "group": "vector scan", "shard": "circuit", "profiles": ["quick", "standard", "deep"] },

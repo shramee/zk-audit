@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -272,5 +273,71 @@ func TestLedgerAndAgentsCommands(t *testing.T) {
 	idx, _ := os.ReadFile(out + "/agents/index.json")
 	if !strings.Contains(string(idx), `"status": "refused"`) || !strings.Contains(string(idx), `"file": "agents/C1.md"`) {
 		t.Errorf("index: %s", idx)
+	}
+}
+
+// TestVerifierCommands runs the offline verifier checks on the fixture with
+// a real gnark v0.14.0 verifier.
+func TestVerifierCommands(t *testing.T) {
+	repo := fixture.Dir(t, "sol-gnark-abi")
+	var out, errb bytes.Buffer
+	if code := run([]string{"verifier", "abi", "--repo", repo}, &out, &errb); code != 1 {
+		t.Fatalf("verifier abi: exit %d, want 1 (mismatch): %s %s", code, out.String(), errb.String())
+	}
+	if !strings.Contains(out.String(), "selector-mismatch") || !strings.Contains(out.String(), "verifyProof(uint256[8],uint256[2])") {
+		t.Errorf("verifier abi output: %s", out.String())
+	}
+	out.Reset()
+	sol := filepath.Join(repo, "contracts", "Verifier.sol")
+	if code := run([]string{"verifier", "vk", "--sol", sol}, &out, &errb); code != 0 || !strings.Contains(out.String(), "20 verifying-key constants") {
+		t.Errorf("verifier vk: %d %s", code, out.String())
+	}
+	out.Reset()
+	dep := filepath.Join(repo, "deployed", "Verifier.runtime.hex")
+	if code := run([]string{"verifier", "bytecode", "--deployed", dep, "--local", dep, "--sol", sol}, &out, &errb); code != 0 ||
+		!strings.Contains(out.String(), "code:     equal") || !strings.Contains(out.String(), "20 of 20 VK constants") {
+		t.Errorf("verifier bytecode: %d %s %s", code, out.String(), errb.String())
+	}
+	out.Reset()
+	if code := run([]string{"verifier", "diff", "--a", sol, "--b", sol}, &out, &errb); code != 0 || !strings.Contains(out.String(), "same verifier") {
+		t.Errorf("verifier diff: %d %s", code, out.String())
+	}
+	out.Reset()
+	if code := run([]string{"verifier", "ceremony", "--repo", repo}, &out, &errb); code != 0 || !strings.Contains(out.String(), "**single-party**") {
+		t.Errorf("verifier ceremony: %d %s", code, out.String())
+	}
+	out.Reset()
+	errb.Reset()
+	if code := run([]string{"verifier", "regen", "--repo", repo, "--out", filepath.Join(repo, "x"), "--vk", "k"}, &out, &errb); code != 2 || !strings.Contains(errb.String(), "inside the audited repository") {
+		t.Errorf("verifier regen into the repository: %d %s", code, errb.String())
+	}
+}
+
+func TestConvertCommand(t *testing.T) {
+	repo := fixture.Dir(t, "sol-inherit")
+	out := t.TempDir()
+	var o, e bytes.Buffer
+	if code := run([]string{"inventory", "--repo", repo, "--out", out, "--syntax-only"}, &o, &e); code != 0 {
+		t.Fatalf("inventory: %d %s", code, e.String())
+	}
+	o.Reset()
+	dst := filepath.Join(out, "companions", "solidity-auditor.json")
+	runs := fixture.Dir(t, "pashov-runs", "20261029-120000")
+	if code := run([]string{"convert", "pashov", "--in", runs, "--out", dst, "--inventory", filepath.Join(out, "inventory.json")}, &o, &e); code != 0 {
+		t.Fatalf("convert: %d %s %s", code, o.String(), e.String())
+	}
+	if !strings.Contains(o.String(), "3 records (1 companion findings, 2 leads, all as leads for judging), 1 unresolved") {
+		t.Errorf("convert output: %s", o.String())
+	}
+	b, err := os.ReadFile(dst)
+	if err != nil || !strings.Contains(string(b), `"detected_by": [`) {
+		t.Fatalf("records file: %v %s", err, b)
+	}
+	e.Reset()
+	if code := run([]string{"convert", "pashov", "--in", runs, "--out", filepath.Join(repo, "x.json"), "--inventory", filepath.Join(out, "inventory.json")}, &o, &e); code != 2 || !strings.Contains(e.String(), "inside the audited repository") {
+		t.Errorf("convert into the repository: %d %s", code, e.String())
+	}
+	if code := run([]string{"convert", "slither"}, &o, &e); code != 2 {
+		t.Errorf("unknown companion: %d", code)
 	}
 }

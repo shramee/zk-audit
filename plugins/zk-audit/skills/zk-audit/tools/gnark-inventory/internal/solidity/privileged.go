@@ -101,7 +101,9 @@ type sigFn struct {
 	name       string
 	header     string // from `function` to the opening brace
 	headerOff  int    // offset of the header in the contract body
-	start, end int    // body offsets inside the contract body
+	start, end int    // body offsets inside the contract body; -1 without a body
+	params     string // the parameter list text
+	after      string // text between the parameter list and the body
 }
 
 // inheritance returns the base contract names of a contract header.
@@ -244,8 +246,11 @@ func modifierParty(body string) string {
 }
 
 // scanPrivileged records privileged functions, roles and upgrade paths of
-// one contract. level is the contract body with function bodies blanked.
-func scanPrivileged(res *Result, rel, src string, li lineIndex, c block, contractHeader string, fns []sigFn, level string) {
+// one contract. mods maps every modifier visible in the contract (its own
+// and its bases') to the party it checks; bases are the transitive base
+// names; baseVars the variables declared in base contracts (name -> type).
+func scanPrivileged(res *Result, u *unit, mods map[string]string, bases []string, baseVars map[string]string) {
+	rel, src, li, c, fns, level := u.file, u.src, u.li, u.blk, u.fns, u.level
 	body := src[c.start:c.end]
 	roles := map[string]bool{}
 	addRole := func(line int, name, kind, source string) {
@@ -255,7 +260,7 @@ func scanPrivileged(res *Result, rel, src string, li lineIndex, c block, contrac
 		roles[name] = true
 		res.Roles = append(res.Roles, Role{File: rel, Line: line, Contract: c.name, Name: name, Kind: kind, Source: source})
 	}
-	for _, base := range inheritance(contractHeader) {
+	for _, base := range bases {
 		switch {
 		case ownerBases[base]:
 			addRole(c.headerLine, "owner", "owner", "inherits "+base)
@@ -296,15 +301,22 @@ func scanPrivileged(res *Result, rel, src string, li lineIndex, c block, contrac
 			addRole(line, name, roleKind(name), "state variable")
 		}
 	}
-	sort.Strings(varNames)
-	// modifiers defined in this contract and the party each checks
-	mods := map[string]string{}
-	for _, f := range fns {
-		if strings.HasPrefix(f.name, "modifier ") {
-			mods[strings.TrimPrefix(f.name, "modifier ")] = modifierParty(body[f.start:f.end])
+	var inherited []string
+	for name := range baseVars {
+		if _, ok := vars[name]; !ok {
+			inherited = append(inherited, name)
 		}
 	}
+	sort.Strings(inherited)
+	for _, name := range inherited {
+		vars[name] = varKind(name, baseVars[name]+" "+name)
+		varNames = append(varNames, name)
+	}
+	sort.Strings(varNames)
 	for _, f := range fns {
+		if f.start < 0 {
+			continue
+		}
 		fbody := body[f.start:f.end]
 		line := li.line(c.start + f.headerOff)
 		if strings.HasPrefix(f.name, "modifier ") {

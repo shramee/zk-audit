@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -69,6 +70,7 @@ func Build(opt Options) ([]Result, error) {
 	}
 	binding, _ := os.ReadFile(filepath.Join(opt.Out, "binding-table.md"))
 	periph := peripheral(opt.Out)
+	regen := regenSummary(opt.Out)
 	known := ""
 	if m, ok, err := memory.Load(opt.Out); err != nil {
 		return nil, fmt.Errorf("bundle: %w", err)
@@ -108,6 +110,10 @@ func Build(opt Options) ([]Result, error) {
 			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: "not in profile " + opt.Profile})
 			continue
 		}
+		if a.When != "" && !ConditionHolds(a.When, &inv) {
+			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: profile.Conditions[a.When]})
+			continue
+		}
 		targets := shardsOf(shards, a.Shard)
 		if len(targets) == 0 {
 			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: "empty " + a.Shard + " shard"})
@@ -128,7 +134,7 @@ func Build(opt Options) ([]Result, error) {
 			if sh.Name != sh.Kind {
 				id = a.ID + "@" + sh.Name
 			}
-			md := render(&inv, a, id, sh, string(binding), periph, known, sop, lens, slice, rules, opt.Profile)
+			md := render(&inv, a, id, sh, string(binding), periph, known, sop, lens, slice, rules, opt.Profile, regen)
 			p := filepath.Join(dir, safeName(id)+".md")
 			if err := os.WriteFile(p, []byte(md), 0o644); err != nil {
 				return nil, err
@@ -137,6 +143,52 @@ func Build(opt Options) ([]Result, error) {
 		}
 	}
 	return out, nil
+}
+
+// reGateway matches the interface or contract name of a verifier gateway
+// whose verifier is deployed elsewhere (SP1, RISC Zero).
+var reGateway = regexp.MustCompile(`(?i)sp1|risc ?zero|risc0`)
+
+// ConditionHolds evaluates a lens's `when` condition (profile.Conditions) on
+// an inventory. "non-gnark-verifier": a verifier in the repository that
+// gnark did not generate, or a verification call to an SP1 or RISC Zero
+// gateway.
+func ConditionHolds(name string, inv *inventory.Inventory) bool {
+	switch name {
+	case "non-gnark-verifier":
+		return len(CustomVerifiers(inv)) > 0
+	}
+	return false
+}
+
+// CustomVerifiers lists the verifiers gnark did not generate (by contract
+// name), and the gateway interfaces verification calls go through.
+func CustomVerifiers(inv *inventory.Inventory) []string {
+	c := inv.Contracts
+	if c == nil {
+		return nil
+	}
+	var out []string
+	seen := map[string]bool{}
+	add := func(s string) {
+		if s != "" && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	for _, v := range c.NonGnarkVerifiers() {
+		add(v.Contract)
+	}
+	for _, vc := range c.VerifyCalls {
+		typ := vc.ReceiverType
+		if vc.Target != nil {
+			typ = vc.Target.Contract
+		}
+		if typ != "" && reGateway.MatchString(typ) {
+			add(typ)
+		}
+	}
+	return out
 }
 
 func safeName(s string) string {
@@ -284,7 +336,30 @@ func lineCount(abs string) int {
 	return n
 }
 
-func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, periph, known, sop, lens, slice, rules, profile string) string {
+// regenSummary reads <out>/regen/diff.json, written by `verifier regen
+// --compare`, and returns its one-line summary, or "".
+func regenSummary(out string) string {
+	b, err := os.ReadFile(filepath.Join(out, "regen", "diff.json"))
+	if err != nil {
+		return ""
+	}
+	var d struct {
+		Summary string `json:"summary"`
+		Sides   []struct {
+			Name string `json:"name"`
+		} `json:"sides"`
+	}
+	if json.Unmarshal(b, &d) != nil || d.Summary == "" {
+		return ""
+	}
+	var names []string
+	for _, s := range d.Sides {
+		names = append(names, "`"+s.Name+"`")
+	}
+	return strings.Join(names, " vs ") + ": " + d.Summary + " (`regen/diff.json` in the audit output directory)"
+}
+
+func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, periph, known, sop, lens, slice, rules, profile, regen string) string {
 	var b strings.Builder
 	w := func(format string, x ...any) { fmt.Fprintf(&b, format, x...) }
 	w("# Bundle %s\n\n", id)
@@ -345,6 +420,64 @@ func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, per
 				n++
 			}
 		}
+		for _, v := range c.Verifiers {
+			if in[v.File] {
+				x := v.Kind + ", generator " + v.Generator
+				if v.Template != "" {
+					x += "; " + v.Template
+				}
+				if len(v.Precompiles) > 0 {
+					x += "; precompiles " + strings.Join(v.Precompiles, ", ")
+				}
+				w("- verifier %s at `%s:%d`: %s\n", v.Contract, v.File, v.Line, x)
+				n++
+			}
+		}
+		for _, e := range c.EntryPoints {
+			if in[e.File] {
+				pay := ""
+				if e.Payable {
+					pay = ", payable"
+				}
+				w("- entry point %s.%s at `%s:%d` (%s%s): gate `%s`, party %s, effects %s\n", e.Contract, e.Function, e.File, e.Line, e.Visibility, pay, e.Gate, e.Party, strings.Join(e.Effects, ", "))
+				n++
+			}
+		}
+	}
+	if p := inv.Provenance; p != nil {
+		if p.ABI != nil {
+			for _, c := range p.ABI.Calls {
+				file := c.Site
+				if i := strings.LastIndex(file, ":"); i > 0 {
+					file = file[:i]
+				}
+				if !in[file] {
+					continue
+				}
+				for _, a := range c.Against {
+					w("- verifier ABI %s at `%s` (%s): caller sends `%s`, %s has `%s` — %s\n", a.Status, c.Site, c.Caller, c.Signature, a.Name, a.Signature, a.Detail)
+					n++
+				}
+			}
+			for _, v := range p.ABI.Verifiers {
+				file := v.Site
+				if i := strings.LastIndex(file, ":"); i > 0 {
+					file = file[:i]
+				}
+				if in[file] {
+					w("- verifier template %s for `%s` at `%s`: %s\n", v.Status, v.Verifier, v.Site, v.Detail)
+					n++
+				}
+			}
+		}
+		if p.Ceremony != nil && (sh.Kind == "all" || sh.Kind == "prover") {
+			w("- setup provenance: %s — %s\n", p.Ceremony.Verdict, p.Ceremony.Detail)
+			n++
+		}
+	}
+	if regen != "" && (sh.Kind == "integration" || sh.Kind == "all") {
+		w("- regenerated verifier (verifier regen): %s\n", regen)
+		n++
 	}
 	if n == 0 {
 		w("_none_\n")

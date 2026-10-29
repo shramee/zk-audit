@@ -76,6 +76,8 @@ slices in [`references/attack-vectors/`](plugins/zk-audit/skills/zk-audit/refere
 | Circuit vs spec, invariants, over-constraint | C6 spec and invariants | `generic-zk.md` (V-G) | standard, deep |
 | Public-input order, encoding, binding | I1 public-input binding | `public-inputs.md` (V-PI) | all |
 | Verifier contract, VK provenance, verifier gas | I2 verifier contracts | `verifier-contracts.md` (V-VC) | standard, deep |
+| Hand-written and non-gnark verifiers: transcript, precompiles, pairing, input and point checks | I2 + V-custom shard (only when such a verifier is found) | `custom-verifiers.md` (V-CV) | all |
+| The contract beyond the proof: funds flow, tokens, reentrancy, signatures, initialisation, accounting | S1 contract review (+ `solidity-auditor` when installed) | `contract-review.md` (V-SA) | standard, deep |
 | Nullifiers, roots, replay, identities, liveness | I3 protocol state | `protocol-state.md` (V-PS), `gas-liveness.md` (V-LV) | standard, deep |
 | Owner, roles, upgrades, setup, sequencer and relayer powers | T1 trusted parties | — | all |
 | Public data, tags, correlation, relayers, witness exposure | PR1 privacy | `privacy.md` (V-PR) | standard, deep |
@@ -87,20 +89,30 @@ slices in [`references/attack-vectors/`](plugins/zk-audit/skills/zk-audit/refere
 | Every other assumption (liveness, griefing, upgrades, cross-circuit reuse) | F1 first principles | — | standard, deep |
 
 Every slice also gets its own vector-scan shard (V-hints, V-range, …,
-V-prover) in every profile, except V-privacy and V-liveness (standard and
-deep). The coverage ledger records one unit per circuit × lens class, public
-input, hint, verifier, contract function × integration class, privileged
-function, role and setup site, prover file and gnark dependency; the report states which units were
-covered, deferred or not applicable, and never says "verified clean".
+V-prover) in every profile, except V-privacy, V-liveness and V-contract
+(standard and deep) and V-custom (every profile, only when the inventory
+finds a verifier gnark did not generate). The coverage ledger records one
+unit per circuit × lens class, public input, hint, verifier, contract
+function × integration class, entry point, non-gnark verifier, privileged
+function, role and setup site, prover file and gnark dependency; the report
+states which units were covered, deferred or not applicable, and never says
+"verified clean".
+
+Every profile checks each verification call's ABI against the verifier the
+pinned gnark exports and scans for single-party setups and ceremony files;
+deep also regenerates the verifier with the target's own gnark in the
+sandbox and diffs it. Deployed bytecode and verifying keys are compared only
+when the user supplies them (`gnark-inventory verifier`).
 
 ### Out of scope
 
 - gnark backends, gnark-crypto and gnark std internals, beyond known
   advisories.
-- Solidity bugs unrelated to proof consumption (token accounting, general
-  access control, gas). The integration lenses cover the ZK surface only; the
-  `solidity-auditor` companion extends this when installed, and the report
-  says which applied.
+- A full Solidity audit. S1 and the V-contract shard (standard, deep)
+  review every entry point for funds flow, tokens, reentrancy, signatures,
+  initialisation and accounting, from a sourced checklist; quick covers the
+  ZK surface only. The `solidity-auditor` companion goes wider when
+  installed, and the report says which applied.
 - Economic and game-theoretic design. F1 may raise leads, but there is no
   systematic review. Every report ends with a fixed "Not covered" section
   that lists these limits and the run's own gaps.

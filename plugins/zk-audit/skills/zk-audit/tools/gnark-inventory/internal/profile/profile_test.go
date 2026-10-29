@@ -106,6 +106,7 @@ func TestParseRejects(t *testing.T) {
 		"unknown field":  `{"id":"C1","name":"a","file":"f","group":"g","shard":"circuit","profiles":["quick"],"colour":"red"}`,
 		"lowercase id":   `{"id":"c1","name":"a","file":"f","group":"g","shard":"circuit","profiles":["quick"]}`,
 		"missing fields": `{"id":"C1","shard":"circuit","profiles":["quick"]}`,
+		"unknown when":   `{"id":"C1","name":"a","file":"f","group":"g","shard":"circuit","profiles":["quick"],"when":"full-moon"}`,
 	}
 	ok := `{"id":"C1","name":"a","file":"f","group":"g","shard":"circuit","profiles":["quick"],"ledger":{"classes":["x"],"seed":"circuit","with":["V"]}}`
 	if _, err := Parse([]byte(strings.Replace(base, "%s", ok, 1))); err != nil {
@@ -114,6 +115,25 @@ func TestParseRejects(t *testing.T) {
 	for name, lenses := range cases {
 		if _, err := Parse([]byte(strings.Replace(base, "%s", lenses, 1))); err == nil {
 			t.Errorf("%s: accepted", name)
+		}
+	}
+	badStep := strings.Replace(strings.Replace(base, "%s", ok, 1), `"passes":1}`, `"passes":1,"provenance":["abi","telepathy"]}`, 1)
+	if _, err := Parse([]byte(badStep)); err == nil || !strings.Contains(err.Error(), "telepathy") {
+		t.Errorf("unknown provenance step: %v", err)
+	}
+}
+
+// TestProvenanceSteps: every profile runs the static ABI check and the
+// ceremony scan; only deep regenerates the verifier in the sandbox.
+func TestProvenanceSteps(t *testing.T) {
+	for _, p := range Load().Profiles {
+		got := strings.Join(p.Provenance, ",")
+		want := "abi,ceremony"
+		if p.ID == "deep" {
+			want = "abi,ceremony,regen"
+		}
+		if got != want {
+			t.Errorf("profile %s: provenance %s, want %s", p.ID, got, want)
 		}
 	}
 }

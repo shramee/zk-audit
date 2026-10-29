@@ -63,7 +63,7 @@ func locStr(l Location) string {
 // anything else.
 func agentOrder(ids []string) []string {
 	group := func(s string) int {
-		for i, p := range []string{"C", "I", "T", "PR", "V-", "G", "A", "F"} {
+		for i, p := range []string{"C", "I", "S", "T", "PR", "V-", "G", "A", "F"} {
 			if p == "V-" {
 				if strings.HasPrefix(s, p) {
 					return i

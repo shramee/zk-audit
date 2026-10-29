@@ -42,7 +42,10 @@ drops them (`judging.md`, Gate 3).
    empty, a `delegatecall` to a caller-chosen target. An amplifier makes the
    item a normal finding, not a trust assumption.
 5. **Off-chain trust.** Who generates keys and where they are stored; whether
-   the committed verifier or VK can be traced to a multi-party ceremony;
+   the committed verifier or VK can be traced to a multi-party ceremony (the
+   bundle's "setup provenance" line, from the ceremony scan: single-party
+   `Setup`, `mpcsetup` phases, key and ceremony files with their recorded
+   contribution counts, and the regenerated-verifier diff in deep);
    whether the prover service or relayer can choose public inputs the user
    did not intend (V-PV4).
 

@@ -27,6 +27,7 @@ import (
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/report"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/sandbox"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/validate"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/verifier"
 )
 
 // Version of the tool; keep in step with plugin.json and the skill VERSION file
@@ -50,6 +51,8 @@ Usage:
   gnark-inventory ledger    show --out DIR
   gnark-inventory agents    save --out DIR --id ID [--from FILE] [--status done|blocked|failed|refused] [--reason R]
   gnark-inventory agents    list --out DIR
+  gnark-inventory verifier  abi|diff|vk|bytecode|regen|ceremony [flags]   (gnark-inventory verifier help)
+  gnark-inventory convert   pashov --in PATH --out FILE [--inventory FILE]
   gnark-inventory sandbox   [--rw DIR]... [--ro DIR]... [--cwd DIR] [--timeout SEC] [--mem MB] [--allow-network] [--engine E] [--require] [--check] -- CMD [ARGS...]
   gnark-inventory lint-kb   [--gnark-src DIR] SKILL_DIR
   gnark-inventory advisories [--version vX.Y.Z]
@@ -104,6 +107,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		code, err = cmdAgents(args[1:], stdout, os.Stdin)
 	case "sandbox":
 		code, err = cmdSandbox(args[1:], stdout, stderr)
+	case "verifier":
+		code, err = cmdVerifier(args[1:], stdout, stderr)
+	case "convert":
+		code, err = cmdConvert(args[1:], stdout)
 	case "profiles":
 		code, err = cmdProfiles(args[1:], stdout)
 	case "rules":
@@ -247,6 +254,9 @@ func cmdInventory(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if inv.Provenance, err = provenance(root, inv, st); err != nil {
+		return err
+	}
 	led := ledger.Seed(inv, st, "gnark-inventory "+Version)
 	if err := writeJSONFile(filepath.Join(*out, "inventory.json"), inv); err != nil {
 		return err
@@ -266,6 +276,9 @@ func cmdInventory(args []string, stdout io.Writer) error {
 	s := inv.Summary
 	fmt.Fprintf(stdout, "load: %s · circuits: %d · public inputs (static): %d · hint sites: %d (unreached outputs: %d) · footgun hits: %d · verify calls: %d · ledger units: %d\n",
 		inv.LoadMode, s.Circuits, s.PublicInputs, s.HintSites, s.UnreachedHints, countHits(s.Footguns), s.VerifyCalls, len(led.Units))
+	if p := inv.Provenance; p != nil {
+		fmt.Fprintf(stdout, "verifier ABI: %d mismatches · setup: %s\n", p.ABI.Mismatches(), p.Ceremony.Verdict)
+	}
 	fmt.Fprintf(stdout, "wrote %s/{inventory.json,inventory.md,binding-table.md,coverage-ledger.json,stack.json}\n", *out)
 	if len(inv.LoadErrors) > 0 {
 		fmt.Fprintf(stdout, "note: %d load errors (first: %s)\n", len(inv.LoadErrors), inv.LoadErrors[0])
@@ -321,6 +334,37 @@ func missingModules(errs []string) bool {
 		}
 	}
 	return false
+}
+
+// provenance runs the static verifier-provenance checks: the ABI check of
+// every verification call against the repository's verifiers and the
+// verifier the pinned gnark exports, and the ceremony scan.
+func provenance(root string, inv *inventory.Inventory, st *detect.Stack) (*verifier.Provenance, error) {
+	g := verifier.Gnark{Versions: st.Gnark.Versions, Backends: st.Gnark.Backends}
+	for _, f := range st.Gnark.Features {
+		if f == "commitments" {
+			g.Commitments = true
+		}
+	}
+	static := true
+	for _, c := range inv.Circuits {
+		if c.InTest {
+			continue
+		}
+		if c.Witness.NbPublic < 0 {
+			static = false
+		} else {
+			g.PublicCounts = append(g.PublicCounts, c.Witness.NbPublic)
+		}
+	}
+	if !static {
+		g.PublicCounts = nil
+	}
+	cer, err := verifier.ScanCeremony(root)
+	if err != nil {
+		return nil, err
+	}
+	return &verifier.Provenance{ABI: verifier.CheckABI(inv.Contracts, g), Ceremony: cer}, nil
 }
 
 func countHits(m map[string]int) int {

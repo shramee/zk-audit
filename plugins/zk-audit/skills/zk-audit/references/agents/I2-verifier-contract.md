@@ -7,13 +7,26 @@ its options, how its result is used, and who can replace it.
 
 ## Work plan
 
-1. Identify each verifier (inventory: kind and public-input count). Find the
-   gnark version that generated it (go.mod at the commit that last changed it,
-   template features) and check V-VC1.
-2. Compare it with the current circuit: does the deep profile's regenerated
-   output match (V-VC2)? Did someone edit it (V-VC6)?
-3. For every call site: is the result checked (PLONK `Verify` returns a bool,
-   V-VC3)? Are inputs passed exactly as built (no truncation, no reduction)?
+1. Identify each verifier (inventory: kind, generator, template and
+   public-input count). Find the gnark version that generated it (go.mod at
+   the commit that last changed it, template features) and check V-VC1. The
+   bundle's "verifier template" lines say whether it matches the template
+   the pinned gnark exports.
+2. Compare it with the current circuit. The bundle's "regenerated verifier"
+   line (deep, `verifier regen`) says whether the structure and the VK
+   constants match a verifier regenerated with the target's own gnark
+   (V-VC2); a structure difference is an edit or another template (V-VC6).
+   Without that line, compare by hand and say so in `unverified:`. Which VK
+   is deployed is never in the repository: it is a blocker unless the user
+   supplied deployed bytecode.
+3. For every call site: the bundle's "verifier ABI" lines give the
+   deterministic check of selector, return value and input width against the
+   verifiers it reaches and the exported template; a `selector-mismatch` or
+   `return-mismatch` makes every call revert (or never check the result).
+   Confirm it from source. Is the result checked (PLONK `Verify` returns a
+   bool, V-VC3)? Are inputs passed exactly as built (no truncation, no
+   reduction)? With several verifiers, is each call bound to the verifier of
+   the right circuit (each binding-table section names its verifier)?
 4. Commitments: are the prover's Solidity-target and hash-to-field options the
    ones the contract expects (V-VC4)?
 5. Who can change the verifier address or VK? Setter functions, proxies,
@@ -23,8 +36,11 @@ its options, how its result is used, and who can replace it.
    setter, initializer, storage collision, a verifier read from a mutable
    registry) and report a swap you see with the T1 fields rather than
    leaving it out.
-6. Precompile calls in custom verifiers: is every `staticcall` success checked,
-   and are point inputs validated?
+6. Verifiers gnark did not generate (generator other than gnark): the
+   V-custom shard scans `attack-vectors/custom-verifiers.md` (V-CV1–V-CV9)
+   and shares the `custom-verifier` units with you. Read the transcript,
+   every precompile call's success and output, the pairing input, and the
+   `< r` and `< q` checks yourself as well.
 7. Gas: estimate verification gas for the production public-input count
    (Groth16: about 6 150 gas per public input plus the pairing check) and for
    batch or recursive paths, against the block gas limit and any relayer cap

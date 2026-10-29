@@ -28,7 +28,7 @@ Report each as `✔ <name>` or `✖ <name> (install: …)`.
 | Skill | Source | Used for | Fallback | Install (show, ask, then run) |
 |---|---|---|---|---|
 | `circom-auditor` | zkSecurity zk-skills | `.circom` files in scope | `attack-vectors/generic-zk.md` | `git clone https://github.com/zksecurity/zk-skills.git ~/zk-skills && mkdir -p ~/.claude/skills && ln -sfn ~/zk-skills/skills/circom-auditor ~/.claude/skills/circom-auditor` |
-| `solidity-auditor`, `x-ray` | pashov skills | Solidity beyond the ZK integration; threat model | I1–I3 cover the integration surface only; the report says so | `git clone https://github.com/pashov/skills.git ~/pashov-skills && mkdir -p ~/.claude/skills && ln -sfn ~/pashov-skills/solidity-auditor ~/.claude/skills/solidity-auditor && ln -sfn ~/pashov-skills/x-ray ~/.claude/skills/x-ray` |
+| `solidity-auditor`, `x-ray` | pashov skills | Solidity beyond the ZK integration (standard, deep: run on the scratch worktree in Turn 4, output converted with `gnark-inventory convert pashov`); threat model | S1 contract review and the V-contract shard (`attack-vectors/contract-review.md`, standard and deep); quick covers the integration surface only and the report says so | `git clone https://github.com/pashov/skills.git ~/pashov-skills && mkdir -p ~/.claude/skills && ln -sfn ~/pashov-skills/solidity-auditor ~/.claude/skills/solidity-auditor && ln -sfn ~/pashov-skills/x-ray ~/.claude/skills/x-ray` |
 | `audit-context-building` | Trail of Bits skills | deep profile: per-function dossiers | Phase 1 recon | `/plugin marketplace add trailofbits/skills` then `/plugin install audit-context-building@trailofbits` |
 | `spec-to-code-compliance` | Trail of Bits skills | circuit vs spec / paper | C6 lens | `/plugin install spec-to-code-compliance@trailofbits` |
 | `fp-check` | Trail of Bits skills | Phase 4 refuter | `zk-audit:refuter` with the prompt in `judging.md` | `/plugin install fp-check@trailofbits` |
@@ -46,6 +46,26 @@ contains none of their text (they are CC BY-SA 4.0).
 Delegated results come back as records in zk-audit's `findings.json` schema,
 with `detected_by: <companion>`, so dedup and the report treat them like any
 other agent.
+
+### solidity-auditor call site
+
+`references/orchestration.md` Turn 4 runs it once per audit (standard and
+deep, Solidity in scope) as a general-purpose agent with `--loop 1`, on the
+scratch worktree `<out>/worktree`, because it writes `.solidity-auditor/`
+into the directory it audits. Its runs directory
+(`.solidity-auditor/runs/<stamp>/`, one `run-K.md` per pass with
+`<!--F key=contract|function|bug-class conf=N kind=FINDING|LEAD-->` blocks,
+and `full-report.md`) is converted deterministically:
+
+```bash
+{skill}/scripts/gnark-inventory convert pashov --in <out>/worktree/.solidity-auditor/runs/<stamp> --out <out>/companions/solidity-auditor.json --inventory <out>/inventory.json
+```
+
+The converter reads the run-file and report shapes pashov documents in the
+`dedup-and-assembly.md` and `report-formatting.md` files of its own skill
+folder; a later change to those shapes needs a converter update. Every item becomes a `lead` (the run files carry no exploit proof),
+resolved to file and line through the inventory; the judge promotes it only
+after re-deriving the attack.
 
 ## Tools
 

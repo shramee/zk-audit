@@ -41,8 +41,9 @@ type Ledger struct {
 }
 
 // seeded lists, in profiles.json order, the classes a lens owns that the
-// seeder creates one unit per subject of kind for ("circuit" or
-// "contract-fn"), with the lenses listed on each unit.
+// seeder creates one unit per subject of kind for (profile.SeedKinds), with
+// the lenses listed on each unit. A vector-scan shard is listed as "V", the
+// id ledger units use for the vector scan.
 func seeded(kind string) []struct {
 	class  string
 	lenses []string
@@ -59,7 +60,21 @@ func seeded(kind string) []struct {
 			out = append(out, struct {
 				class  string
 				lenses []string
-			}{c, append([]string{l.ID}, l.Ledger.With...)})
+			}{c, lensIDs(l)})
+		}
+	}
+	return out
+}
+
+func lensIDs(l profile.Lens) []string {
+	own := l.ID
+	if l.IsVectorScan() {
+		own = "V"
+	}
+	out := []string{own}
+	for _, w := range l.Ledger.With {
+		if w != own {
+			out = append(out, w)
 		}
 	}
 	return out
@@ -136,6 +151,31 @@ func Seed(inv *inventory.Inventory, stack *detect.Stack, tool string) *Ledger {
 			}
 		}
 	}
+	// contract review: one unit per entry point (an external or public
+	// state-changing function of a contract that is not a verifier)
+	if inv.Contracts != nil {
+		if entry := seeded("entry"); len(entry) > 0 {
+			for _, e := range inv.Contracts.EntryPoints {
+				for _, cc := range entry {
+					add("contract-fn", e.Contract+"."+e.Function, cc.class, cc.lenses, []string{fmt.Sprintf("%s:%d", e.File, e.Line)},
+						fmt.Sprintf("gate %s; effects %s", e.Gate, strings.Join(e.Effects, ", ")))
+				}
+			}
+		}
+		// verifiers gnark did not generate: one unit each, for the
+		// custom-verifier slice
+		if cv := seeded("custom-verifier"); len(cv) > 0 {
+			for _, v := range inv.Contracts.NonGnarkVerifiers() {
+				note := v.Kind + " (" + v.Generator + ")"
+				if len(v.Precompiles) > 0 {
+					note += "; precompiles " + strings.Join(v.Precompiles, ", ")
+				}
+				for _, cc := range cv {
+					add("verifier", v.Contract, cc.class, cc.lenses, []string{fmt.Sprintf("%s:%d", v.File, v.Line)}, note)
+				}
+			}
+		}
+	}
 	// trusted parties: one unit per privileged function, declared role and
 	// production setup site, for each class seeded "privileged"
 	if priv := seeded("privileged"); len(priv) > 0 {
@@ -169,6 +209,57 @@ func Seed(inv *inventory.Inventory, stack *detect.Stack, tool string) *Ledger {
 				add("setup", f, cc.class, cc.lenses, []string{setup[f]}, "who runs this setup, and are its keys the deployed ones?")
 			}
 		}
+		// key and ceremony files, and MPC ceremony code, from the
+		// provenance scan
+		if p := inv.Provenance; p != nil && p.Ceremony != nil {
+			for _, sc := range p.Ceremony.Setups {
+				if sc.InTest || sc.Kind == "single-party" {
+					continue // single-party sites come from FG-DEV-SETUP above
+				}
+				for _, cc := range priv {
+					add("setup", sc.File, cc.class, cc.lenses, []string{fmt.Sprintf("%s:%d", sc.File, sc.Line)},
+						sc.Kind+" setup code: how many independent contributors, is the transcript verified, and are its keys the deployed ones?")
+				}
+			}
+			for _, a := range p.Ceremony.Artifacts {
+				n := "contributions not recorded in the file"
+				if a.Contributions >= 0 {
+					n = fmt.Sprintf("%d contribution(s) recorded", a.Contributions)
+				}
+				for _, cc := range priv {
+					add("setup", a.File, cc.class, cc.lenses, []string{a.File},
+						a.Kind+", "+n+": who generated it, and is it the deployed key? (setup provenance: "+p.Ceremony.Verdict+")")
+				}
+			}
+		}
+	}
+	// the ABI check's result on each checked call site's verifier-contract unit
+	if p := inv.Provenance; p != nil && p.ABI != nil {
+		for _, c := range p.ABI.Calls {
+			if c.Status != "mismatch" {
+				continue
+			}
+			var st []string
+			for _, a := range c.Against {
+				if a.Status != "match" && a.Status != "unknown" {
+					st = append(st, a.Status+" vs "+a.Name)
+				}
+			}
+			for i := range l.Units {
+				u := &l.Units[i]
+				if u.Kind == "contract-fn" && u.Subject == c.Caller && u.Class == "verifier-contract" {
+					u.Notes = joinNotes(u.Notes, "ABI check ("+c.Site+"): "+strings.Join(st, "; "))
+				}
+			}
+		}
+		for _, v := range p.ABI.Verifiers {
+			for i := range l.Units {
+				u := &l.Units[i]
+				if u.Kind == "verifier" && u.Subject == v.Verifier {
+					u.Notes = joinNotes(u.Notes, "template check: "+v.Status+" ("+v.Detail+")")
+				}
+			}
+		}
 	}
 	// prover-service: non-test files that touch backends or deserialization
 	prover := map[string]bool{}
@@ -197,6 +288,13 @@ func Seed(inv *inventory.Inventory, stack *detect.Stack, tool string) *Ledger {
 		}
 	}
 	return l
+}
+
+func joinNotes(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a + "; " + b
 }
 
 func lenStr(n int) string {

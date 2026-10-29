@@ -22,6 +22,8 @@
       "ledger": { "classes": ["protocol-state", "liveness"], "seed": "contract-fn", "with": ["G2"] } },
     { "id": "I4", "name": "prover service", "file": "agents/I4-prover-service.md", "group": "integration", "shard": "prover", "profiles": ["standard", "deep"],
       "ledger": { "classes": ["prover-service", "gnark-version"] } },
+    { "id": "S1", "name": "contract review", "file": "agents/S1-contract-review.md", "group": "integration", "shard": "integration", "profiles": ["standard", "deep"],
+      "ledger": { "classes": ["contract-review"], "seed": "entry", "with": ["V"] } },
     { "id": "T1", "name": "trusted parties", "file": "agents/T1-trusted-parties.md", "group": "integration", "shard": "all", "profiles": ["quick", "standard", "deep"],
       "ledger": { "classes": ["trusted-party"], "seed": "privileged" } },
     { "id": "PR1", "name": "privacy", "file": "agents/PR1-privacy.md", "group": "cross", "shard": "all", "profiles": ["standard", "deep"],
@@ -36,6 +38,9 @@
     { "id": "V-generic", "name": "vector scan: generic ZK", "file": "agents/vector-scan.md", "slice": "attack-vectors/generic-zk.md", "group": "vector scan", "shard": "circuit", "profiles": ["quick", "standard", "deep"] },
     { "id": "V-pubin", "name": "vector scan: public inputs", "file": "agents/vector-scan.md", "slice": "attack-vectors/public-inputs.md", "group": "vector scan", "shard": "integration", "profiles": ["quick", "standard", "deep"] },
     { "id": "V-verifier", "name": "vector scan: verifier contracts", "file": "agents/vector-scan.md", "slice": "attack-vectors/verifier-contracts.md", "group": "vector scan", "shard": "integration", "profiles": ["quick", "standard", "deep"] },
+    { "id": "V-custom", "name": "vector scan: hand-written and non-gnark verifiers", "file": "agents/vector-scan.md", "slice": "attack-vectors/custom-verifiers.md", "group": "vector scan", "shard": "integration", "profiles": ["quick", "standard", "deep"], "when": "non-gnark-verifier",
+      "ledger": { "classes": ["custom-verifier"], "seed": "custom-verifier", "with": ["I2"] } },
+    { "id": "V-contract", "name": "vector scan: contract review", "file": "agents/vector-scan.md", "slice": "attack-vectors/contract-review.md", "group": "vector scan", "shard": "integration", "profiles": ["standard", "deep"] },
     { "id": "V-state", "name": "vector scan: protocol state", "file": "agents/vector-scan.md", "slice": "attack-vectors/protocol-state.md", "group": "vector scan", "shard": "integration", "profiles": ["quick", "standard", "deep"] },
     { "id": "V-privacy", "name": "vector scan: privacy", "file": "agents/vector-scan.md", "slice": "attack-vectors/privacy.md", "group": "vector scan", "shard": "all", "profiles": ["standard", "deep"] },
     { "id": "V-liveness", "name": "vector scan: gas and liveness", "file": "agents/vector-scan.md", "slice": "attack-vectors/gas-liveness.md", "group": "vector scan", "shard": "integration", "profiles": ["standard", "deep"] },
@@ -54,14 +59,14 @@
     { "id": "quick", "summary": "vector scan, hint soundness, public-input binding and binding gaps; about ten minutes",
       "poc": { "layers": ["circuit"], "severities": ["critical", "high"], "text": "confirmed Critical/High circuit findings only" },
       "refuters": { "verdicts": ["confirmed"], "text": "one per confirmed finding (also with --no-poc)" },
-      "critics": [], "targeted_waves": 0, "passes": 1 },
+      "critics": [], "targeted_waves": 0, "passes": 1, "provenance": ["abi", "ceremony"] },
     { "id": "standard", "default": true, "summary": "every circuit and integration lens, binding gaps and first principles",
       "poc": { "layers": ["circuit"], "severities": ["critical", "high", "medium", "low", "info"], "text": "every confirmed circuit finding" },
       "refuters": { "verdicts": ["confirmed"], "text": "one per confirmed finding" },
-      "critics": ["coverage"], "targeted_waves": 1, "passes": 1 },
+      "critics": ["coverage"], "targeted_waves": 1, "passes": 1, "provenance": ["abi", "ceremony"] },
     { "id": "deep", "summary": "everything, including numerical and composition gaps and asymmetry, over several passes with memory",
       "poc": { "layers": ["circuit", "integration", "prover", "dependency", "setup"], "severities": ["critical", "high", "medium", "low", "info"], "text": "every confirmed finding" },
       "refuters": { "verdicts": ["confirmed"], "text": "one per confirmed finding" },
-      "critics": ["coverage", "final-clean"], "targeted_waves": 1, "passes": 3, "memory": true }
+      "critics": ["coverage", "final-clean"], "targeted_waves": 1, "passes": 3, "memory": true, "provenance": ["abi", "ceremony", "regen"] }
   ]
 }

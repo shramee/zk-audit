@@ -184,7 +184,7 @@ func TestInventoryCommand(t *testing.T) {
 		}
 	}
 	bt, _ := os.ReadFile(filepath.Join(out, "binding-table.md"))
-	for _, want := range []string{"## Pool.withdraw → verifyProof", "| 1 | `nf` (`Nullifier`) | `nullifier` (L44)", "| 2 | `Recipient` (`Recipient`) | `uint256(uint160(recipient))` (L45) | ? | recipient |"} {
+	for _, want := range []string{"## Pool.withdraw → IVerifier.verifyProof", "Verifier: Verifier (contracts/Verifier.sol:6, matched by selector", "| 1 | `nf` (`Nullifier`) | `nullifier` (L44)", "| 2 | `Recipient` (`Recipient`) | `uint256(uint160(recipient))` (L45) | ? | recipient |"} {
 		if !strings.Contains(string(bt), want) {
 			t.Errorf("binding table lacks %q:\n%s", want, bt)
 		}

@@ -67,11 +67,11 @@ to the user and stop. Use its `out`, `run_id`, `scope` and `passes` below.
 
 <!-- generated:profile-table from profiles.json (make sync-profiles); do not edit -->
 
-| Profile | Agents | PoC | Refuters | Critics | Passes |
-|---|---|---|---|---|---|
-| `quick` | C1, I1, T1, G2 + 12 vector-scan shards (V-*) | confirmed Critical/High circuit findings only | one per confirmed finding (also with --no-poc) | none | 1 |
-| `standard` (default) | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, T1, PR1, G2, F1 + 14 vector-scan shards (V-*) | every confirmed circuit finding | one per confirmed finding | coverage critic + 1 targeted wave | 1 |
-| `deep` | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, T1, PR1, G1, G2, G3, A1, F1 + 14 vector-scan shards (V-*) | every confirmed finding | one per confirmed finding | coverage critic + final-clean critic + 1 targeted wave | 3 with memory |
+| Profile | Agents | PoC | Refuters | Critics | Passes | Verifier provenance |
+|---|---|---|---|---|---|---|
+| `quick` | C1, I1, T1, G2 + 13 vector-scan shards (V-*) | confirmed Critical/High circuit findings only | one per confirmed finding (also with --no-poc) | none | 1 | ABI check, ceremony scan |
+| `standard` (default) | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, S1, T1, PR1, G2, F1 + 16 vector-scan shards (V-*) | every confirmed circuit finding | one per confirmed finding | coverage critic + 1 targeted wave | 1 | ABI check, ceremony scan |
+| `deep` | C1, C2, C3, C4, C5, C6, I1, I2, I3, I4, S1, T1, PR1, G1, G2, G3, A1, F1 + 16 vector-scan shards (V-*) | every confirmed finding | one per confirmed finding | coverage critic + final-clean critic + 1 targeted wave | 3 with memory | ABI check, ceremony scan, regenerate and diff the verifier (sandbox) |
 
 <!-- end generated:profile-table -->
 
@@ -225,6 +225,11 @@ error, `--sandbox off` loads in-process. Then the orchestrator itself (no subage
    never to excuse a missing constraint; a party it trusts turns that
    party's powers into accepted risks in judging, not into dropped items.
 5. Validates the ledger: `{skill}/scripts/gnark-inventory validate ledger <out>/coverage-ledger.json`.
+6. Runs the profile's verifier-provenance steps beyond the inventory's ABI
+   check and ceremony scan ("Verifier provenance" in
+   `references/orchestration.md`): deep regenerates the verifier in the
+   sandbox (`gnark-inventory verifier regen`); deployed bytecode and keys are
+   compared only when the user supplies them.
 
 `/zk-audit recon` stops here and prints the system map, the binding table, the
 hint inventory, the footgun hits, and threat-model questions for the user. It
@@ -266,7 +271,9 @@ does not exist, a general-purpose agent briefed with `{skill}/agents/poc-builder
 and the same tool limits. Give it the finding and the template named by its vector
 (`references/poc-templates.md`). It writes a Go test in the scratch worktree that
 shows a false statement verifying, plus the honest control case. Contract
-findings get a Foundry test when `forge` exists. Then a **fresh refuter** that
+findings (deep, or where the profile's PoC policy covers them) get a Foundry
+test when `forge` exists, against the verifier gnark exports with a real
+proof or a mock with the target's selector (T-FOUNDRY-VERIFIER). Then a **fresh refuter** that
 did not see the hunt starts from `refuted: true` and must re-derive the bug
 from source (`fp-check` if installed, else `zk-audit:refuter`, else a
 general-purpose agent briefed with `{skill}/agents/refuter.md`). A PoC that does not compile
@@ -335,7 +342,7 @@ not, and never install silently. Delegated results become records in our
 | Need | Companion | Fallback |
 |---|---|---|
 | `.circom` in scope | `circom-auditor` (zkSecurity) | `attack-vectors/generic-zk.md` |
-| Solidity beyond the ZK integration | `solidity-auditor`, `x-ray` (pashov) | I1–I3 only; the report says so |
+| Solidity beyond the ZK integration | `solidity-auditor`, `x-ray` (pashov); converted with `gnark-inventory convert pashov` | S1 + V-contract (standard, deep) |
 | Per-function context | `audit-context-building` (Trail of Bits) | Phase 1 recon |
 | Circuit vs spec | `spec-to-code-compliance` (Trail of Bits) | C6 lens |
 | False-positive check | `fp-check`, `vulnerability-triage-brocards` (Trail of Bits) | embedded refuter in `judging.md` |

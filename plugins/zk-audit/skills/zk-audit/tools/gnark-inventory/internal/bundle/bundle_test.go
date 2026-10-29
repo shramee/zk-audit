@@ -13,6 +13,7 @@ import (
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/load"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/memory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/report"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/solidity"
 )
 
 func TestBundles(t *testing.T) {
@@ -80,6 +81,60 @@ func TestBundles(t *testing.T) {
 	}
 	if written["I1"].Files != 4 {
 		t.Errorf("integration shard: %d files, want 2 contracts + 2 circuit decl files", written["I1"].Files)
+	}
+	// the pool's verifier is gnark's: the custom-verifier shard is skipped
+	for _, r := range res {
+		if r.Agent == "V-custom" && (r.Status != "skipped" || !strings.Contains(r.Reason, "gnark did not generate")) {
+			t.Errorf("V-custom on the pool: %+v", r)
+		}
+	}
+	if b, _ := os.ReadFile(written["I1"].Path); !strings.Contains(string(b), "- entry point Pool.withdraw at `contracts/Pool.sol:") {
+		t.Error("I1 bundle lacks the entry points of its shard")
+	}
+}
+
+// TestBundlesCustomVerifier: a verifier gnark did not generate turns on the
+// V-custom shard (its `when` condition), and the bundle lists the verifier
+// with its generator and precompiles.
+func TestBundlesCustomVerifier(t *testing.T) {
+	root := fixture.Dir(t, "sol-library")
+	r, err := solidity.ScanRepo(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv := &inventory.Inventory{SchemaVersion: "1", Repo: root, Contracts: r}
+	if !ConditionHolds("non-gnark-verifier", inv) || strings.Join(CustomVerifiers(inv), ",") != "Groth16Lib,HandVerifier" {
+		t.Fatalf("custom verifiers: %v", CustomVerifiers(inv))
+	}
+	out := t.TempDir()
+	b, _ := json.Marshal(inv)
+	os.WriteFile(filepath.Join(out, "inventory.json"), b, 0o644)
+	os.MkdirAll(filepath.Join(out, "regen"), 0o755)
+	os.WriteFile(filepath.Join(out, "regen", "diff.json"), []byte(`{"sides":[{"name":"src/HandVerifier.sol"},{"name":"regen/output/Verifier.sol"}],"summary":"different structure and different verifying key"}`), 0o644)
+	res, err := Build(Options{Out: out, Skill: filepath.Join("..", "..", "..", ".."), Profile: "quick"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var path string
+	for _, x := range res {
+		if x.Agent == "V-custom" {
+			path = x.Path
+			if x.Status != "written" {
+				t.Fatalf("V-custom: %+v", x)
+			}
+		}
+	}
+	md, _ := os.ReadFile(path)
+	for _, want := range []string{"- verifier HandVerifier at `src/HandVerifier.sol:", "generator hand-written", "V-CV5. Public inputs not checked",
+		"- regenerated verifier (verifier regen): `src/HandVerifier.sol` vs `regen/output/Verifier.sol`: different structure and different verifying key"} {
+		if !strings.Contains(string(md), want) {
+			t.Errorf("V-custom bundle lacks %q", want)
+		}
+	}
+	// a gateway call alone also turns it on
+	gw := &inventory.Inventory{Contracts: &solidity.Result{VerifyCalls: []solidity.VerifyCall{{Contract: "App", Function: "run", ReceiverType: "ISP1Verifier"}}}}
+	if !ConditionHolds("non-gnark-verifier", gw) {
+		t.Error("an SP1 gateway call should route the custom-verifier shard")
 	}
 }
 

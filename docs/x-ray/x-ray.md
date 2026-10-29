@@ -201,7 +201,7 @@ on a yes (`modes/setup.md`).
 | `spec-to-code-compliance` | Trail of Bits | C6 lens | C6 | yes (lens file) |
 | `supply-chain-risk-auditor` | Trail of Bits | I4 lens | `gnark-versions.md` | yes (lens file) |
 | `differential-review` | Trail of Bits | diff mode | standard profile on the change | yes (`modes/diff.md`) |
-| `solidity-auditor`, `x-ray` | pashov | Solidity beyond the ZK surface; threat model | I1–I3; report says so | no call site |
+| `solidity-auditor`, `x-ray` | pashov | Solidity beyond the ZK surface; threat model | S1 + V-contract (standard, deep); I1–I3 in quick | `solidity-auditor`: orchestration Turn 4 on the scratch worktree, `convert pashov`; `x-ray`: none |
 | `audit-context-building`, `vulnerability-triage-brocards`, `variant-analysis`, `static-analysis`, `building-secure-contracts`, `property-based-testing`, `mutation-testing` | Trail of Bits | deep context, triage, variants, Semgrep/CodeQL, Slither, oracle tests | recon, `rationalizations.md`, grep `inventory.json`, skip and note | no call site |
 | zkao CLI | zkSecurity (paid) | deep profile, suggestion only | — | no |
 

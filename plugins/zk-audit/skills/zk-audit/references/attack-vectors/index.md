@@ -48,8 +48,10 @@ Rules for this catalog, checked by `gnark-inventory lint-kb`:
 | `attack-vectors/generic-zk.md` | generic ZK shapes ported from zkSecurity's Circom catalog | V-G1–V-G6 | 6 |
 | `attack-vectors/privacy.md` | public inputs, events and calldata, linkable tags, correlation, relayers and indexers, witness exposure | V-PR1–V-PR7 | 7 |
 | `attack-vectors/gas-liveness.md` | verifier gas, unbounded loops and payloads, root windows, fillable capacity | V-LV1–V-LV5 | 5 |
+| `attack-vectors/contract-review.md` | the contract around the proof: funds flow, tokens, reentrancy, signatures, initialisation, accounting, pause, identifiers | V-SA1–V-SA11 | 11 |
+| `attack-vectors/custom-verifiers.md` | hand-written and non-gnark verifiers: transcript, precompile calls, pairing shape, input and point checks, encoding, assembly memory, gateway wrappers | V-CV1–V-CV9 | 9 |
 
-Total: 91 vectors.
+Total: 111 vectors.
 
 ## Mantras
 

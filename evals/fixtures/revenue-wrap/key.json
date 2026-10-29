@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "case": "revenue-wrap",
+  "fixture": "revenue-wrap",
+  "items": [
+    {
+      "id": "F1",
+      "class": "soundness",
+      "critical": true,
+      "title": "Native field multiplication of two 128-bit factors wraps",
+      "ranges": [{"file": "circuit/circuit.go", "anchors": ["api.AssertIsEqual(c.Revenue, api.Mul(c.Price, c.Quantity))"]}],
+      "match": "(?i)wrap|overflow|modul|field|256|254|product|integer|range",
+      "expect": ["confirmed"],
+      "partial": ["needs_validation", "lead"],
+      "severity": ["high", "critical", "medium"]
+    }
+  ],
+  "decoys": [],
+  "other": []
+}

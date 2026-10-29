@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "case": "zero-test",
+  "fixture": "zero-test",
+  "items": [
+    {
+      "id": "F1",
+      "class": "soundness",
+      "critical": true,
+      "title": "Zero test omits Value*Blocked == 0, so the inverse is forgeable",
+      "ranges": [{"file": "circuit/circuit.go", "anchors": ["blocked := api.Sub(1, api.Mul(c.Value, inv[0]))", "api.AssertIsEqual(c.Blocked, blocked)"]}],
+      "match": "(?i)zero|inverse|iszero|blocked|forge|hint|missing|constraint",
+      "expect": ["confirmed"],
+      "partial": ["needs_validation", "lead"],
+      "severity": ["high", "critical", "medium"]
+    }
+  ],
+  "decoys": [],
+  "other": []
+}

@@ -48,6 +48,7 @@ Usage:
   gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile P]
   gnark-inventory estimate  --out DIR [--profile P]... [--passes N] [--no-poc] [--json]
   gnark-inventory budget    record --out DIR --id ID [--role R] [--tokens N] [--status S] [--model M] | check --out DIR --before LABEL [--hunter N] [--poc N] [--refuter N] [--critic N] [--wave N] [--budget USD] | show --out DIR [--json]
+  gnark-inventory status    --out DIR [--json]
   gnark-inventory profiles  [--profile P] [--markdown] [--check-docs SKILL_DIR] [--sync-docs SKILL_DIR]
   gnark-inventory validate  findings|ledger|stack FILE [--out DIR]
   gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F] [--file-output]
@@ -103,6 +104,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = cmdEstimate(args[1:], stdout)
 	case "budget":
 		code, err = cmdBudget(args[1:], stdout)
+	case "status":
+		err = cmdStatus(args[1:], stdout)
 	case "validate":
 		code, err = cmdValidate(args[1:], stdout)
 	case "lint-kb":

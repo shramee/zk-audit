@@ -1,0 +1,9 @@
+{"schema_version":"1","case":"input-ge-r","fixture":"input-ge-r",
+ "items":[{"id":"I1","class":"integration","critical":true,
+  "title":"Nullifier not checked below the field modulus before keying spent",
+  "ranges":[{"file":"contracts/Mixer.sol","anchors":["require(!spent[nullifier], \"spent\");","spent[nullifier] = true;"]}],
+  "match":"(?i)(>=|≥|less than|< ?r|modul|field order|alias|non.?canonical|reduc).{0,40}|nullifier.{0,30}(alias|modul|field)",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["high","critical"]}],
+ "decoys":[],"other":[
+  {"id":"O1","title":"gnark and gnark-crypto advisories reported from Phase 0 (the advisory table matches the pinned release)","ranges":[{"file":"go.mod","anchors":["github.com/consensys/gnark v0.14.0"]},{"file":"go.mod","anchors":["github.com/consensys/gnark-crypto v0.19.0"]}],"match":"(?i)GHSA|CVE|advisor|gnark|v0\\.14|v0\\.19"}
+ ]}

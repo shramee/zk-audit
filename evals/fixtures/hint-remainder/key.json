@@ -1,0 +1,40 @@
+{
+  "schema_version": "1",
+  "case": "hint-remainder",
+  "fixture": "hint-remainder",
+  "items": [
+    {
+      "id": "H1",
+      "class": "soundness",
+      "critical": true,
+      "title": "Euclidean remainder not range-checked, so the quotient is free",
+      "ranges": [{"file": "circuit/circuit.go", "anchors": ["NewHint(euclid, 2, c.Count, c.Size)", "api.AssertIsEqual(c.Quotient, q)"]}],
+      "match": "(?i)remainder|quotient|range|euclid|div|r < |modulo|wrap",
+      "expect": ["confirmed"],
+      "partial": ["needs_validation", "lead"],
+      "severity": ["high", "critical", "medium"]
+    }
+  ],
+  "decoys": [],
+  "other": [
+    {
+      "id": "O1",
+      "title": "gnark and gnark-crypto advisories reported from Phase 0 (the advisory table matches the pinned release)",
+      "ranges": [
+        {
+          "file": "go.mod",
+          "anchors": [
+            "github.com/consensys/gnark v0.14.0"
+          ]
+        },
+        {
+          "file": "go.mod",
+          "anchors": [
+            "github.com/consensys/gnark-crypto v0.19.0"
+          ]
+        }
+      ],
+      "match": "(?i)GHSA|CVE|advisor|gnark|v0\\.14|v0\\.19"
+    }
+  ]
+}

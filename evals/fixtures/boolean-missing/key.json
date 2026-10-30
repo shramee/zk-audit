@@ -1,0 +1,9 @@
+{"schema_version":"1","case":"boolean-missing","fixture":"boolean-missing",
+ "items":[{"id":"P1","class":"soundness","critical":true,
+  "title":"Flags used in boolean algebra without AssertIsBoolean",
+  "ranges":[{"file":"circuit/circuit.go","anchors":["api.AssertIsEqual(c.Granted, api.Mul(c.FlagA, c.FlagB))"]}],
+  "match":"(?i)boolean|assertisboolean|flag|non.?boolean|and|{0, ?1}|domain",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["high","medium","critical"]}],
+ "decoys":[],"other":[
+  {"id":"O1","title":"gnark and gnark-crypto advisories reported from Phase 0 (the advisory table matches the pinned release)","ranges":[{"file":"go.mod","anchors":["github.com/consensys/gnark v0.14.0"]},{"file":"go.mod","anchors":["github.com/consensys/gnark-crypto v0.19.0"]}],"match":"(?i)GHSA|CVE|advisor|gnark|v0\\.14|v0\\.19"}
+ ]}

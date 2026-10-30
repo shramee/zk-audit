@@ -709,9 +709,64 @@ fixtures, so Foundry PoCs declare the cheatcodes they use.
   `BUG:` comments describe patterns that are harmless in context (one is a
   decoy), so the key records the reviewed ground truth and the accepted
   verdict range per item.
-- **Eval PoCs** (`evals/pool/pocs`) run against gnark v0.14.0 in a sanitized
-  scratch copy (`evals/run-pocs`, `make eval-pocs`, CI). They pin the
-  templates in `poc-templates.md` to working code.
+- **Eval PoCs** (`evals/fixtures/<f>/pocs`) run against gnark v0.14.0 in a
+  sanitized scratch copy. One runner, `evals/run-pocs`, runs both kinds inside
+  the skill's sandbox (offline, time and memory limits): Go PoCs (`*_test.go`) and
+  Foundry PoCs (`*.t.sol`, forge, no forge-std). `evals/run-pocs all` runs every
+  fixture that has a PoC; `make eval-pocs` and the `check` CI job use it. The
+  earlier separate `run-foundry-pocs` was dropped when the runners merged: it ran
+  forge unsandboxed and added nothing the shared runner lacks. Foundry PoC
+  contracts are named `PoC_*` or `Decoy_*` like the Go tests, and the fixture's
+  `PACKAGE` file names the test directory (`test`). They pin the templates in
+  `poc-templates.md` to working code.
+- **The corpus.** `evals/README.md` has the full table. ~25 planted fixtures
+  (18 circuit-only, 7 Foundry integration) each plant one bug across the vector
+  families (hints, field arithmetic, range/bits, selectors, hash/merkle,
+  curves/signatures, commitments/recursion, public-inputs/integration); each
+  soundness bug is shown real by an executed PoC (a Go `test.IsSolved`/`ccs.Solve`
+  override, or a `forge` test against a mock verifier, no forge-std). The one
+  exception is `vk-recursion` (inner VK as a free witness, V-CM4): compiling an
+  in-circuit Groth16 verifier and forging a VK is too heavy for the harness, so
+  it is located structurally and confirmed by review. Ten all-safe fixtures are the correctly
+  constrained counterparts; their keys plant no items, so recall is undefined
+  and any `confirmed`/`needs_validation` record is a false positive, and each
+  ships a test showing the counterpart attack is rejected.
+- **All-safe scoring.** `Result.Recall` is a pointer: nil when the key has no
+  items, so summaries print recall as "–" rather than 0 % for an all-safe run
+  (`TestAllSafeNoItems`).
+- **`DivUnchecked` 0/0** is kept as an info item (pool P3), not a standalone
+  confirmed-soundness fixture: on stock gnark the r1cs solver assigns the
+  internal result deterministically, so a malicious prover cannot pick it
+  without patching the solver. The inverse/zero footgun that *is* exploitable
+  (a missing `value*flag == 0` binding on a hint-provided inverse) is the
+  `zero-test` fixture.
+- **Advisory replays** (`adv-*`) pin a vulnerable gnark release and import the
+  affected std gadget, so Phase 0 reports the advisory from `go.mod` and the
+  reachable gadget is located. The defects are in gnark's std library
+  (documented by the GHSAs), so no exploit PoC is shipped. `adv-emulated`
+  (gnark v0.16.1, GHSA-3mvx) needs Go ≥ 1.25.7; `make fixtures` treats modules
+  whose go directive is ≥ 1.25 as best-effort (skip with a warning when no such
+  toolchain is reachable) so the offline pipeline is not blocked.
+- **Real repos** are fetched at a pinned commit through the Go module proxy by
+  `evals/lib/scaffold-real`, cached under `.cache/`, never vendored.
+  `real-plonky2` keys the three critical Goldilocks under-constraints from the
+  Veridise report the repo itself ships (`audits/VAR_Succinct-V1.pdf`) at the
+  pre-fix commit `89b5a01`. `real-semaphore` has no report in its snapshot and
+  the external one is unreachable here, so only the verifiable gnark-version
+  advisory is scored; circuit-level ground truth is left unscored rather than
+  invented.
+- **Advisory records are never false positives where the table says so.** The
+  advisory table matches gnark v0.14.0 and gnark-crypto v0.19.0, which almost every
+  fixture pins, and an audit reports those from Phase 0. Every key on those pins
+  (except `pool`, which scores them as P12) carries an `other` item at the `go.mod`
+  pins that absorbs such a record, so an all-safe run is not charged a false
+  positive for it. The `adv-*` keys do the same for the other GHSAs the v2 table
+  lists for their pinned release; the planted advisory stays the scored item.
+- **Cheap CI case.** `ci-smoke` is one circuit with one bug; the `ci-smoke` CI
+  job runs `evals/run-audit --runs 1 --budget 4 ci-smoke` on push to main, a
+  weekly schedule and manual dispatch (not every PR), only when
+  `ANTHROPIC_API_KEY` is set (skips otherwise), uploads `evals/results` and
+  fails if recall is 0 or a false positive appears.
 - **Every automatic outcome is checked by hand against the records, and the key
   is allowed to be wrong.** The 2026-10-29 runs (`evals/baseline/pool-2026-10-29.md`)
   showed two scorer or key faults: decoy D5 matched any "on curve" wording, so a

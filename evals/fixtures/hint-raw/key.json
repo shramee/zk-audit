@@ -1,0 +1,40 @@
+{
+  "schema_version": "1",
+  "case": "hint-raw",
+  "fixture": "hint-raw",
+  "items": [
+    {
+      "id": "H1",
+      "class": "soundness",
+      "critical": true,
+      "title": "Hint output published as Score is never bound to Seed",
+      "ranges": [{"file": "circuit/circuit.go", "anchors": ["NewHint(scoreHint, 1, c.Seed)", "api.AssertIsEqual(c.Score, out[0])"]}],
+      "match": "(?i)hint|score|seed|unbound|unconstrained|free|binding",
+      "expect": ["confirmed"],
+      "partial": ["needs_validation", "lead"],
+      "severity": ["critical", "high"]
+    }
+  ],
+  "decoys": [],
+  "other": [
+    {
+      "id": "O1",
+      "title": "gnark and gnark-crypto advisories reported from Phase 0 (the advisory table matches the pinned release)",
+      "ranges": [
+        {
+          "file": "go.mod",
+          "anchors": [
+            "github.com/consensys/gnark v0.14.0"
+          ]
+        },
+        {
+          "file": "go.mod",
+          "anchors": [
+            "github.com/consensys/gnark-crypto v0.19.0"
+          ]
+        }
+      ],
+      "match": "(?i)GHSA|CVE|advisor|gnark|v0\\.14|v0\\.19"
+    }
+  ]
+}

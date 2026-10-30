@@ -3,6 +3,11 @@ name: ci
 on:
   push:
   pull_request:
+  schedule:
+    # Weekly cheap scored audit (Mondays 07:13 UTC); only runs when the
+    # ANTHROPIC_API_KEY secret is configured (see the ci-smoke job).
+    - cron: "13 7 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -35,7 +40,7 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: v1.7.1
-      - name: Eval PoCs on sanitized copies of the pool and liveness-roots fixtures
+      - name: Eval PoCs on sanitized copies of every fixture (Go and Foundry, sandboxed)
         run: make eval-pocs
 
   versions:
@@ -62,3 +67,59 @@ jobs:
       - name: Version matrix for gnark ${{ matrix.gnark }}
         run: test/versions/run --foundry --check --out "$RUNNER_TEMP/versions" ${{ matrix.gnark }}
 
+  ci-smoke:
+    # One tiny scored audit behind a budget cap. Runs on push to main, on the
+    # weekly schedule and on manual dispatch — not on every PR. Skips (does not
+    # fail) when the ANTHROPIC_API_KEY secret is absent.
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report missing secret
+        if: env.ANTHROPIC_API_KEY == ''
+        run: echo "ANTHROPIC_API_KEY not set; skipping the scored ci-smoke audit."
+      - uses: actions/setup-go@v5
+        if: env.ANTHROPIC_API_KEY != ''
+        with:
+          go-version: "1.24"
+          cache: false
+      - name: Install the Claude Code CLI (pinned)
+        if: env.ANTHROPIC_API_KEY != ''
+        run: npm i -g @anthropic-ai/claude-code@2.1.312
+      - name: Run the ci-smoke audit under a budget cap (<= 5 USD)
+        if: env.ANTHROPIC_API_KEY != ''
+        run: evals/run-audit --runs 1 --budget 4 ci-smoke
+      - name: Upload the run results
+        if: ${{ always() && env.ANTHROPIC_API_KEY != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-smoke-results
+          path: evals/results
+          if-no-files-found: ignore
+      - name: Enforce recall > 0 and no false positives
+        if: env.ANTHROPIC_API_KEY != ''
+        run: |
+          set -euo pipefail
+          score="$(ls -t evals/results/*/ci-smoke/run1/score.json 2>/dev/null | head -1 || true)"
+          if [ -z "$score" ]; then
+            echo "ci-smoke: no score.json produced" >&2
+            exit 1
+          fi
+          python3 - "$score" <<'PY'
+          import json, sys
+          r = json.load(open(sys.argv[1]))
+          recall = r.get("recall") or 0
+          fps = len(r.get("false_positives") or [])
+          print(f"ci-smoke: recall={recall} false_positives={fps}")
+          if recall == 0:
+              print("ci-smoke: FAIL: the smoke case found none of its planted bug", file=sys.stderr)
+              sys.exit(1)
+          if fps > 0:
+              print("ci-smoke: FAIL: a false positive was reported", file=sys.stderr)
+              sys.exit(1)
+          PY

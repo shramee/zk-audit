@@ -1,0 +1,12 @@
+{
+  "schema_version": "1", "case": "real-semaphore", "fixture": "real-semaphore",
+  "items": [
+    {"id": "R1", "class": "dependency", "critical": true,
+     "title": "gnark v0.8.0 is affected by multiple advisories (CVE-2023-44378 comparison, rangecheck, and later)",
+     "ranges": [{"file": "go.mod", "anchors": ["github.com/consensys/gnark v0.8.0"]}],
+     "match": "(?i)GHSA|CVE|advisor|v0\\.8|rangecheck|cmp|tobinary|comparison|upgrade|gnark",
+     "expect": ["needs_validation", "confirmed"], "partial": ["lead", "hardening"], "severity": ["high", "critical", "moderate", "medium"]}
+  ],
+  "decoys": [],
+  "other": []
+}

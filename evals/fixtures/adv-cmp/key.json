@@ -1,0 +1,18 @@
+{"schema_version":"1","case":"adv-cmp","fixture":"adv-cmp",
+ "items":[
+  {"id":"A1","class":"dependency","critical":true,
+   "title":"gnark v0.8.1 is affected by CVE-2023-44378 (non-unique full-width decomposition in Cmp / ToBinary)",
+   "ranges":[{"file":"go.mod","anchors":["github.com/consensys/gnark v0.8.1"]}],
+   "match":"(?i)GHSA-498w|CVE-2023-44378|cmp|isless|tobinary|decompos|v0\\.8|advisor|comparison",
+   "expect":["needs_validation","confirmed"],"partial":["lead"],"severity":["moderate","medium","high","critical"]},
+  {"id":"A2","class":"soundness",
+   "title":"AssertIsLessOrEqual on the affected release (exercises the gadget)",
+   "ranges":[{"file":"circuit/circuit.go","anchors":["api.AssertIsLessOrEqual(c.A, c.B)"]}],
+   "match":"(?i)less|compar|cmp|tobinary|decompos|a < b|a > b|non.?unique",
+   "expect":["confirmed","needs_validation","lead"],"partial":["hardening"],"severity":["high","medium","moderate","critical"]}
+ ],"decoys":[],"other":[
+  {"id":"O1","class":"dependency",
+   "title":"Other advisories that apply to the pinned gnark release (the advisory table lists more than the one the case plants)",
+   "ranges":[{"file":"go.mod","anchors":["github.com/consensys/gnark v0.8.1"]}],
+   "match":"(?i)GHSA-|CVE-|advisor|gnark v0\\."}
+ ]}

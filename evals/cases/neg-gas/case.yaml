@@ -1,0 +1,24 @@
+schema_version: "1.1"
+name: neg-gas
+description: "A gas question must not start an audit."
+tags: [trigger, negative, cheap]
+plugins: ["../../../plugins/zk-audit"]
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+graders:
+  - name: no-subagents
+    type: tool_used
+    tool: Agent
+    min: 0
+    max: 0
+    arm: both
+  - name: no-audit-banner
+    type: regex
+    pattern: "zk-audit v[0-9]|Agent Progress|## zk-audit Progress"
+    match: not_contains
+    arm: both
+  - name: answers-correctly
+    type: llm
+    criteria: |
+      PASS if the reply discusses Groth16 verification gas (pairings/ecMul/ecAdd precompiles, public-input count) without running an audit. FAIL if it runs or announces a security audit.

@@ -1,0 +1,33 @@
+{
+  "schema_version": "1", "case": "no-nullifier-store", "fixture": "no-nullifier-store",
+  "items": [
+    {"id": "I1", "class": "integration", "critical": true,
+     "title": "Nullifier is never recorded, so proofs replay (double spend)",
+     "ranges": [{"file": "contracts/Mixer.sol", "anchors": ["require(verifier.verifyProof(proof, input)", "recipient.transfer(value);"]}],
+     "match": "(?i)nullifier|spent|double.?spend|replay|record|store|mapping",
+     "expect": ["confirmed"], "partial": ["needs_validation", "lead"], "severity": ["critical", "high"]}
+  ],
+  "decoys": [],
+  "other": [
+    {"id": "O1", "title": "deposit takes no accounting", "ranges": [{"file": "contracts/Mixer.sol", "anchors": ["function deposit"]}], "match": "(?i)deposit|accounting|commitment"},
+    {
+      "id": "O2",
+      "title": "gnark and gnark-crypto advisories reported from Phase 0 (the advisory table matches the pinned release)",
+      "ranges": [
+        {
+          "file": "go.mod",
+          "anchors": [
+            "github.com/consensys/gnark v0.14.0"
+          ]
+        },
+        {
+          "file": "go.mod",
+          "anchors": [
+            "github.com/consensys/gnark-crypto v0.19.0"
+          ]
+        }
+      ],
+      "match": "(?i)GHSA|CVE|advisor|gnark|v0\\.14|v0\\.19"
+    }
+  ]
+}

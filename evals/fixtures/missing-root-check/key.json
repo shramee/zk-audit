@@ -1,0 +1,10 @@
+{"schema_version":"1","case":"missing-root-check","fixture":"missing-root-check",
+ "items":[{"id":"I1","class":"integration","critical":true,
+  "title":"Withdrawal never checks the root is a known root",
+  "ranges":[{"file":"contracts/Mixer.sol","anchors":["require(verifier.verifyProof(proof, input), \"bad proof\");","require(!spent[nullifier], \"spent\");"]}],
+  "match":"(?i)knownroots|root|fake tree|attacker.?built|unchecked|not checked|arbitrary root",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["critical","high"]}],
+ "decoys":[],
+ "other":[{"id":"O1","title":"roots set by owner","ranges":[{"file":"contracts/Mixer.sol","anchors":["function addRoot"]}],"match":"(?i)owner|addroot|trusted"},
+  {"id":"O2","title":"gnark and gnark-crypto advisories reported from Phase 0 (the advisory table matches the pinned release)","ranges":[{"file":"go.mod","anchors":["github.com/consensys/gnark v0.14.0"]},{"file":"go.mod","anchors":["github.com/consensys/gnark-crypto v0.19.0"]}],"match":"(?i)GHSA|CVE|advisor|gnark|v0\\.14|v0\\.19"}
+ ]}

@@ -1,0 +1,23 @@
+schema_version: "1.1"
+name: real-plonky2
+description: "Blind quick audit of succinctlabs/gnark-plonky2-verifier at the pre-fix commit 89b5a01, audited by Veridise (VAR_Succinct-V1). Fetched through the Go module proxy; not vendored."
+tags: [audit, real, soundness]
+plugins: ["../../../plugins/zk-audit"]
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+graders:
+  - name: findings-written
+    type: regex
+    target: {source: file, path: out/findings.json}
+    pattern: '"schema_version":\s*"1"'
+  - name: goldilocks-underconstraint
+    type: llm
+    weight: 3
+    focus: {source: file, path: out/findings.json}
+    criteria: |
+      PASS if a confirmed finding says a Goldilocks-field operation in
+      goldilocks/base.go is under-constrained: either Inverse() does not range-
+      check the hint-provided inverse into the Goldilocks field, or Reduce() /
+      ReduceWithMaxBits() never constrains MODULUS*quotient + remainder == x, so
+      a prover can choose an arbitrary reduced value. FAIL otherwise.

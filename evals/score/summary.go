@@ -74,7 +74,7 @@ func summarize(rs []*Result) string {
 			}
 			return stats(vs)
 		}
-		recall := func(r *Result) *float64 { return &r.Recall }
+		recall := func(r *Result) *float64 { return r.Recall }
 		fps := func(r *Result) *float64 { v := float64(len(r.FalsePositives)); return &v }
 		mins := func(r *Result) *float64 {
 			if r.DurationS == nil {

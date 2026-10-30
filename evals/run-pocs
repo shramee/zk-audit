@@ -3,44 +3,75 @@
 # OS sandbox (offline, time and memory limits). Never runs anything inside this repository.
 #
 # Usage: evals/run-pocs <fixture-name> <scratch-dir>
+#        evals/run-pocs all <scratch-dir>
 #   Copies the fixture with evals/sanitize to <scratch-dir>/<fixture-name>,
 #   copies evals/fixtures/<fixture-name>/pocs/*_test.go (Go) or *.t.sol
 #   (Foundry) into the directory named in evals/fixtures/<fixture-name>/pocs/PACKAGE,
 #   and runs the PoC_ and Decoy_ tests.
+#   With "all", runs every fixture under evals/fixtures/ that has Go or Foundry
+#   PoCs, each in its own subdirectory of <scratch-dir>, and fails if any fails.
 # Go fixtures need their modules in the Go module cache (make fixtures).
 # Foundry fixtures need forge and the solc version of their foundry.toml
 # (fetched by a compile-only `forge build` when EVAL_GOPROXY allows network).
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-name="${1:?fixture name}"
+name="${1:?fixture name or 'all'}"
 scratch="${2:?scratch directory}"
-pocs="$here/fixtures/$name/pocs"
-pkg="$(cat "$pocs/PACKAGE")"
-dest="$scratch/$name"
-"$here/sanitize" "$name" "$dest" >/dev/null
 sandbox="$here/../plugins/zk-audit/skills/zk-audit/scripts/sandbox"
-if compgen -G "$pocs/*.t.sol" >/dev/null; then
-  command -v forge >/dev/null || { echo "run-pocs: $name needs forge (Foundry)" >&2; exit 2; }
-  mkdir -p "$dest/$pkg"
-  cp "$pocs"/*.t.sol "$dest/$pkg/"
-  if [ "${EVAL_GOPROXY:-off}" != off ]; then
-    # Compile only (no test runs) to let forge fetch the pinned solc into
-    # ~/.svm; the sandboxed run below is offline.
-    forge build --root "$dest" --quiet
+
+has_pocs() {
+  compgen -G "$here/fixtures/$1/pocs/*_test.go" >/dev/null ||
+    compgen -G "$here/fixtures/$1/pocs/*.t.sol" >/dev/null
+}
+
+run_one() {
+  local n="$1"
+  local pocs="$here/fixtures/$n/pocs"
+  local pkg dest
+  pkg="$(cat "$pocs/PACKAGE")"
+  dest="$scratch/$n"
+  "$here/sanitize" "$n" "$dest" >/dev/null
+  if compgen -G "$pocs/*.t.sol" >/dev/null; then
+    command -v forge >/dev/null || { echo "run-pocs: $n needs forge (Foundry)" >&2; return 2; }
+    mkdir -p "$dest/$pkg"
+    cp "$pocs"/*.t.sol "$dest/$pkg/"
+    if [ "${EVAL_GOPROXY:-off}" != off ]; then
+      # Compile only (no test runs) to let forge fetch the pinned solc into
+      # ~/.svm; the sandboxed run below is offline.
+      forge build --root "$dest" --quiet
+    fi
+    "$sandbox" --rw "$dest" --timeout 900 -- \
+      forge test --root "$dest" --offline --match-contract '^(PoC|Decoy)_' -vv
+    return
   fi
-  exec "$sandbox" --rw "$dest" --timeout 900 -- \
-    forge test --root "$dest" --offline --match-contract '^(PoC|Decoy)_' -vv
+  cp "$pocs"/*_test.go "$dest/$pkg/"
+  # Run through the skill's sandbox, the same command an audit uses: no network
+  # (GOPROXY=off; EVAL_GOPROXY fetches missing modules first), the scratch copy the
+  # only writable tree, cgo off, local toolchain, time and memory limits.
+  # Without bwrap / sandbox-exec it warns and runs with the limits only.
+  if [ "${EVAL_GOPROXY:-off}" != off ]; then
+    # Fetch the PoCs' module dependencies (gnark/test needs testify) before
+    # the offline run. `go list` resolves imports without building or running
+    # anything, so this step needs no sandbox.
+    GOWORK=off CGO_ENABLED=0 GOFLAGS=-mod=mod GOPROXY="$EVAL_GOPROXY" go -C "$dest" list -test -deps "./$pkg/" >/dev/null
+  fi
+  "$sandbox" --rw "$dest" --timeout 900 -- \
+    go -C "$dest" test -count=1 -run '^Test(PoC|Decoy)_' -v "./$pkg/"
+}
+
+if [ "$name" = "all" ]; then
+  status=0
+  for dir in "$here"/fixtures/*/pocs; do
+    [ -d "$dir" ] || continue
+    n="$(basename "$(dirname "$dir")")"
+    has_pocs "$n" || continue
+    echo "=== run-pocs $n ==="
+    if ! run_one "$n"; then
+      echo "run-pocs: $n FAILED" >&2
+      status=1
+    fi
+  done
+  exit $status
 fi
-cp "$pocs"/*_test.go "$dest/$pkg/"
-# Run through the skill's sandbox, the same command an audit uses: no network
-# (GOPROXY=off; EVAL_GOPROXY fetches missing modules first), the scratch copy the
-# only writable tree, cgo off, local toolchain, time and memory limits.
-# Without bwrap / sandbox-exec it warns and runs with the limits only.
-if [ "${EVAL_GOPROXY:-off}" != off ]; then
-  # Fetch the PoCs' module dependencies (gnark/test needs testify) before
-  # the offline run. `go list` resolves imports without building or running
-  # anything, so this step needs no sandbox.
-  GOWORK=off CGO_ENABLED=0 GOFLAGS=-mod=mod GOPROXY="$EVAL_GOPROXY" go -C "$dest" list -test -deps "./$pkg/" >/dev/null
-fi
-exec "$sandbox" --rw "$dest" --timeout 900 -- \
-  go -C "$dest" test -count=1 -run '^Test(PoC|Decoy)_' -v "./$pkg/"
+
+run_one "$name"

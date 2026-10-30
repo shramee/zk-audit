@@ -1,0 +1,19 @@
+{"schema_version":"1","case":"adv-eddsa","fixture":"adv-eddsa",
+ "items":[
+   {"id":"A1","class":"dependency","critical":true,
+    "title":"gnark v0.13.0 is affected by GHSA-95v9 / CVE-2025-57801 (EdDSA/ECDSA signature malleability)",
+    "ranges":[{"file":"go.mod","anchors":["github.com/consensys/gnark v0.13.0"]}],
+    "match":"(?i)GHSA-95v9|CVE-2025-57801|malleab|eddsa|ecdsa|signature|v0\\.13|advisor|canonical",
+    "expect":["needs_validation","confirmed"],"partial":["lead"],"severity":["high","critical"]},
+   {"id":"A2","class":"soundness",
+    "title":"Nullifier derived from a malleable signature (exercises the affected gadget)",
+    "ranges":[{"file":"circuit/circuit.go","anchors":["eddsa.Verify(curve, c.Sig, c.Msg, c.Pub, &h)","api.AssertIsEqual(h.Sum(), c.Nullifier)"]}],
+    "match":"(?i)nullifier|signature|malleab|eddsa|S component|replay|double.?spend",
+    "expect":["confirmed","needs_validation","lead"],"partial":["hardening"],"severity":["high","critical","medium"]}
+ ],
+ "decoys":[],"other":[
+  {"id":"O1","class":"dependency",
+   "title":"Other advisories that apply to the pinned gnark release (the advisory table lists more than the one the case plants)",
+   "ranges":[{"file":"go.mod","anchors":["github.com/consensys/gnark v0.13.0"]}],
+   "match":"(?i)GHSA-|CVE-|advisor|gnark v0\\."}
+ ]}

@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Scaffold for a real-world audit case: fetches a third-party gnark repository
+# at a pinned commit through the Go module proxy (cached under <repo>/.cache),
+# and lays it out as ./target for the audit. Nothing is vendored into the
+# zk-audit repository; the source lives only in the module cache and the run
+# workspace.
+#
+# Usage (from a case's scaffold.sh):
+#   exec <repo>/evals/lib/scaffold-real <fixture-key> <module>@<version>
+#     fixture-key   the evals/fixtures/<fixture-key> directory holding key.json
+#                   (also the string run-audit greps for)
+#     module@version  a Go module path and version/commit, e.g.
+#                   github.com/owner/repo@<sha-or-pseudo-version>
+#
+# Leaves ./target (a copy of the repo with a one-commit git repo) and a HOME
+# go env pointing at the shared module cache, offline, like scaffold-audit.
+# The repo is real third-party code with no planted hints, so it is not
+# sanitized.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo="$(cd "$here/../.." && pwd)"
+key="${1:?fixture key}"
+modver="${2:?module@version}"
+ws="$(pwd)"
+modcache="$repo/.cache/gomod"
+mkdir -p "$modcache" "$ws/.cache/go-build" "$ws/.cache/tmp"
+
+# Fetch the module source at the pinned version (network on the first run).
+dir="$(GOMODCACHE="$modcache" GOPROXY="https://proxy.golang.org,direct" GOSUMDB=off GOFLAGS=-mod=mod \
+  go mod download -json "$modver" | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["Dir"])')"
+[ -d "$dir" ] || { echo "scaffold-real: could not fetch $modver" >&2; exit 2; }
+
+# Copy to a writable ./target (the module cache is read-only) and give it a
+# one-commit git repo so worktree-based tooling works.
+rm -rf "$ws/target"
+cp -R "$dir" "$ws/target"
+chmod -R u+w "$ws/target"
+git -C "$ws/target" init -q
+git -C "$ws/target" add -A
+git -C "$ws/target" -c user.name=eval -c user.email=eval@localhost -c commit.gpgsign=false commit -q -m "real-repo snapshot"
+
+mkdir -p "$HOME/.config/go"
+cat >"$HOME/.config/go/env" <<ENV
+GOMODCACHE=$modcache
+GOCACHE=$ws/.cache/go-build
+GOTMPDIR=$ws/.cache/tmp
+GOTOOLCHAIN=local
+GOSUMDB=off
+GOPROXY=off
+ENV
+
+# Fill the module cache for the repo so syntax/typed loading works offline.
+(cd "$ws/target" && GOMODCACHE="$modcache" GOPROXY="https://proxy.golang.org,direct" GOSUMDB=off GOFLAGS=-mod=mod go mod download all >/dev/null 2>&1 || true)
+(cd "$ws/target" && git checkout -q -- . 2>/dev/null && git clean -qfd 2>/dev/null || true)
+
+ZK_AUDIT_NO_UPDATE_CHECK=1 "$repo/plugins/zk-audit/skills/zk-audit/scripts/gnark-inventory" version >/dev/null

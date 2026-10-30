@@ -1,0 +1,30 @@
+{
+  "schema_version": "1", "case": "merkle-sentinel", "fixture": "merkle-sentinel",
+  "items": [
+    {"id": "M1", "class": "soundness", "critical": true,
+     "title": "Empty-slot sentinel leaf accepted as a member",
+     "ranges": [{"file": "circuit/circuit.go", "anchors": ["api.AssertIsEqual(cur, c.Root)"]}],
+     "match": "(?i)sentinel|empty|zero|leaf != 0|leaf == 0|padding|unused|member|slot",
+     "expect": ["confirmed"], "partial": ["needs_validation", "lead"], "severity": ["high", "critical", "medium"]}
+  ], "decoys": [], "other": [
+    {
+      "id": "O1",
+      "title": "gnark and gnark-crypto advisories reported from Phase 0 (the advisory table matches the pinned release)",
+      "ranges": [
+        {
+          "file": "go.mod",
+          "anchors": [
+            "github.com/consensys/gnark v0.14.0"
+          ]
+        },
+        {
+          "file": "go.mod",
+          "anchors": [
+            "github.com/consensys/gnark-crypto v0.19.0"
+          ]
+        }
+      ],
+      "match": "(?i)GHSA|CVE|advisor|gnark|v0\\.14|v0\\.19"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "schema_version": "1",
+  "case": "safe-mux",
+  "fixture": "safe-mux",
+  "items": [],
+  "decoys": [
+    {
+      "id": "D1",
+      "title": "the correctly constrained shape",
+      "ranges": [
+        {
+          "file": "circuit/circuit.go",
+          "anchors": [
+            "api.AssertIsEqual(c.Out, api.Select(c.Select, c.Lane1, c.Lane0))"
+          ]
+        }
+      ],
+      "match": "(?i)select|boolean|mux|selector"
+    }
+  ],
+  "other": [
+    {
+      "id": "O1",
+      "title": "gnark and gnark-crypto advisories reported from Phase 0 (the advisory table matches the pinned release)",
+      "ranges": [
+        {
+          "file": "go.mod",
+          "anchors": [
+            "github.com/consensys/gnark v0.14.0"
+          ]
+        },
+        {
+          "file": "go.mod",
+          "anchors": [
+            "github.com/consensys/gnark-crypto v0.19.0"
+          ]
+        }
+      ],
+      "match": "(?i)GHSA|CVE|advisor|gnark|v0\\.14|v0\\.19"
+    }
+  ]
+}

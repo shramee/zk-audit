@@ -1,0 +1,24 @@
+schema_version: "1.1"
+name: guidance-nullifier
+description: "A conceptual ZK question gets a guidance answer, no audit."
+tags: [trigger, guidance, cheap]
+plugins: ["../../../plugins/zk-audit"]
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+graders:
+  - name: no-subagents
+    type: tool_used
+    tool: Agent
+    min: 0
+    max: 0
+    arm: both
+  - name: no-audit-banner
+    type: regex
+    pattern: "zk-audit v[0-9]|Agent Progress|## zk-audit Progress"
+    match: not_contains
+    arm: both
+  - name: answers-correctly
+    type: llm
+    criteria: |
+      PASS if the reply explains that a nullifier should be a deterministic function of the note secret (and an index/position) bound inside the circuit, so each note yields exactly one nullifier and it cannot be forged from free values. FAIL if it starts a full audit or gets the concept wrong.

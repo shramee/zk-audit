@@ -1,0 +1,9 @@
+{"schema_version":"1","case":"range-partition","fixture":"range-partition",
+ "items":[{"id":"R1","class":"soundness","critical":true,
+  "title":"Low part range overlaps the high part, so the split is non-unique",
+  "ranges":[{"file":"circuit/circuit.go","anchors":["bits.ToBinary(api, c.Lo, bits.WithNbDigits(20))","api.AssertIsEqual(c.HiOut, c.Hi)"]}],
+  "match":"(?i)partition|split|overlap|range|20.?bit|16.?bit|non.?unique|high|low|carry",
+  "expect":["confirmed"],"partial":["needs_validation","lead"],"severity":["high","critical","medium"]}],
+ "decoys":[],"other":[
+  {"id":"O1","title":"gnark and gnark-crypto advisories reported from Phase 0 (the advisory table matches the pinned release)","ranges":[{"file":"go.mod","anchors":["github.com/consensys/gnark v0.14.0"]},{"file":"go.mod","anchors":["github.com/consensys/gnark-crypto v0.19.0"]}],"match":"(?i)GHSA|CVE|advisor|gnark|v0\\.14|v0\\.19"}
+ ]}

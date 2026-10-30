@@ -1,0 +1,23 @@
+schema_version: "1.1"
+name: hint-raw
+description: "Blind quick audit of the hint-raw fixture (a hint output used as a public value with no binding constraint)."
+tags: [audit, planted, soundness, hints]
+plugins: ["../../../plugins/zk-audit"]
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+graders:
+  - name: findings-written
+    type: regex
+    target: {source: file, path: out/findings.json}
+    pattern: '"schema_version":\s*"1"'
+  - name: report-rendered
+    type: regex
+    target: {source: file, path: out/REPORT.md}
+    pattern: '(?:Coverage|coverage)'
+  - name: planted-bug-found
+    type: llm
+    weight: 3
+    focus: {source: file, path: out/findings.json}
+    criteria: |
+      PASS if a confirmed finding says the hint output bound to the public Score is never constrained to a function of Seed, so the prover can publish any Score. FAIL otherwise.

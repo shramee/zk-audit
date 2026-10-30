@@ -1,0 +1,23 @@
+schema_version: "1.1"
+name: point-oncurve
+description: "Blind quick audit of a circuit that registers a public key without an on-curve check."
+tags: [audit, planted, soundness, curves-signatures]
+plugins: ["../../../plugins/zk-audit"]
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+graders:
+  - name: findings-written
+    type: regex
+    target: {source: file, path: out/findings.json}
+    pattern: '"schema_version":\s*"1"'
+  - name: report-rendered
+    type: regex
+    target: {source: file, path: out/REPORT.md}
+    pattern: '(?:Coverage|coverage)'
+  - name: planted-bug-found
+    type: llm
+    weight: 3
+    focus: {source: file, path: out/findings.json}
+    criteria: |
+      PASS if a confirmed finding says the public key is used without an on-curve or subgroup check, so an off-curve or low-order point is accepted. FAIL otherwise.

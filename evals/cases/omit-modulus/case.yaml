@@ -1,0 +1,23 @@
+schema_version: "1.1"
+name: omit-modulus
+description: "Blind quick audit of a full-width bit recomposition with no canonical check."
+tags: [audit, planted, soundness, range]
+plugins: ["../../../plugins/zk-audit"]
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+graders:
+  - name: findings-written
+    type: regex
+    target: {source: file, path: out/findings.json}
+    pattern: '"schema_version":\s*"1"'
+  - name: report-rendered
+    type: regex
+    target: {source: file, path: out/REPORT.md}
+    pattern: '(?:Coverage|coverage)'
+  - name: planted-bug-found
+    type: llm
+    weight: 3
+    focus: {source: file, path: out/findings.json}
+    criteria: |
+      PASS if a confirmed finding says the bit decomposition is not checked to be below the field modulus, so both the bits of the value and of value+r are accepted and the exposed top bit is prover-chosen. FAIL otherwise.

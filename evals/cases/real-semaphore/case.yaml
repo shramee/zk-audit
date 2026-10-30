@@ -1,0 +1,22 @@
+schema_version: "1.1"
+name: real-semaphore
+description: "Blind quick audit of worldcoin/semaphore-mtb (gnark-mbu), a real batch-insertion/deletion prover. Fetched through the Go module proxy; not vendored. Scored only on the verifiable gnark-version dependency finding (see answer-key.md)."
+tags: [audit, real, dependency]
+plugins: ["../../../plugins/zk-audit"]
+runs: 3
+context:
+  scaffold_script: scaffold.sh
+graders:
+  - name: findings-written
+    type: regex
+    target: {source: file, path: out/findings.json}
+    pattern: '"schema_version":\s*"1"'
+  - name: gnark-version-advisory
+    type: llm
+    weight: 2
+    focus: {source: file, path: out/findings.json}
+    criteria: |
+      PASS if a finding reports that the pinned gnark version (v0.8.0) is
+      affected by published advisories (for example the Cmp / ToBinary
+      comparison soundness issue CVE-2023-44378, or the range-checker issue),
+      and recommends upgrading. FAIL otherwise.

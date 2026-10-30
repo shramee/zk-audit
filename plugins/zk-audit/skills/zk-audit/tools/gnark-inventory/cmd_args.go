@@ -18,6 +18,7 @@ func cmdArgs(argv []string, stdout io.Writer) (int, error) {
 	mode := fs.String("mode", "", "force the mode (recon, diff, setup, audit), as a /zk-audit:<mode> command does")
 	runID := fs.String("run-id", "", "use this run id (YYYYMMDD-HHMMSS) instead of the current time")
 	home := fs.String("home", "", "home directory for the default output path (default: $HOME)")
+	save := fs.Bool("save", false, "create the output directory and write <out>/run.json (audit, diff and resume)")
 	if err := fs.Parse(argv); err != nil {
 		return 2, err
 	}
@@ -44,6 +45,13 @@ func cmdArgs(argv []string, stdout io.Writer) (int, error) {
 		return 1, nil
 	case err != nil:
 		return 2, err
+	}
+	if *save && (run.Mode == "audit" || run.Mode == "diff" || run.Resume) {
+		if err := args.Save(run); err != nil {
+			fmt.Fprintln(stdout, "error:", err)
+			fmt.Fprintln(stdout, "FAIL args: 1 problem; tell the user and stop")
+			return 1, nil
+		}
 	}
 	return 0, writeJSON(stdout, run)
 }

@@ -1,0 +1,51 @@
+name: release
+
+# A release is a tag created by `claude plugin tag plugins/zk-audit --push`
+# (zk-audit--vX.Y.Z). This workflow checks that the tag, VERSION,
+# plugin.json, the marketplace entry and the tool agree, reruns the checks,
+# and publishes the CHANGELOG.md section of the version as a GitHub release.
+on:
+  push:
+    tags:
+      - "zk-audit--v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-go@v5.5.0
+        with:
+          go-version: "1.24"
+          cache: false
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: "22"
+      - name: Install bubblewrap and the Claude Code CLI (pinned)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          npm install -g @anthropic-ai/claude-code@2.1.312
+      - name: Tag, versions and changelog agree
+        run: |
+          make release-check TAG="$GITHUB_REF_NAME"
+          want="$(claude plugin tag --dry-run --force plugins/zk-audit | sed -n 's/^Tag: *//p')"
+          [ "$want" = "$GITHUB_REF_NAME" ] || { echo "claude plugin tag would create $want, not $GITHUB_REF_NAME"; exit 1; }
+      - name: gofmt, offline checks and plugin validation
+        env:
+          ZK_AUDIT_REQUIRE_SANDBOX: "1"
+        run: |
+          make fmt-check
+          GOFLAGS=-mod=vendor GOPROXY=off make check
+          make validate-plugin
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#zk-audit--v}"
+          scripts/release-notes "$version" > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "zk-audit $version" --notes-file "$RUNNER_TEMP/notes.md"

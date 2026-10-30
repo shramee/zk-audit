@@ -1,0 +1,84 @@
+{
+  "schema_version": "1",
+  "source": "zk-audit.md",
+  "sha256": "103c5918034b0edaa3ea68a848d36f94fb68e2444539f64234dab6989fc9f1a8",
+  "scope": {
+    "in": [],
+    "out": [
+      {
+        "path": "contracts/mocks/",
+        "reason": "test helpers, never deployed",
+        "line": 22
+      }
+    ]
+  },
+  "trusted_parties": [
+    {
+      "party": "owner",
+      "trust": "trusted",
+      "powers": "posts roots, pauses, swaps the verifier",
+      "notes": "2-of-3 multisig",
+      "line": 15
+    },
+    {
+      "party": "sequencer",
+      "trust": "bounded",
+      "powers": "orders withdrawals",
+      "notes": "at most one block of delay",
+      "line": 16
+    }
+  ],
+  "properties": [],
+  "accepted_risks": [
+    {
+      "id": "AR-1",
+      "party": "owner",
+      "risk": "posts the Merkle roots of the deposit tree",
+      "notes": "governance",
+      "line": 7
+    },
+    {
+      "id": "AR-2",
+      "party": "owner",
+      "risk": "pauses withdrawals",
+      "notes": "emergencies only",
+      "line": 8
+    },
+    {
+      "id": "AR-3",
+      "party": "sequencer",
+      "risk": "orders withdrawals and can delay them",
+      "notes": "",
+      "line": 9
+    }
+  ],
+  "prior_findings": [
+    {
+      "id": "PF-1",
+      "fingerprint": "TransferCircuit|Path[0]|merkle-leaf-unbound",
+      "status": "fixed",
+      "title": "Leaf not bound to the note",
+      "line": 28
+    },
+    {
+      "id": "PF-2",
+      "fingerprint": "Pool|deposit|amount-unchecked",
+      "status": "acknowledged",
+      "title": "Deposit amount not checked",
+      "line": 29
+    }
+  ],
+  "deployment": [
+    {
+      "fact": "chain ids",
+      "value": "1",
+      "line": 35
+    },
+    {
+      "fact": "verifying key",
+      "value": "keys/transfer.vk",
+      "line": 36
+    }
+  ],
+  "warnings": []
+}

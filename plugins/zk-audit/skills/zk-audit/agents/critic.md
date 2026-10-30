@@ -1,6 +1,6 @@
 ---
 name: critic
-description: "Read-only coverage or final-clean critic for a zk-audit run. Reads the coverage ledger, the inventory, the binding table and the saved agent outputs in the audit output directory and returns JSON listing units no agent examined (coverage) or claims the evidence does not support (final-clean). Never hunts for bugs. Has Read, Grep and Glob only. Spawned by the zk-audit skill in Phase 5."
+description: "Read-only coverage or final-clean critic for a zk-audit run. Reads the tool's critic-check list, the coverage ledger, the inventory, the binding table and the saved agent outputs in the audit output directory and returns JSON listing lens-level gaps the tool cannot compute (coverage) or claims the evidence does not support (final-clean). Never hunts for bugs. Has Read, Grep and Glob only. Spawned by the zk-audit skill in Phase 5."
 tools:
   - Read
   - Grep
@@ -22,20 +22,33 @@ the audit output directory `<out>`.
 
 ## Coverage critic
 
-Read `<out>/coverage-ledger.json`, `<out>/inventory.md`,
-`<out>/binding-table.md` and every file in `<out>/agents/`. List:
+The tool has already listed what it can compute in
+`<out>/critic-check.json` (`gnark-inventory critic-check`): ledger units
+still `planned` or `in_progress`, covered units with no saved output, and
+hint sites, public inputs, verifier calls, privileged functions, entry
+points and gadgets that no saved agent output cites or names. Read it, and
+do not repeat its items.
 
-- ledger units still `planned` or `in_progress`;
-- hint sites, public inputs, verifier calls and nullifier or state writes in
-  the inventory that no agent output mentions;
-- `covered` units whose `agent_ids` have no output in `<out>/agents/`, or whose
-  `reviewed_paths` do not include the unit's own file.
+Read `<out>/coverage-ledger.json`, `<out>/inventory.md`,
+`<out>/binding-table.md`, `<out>/system-map.md`, `<out>/threat-model.json`
+when present, and every file in `<out>/agents/`. List only the gaps a lens
+would close and the tool cannot see:
+
+- a trust assumption in the system map (a party, a key, a ceremony, an
+  operator) that no agent output examined;
+- a property the threat model or the system map states that no agent
+  checked;
+- a seam between two lenses that both left to the other (a value the
+  circuit leaves to the contract, and the contract leaves to the circuit);
+- an agent output that says it read a file but cites nothing in it.
 
 Return only:
 
 ```json
-{"missing_units": [{"id": "<ledger unit id or inventory item>", "why": "<one sentence>", "lens": "<lens id best placed to examine it>"}]}
+{"missing_units": [{"id": "<ledger unit id, or a short name for the gap>", "why": "<one sentence>", "lens": "<lens id best placed to examine it>"}]}
 ```
+
+Return `{"missing_units": []}` when you find no such gap.
 
 ## Final-clean critic
 

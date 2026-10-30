@@ -1,0 +1,26 @@
+{
+  "schema_version": "1",
+  "mode": "audit",
+  "profile": "standard",
+  "profile_explicit": true,
+  "scope": [],
+  "local": false,
+  "passes": 1,
+  "memory": false,
+  "loop_explicit": false,
+  "poc": false,
+  "file_output": false,
+  "repo": "/home/auditor/src/pool",
+  "repo_name": "pool",
+  "run_id": "20261029-120000",
+  "out": "/home/auditor/.zk-audit/pool/20261029-120000",
+  "out_explicit": false,
+  "words": [
+    "standard",
+    "--no-poc",
+    "--budget",
+    "20"
+  ],
+  "warnings": [],
+  "budget_usd": 8
+}

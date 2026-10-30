@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Scores a zk-audit pilot run against the human auditor's findings
+# (docs/pilots.md).
+#
+# Usage: evals/pilots/score-pilot HUMAN TARGET FINDINGS [OUT_DIR]
+#   HUMAN     the human's findings, .json or .md (templates next to this file)
+#   TARGET    the audited tree at the pilot commit, unmodified
+#   FINDINGS  the zk-audit run's findings.json
+#   OUT_DIR   where to write key.json and pilot.json (default: the directory
+#             of FINDINGS)
+#
+# Prints the result JSON and, last, the row for results.md. Exit 0 when the
+# pilot passes (no high or critical finding of the human is missed), 1 when
+# it fails, 2 on a usage or input error. The outcomes are automatic: the
+# human checks each one by hand before the row is recorded.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ $# -ge 3 ] || { sed -n '2,16p' "$0"; exit 2; }
+human="$1" target="$2" findings="$3"
+out="${4:-$(dirname "$findings")}"
+mkdir -p "$out"
+bin="$(mktemp -d)/score"
+(cd "$here/../score" && GOWORK=off go build -o "$bin" .)
+"$bin" pilot --human "$human" --target "$target" --findings "$findings" \
+  --key-out "$out/key.json" --json "$out/pilot.json"
+jq -r '.results_row' "$out/pilot.json"
+[ "$(jq -r '.pass' "$out/pilot.json")" = "true" ]

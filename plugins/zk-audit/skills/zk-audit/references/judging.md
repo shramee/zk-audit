@@ -101,9 +101,16 @@ Who triggers it?
   at the calibrated severity (`medium` or `low`).
 - **`zk-audit.md` marks the party trusted** (or lists the power under accepted
   risks): keep the record, set `trust.accepted: true` and `trust.source` to
-  the line (`zk-audit.md:12`). The report lists it as an accepted risk under
-  "Trusted parties", never silently drops it, and leaves it out of the
-  needs-validation table.
+  the line (`zk-audit.md:12`, the line `threat-model.json` gives the accepted
+  risk or the `trusted` party). `validate findings --out` refuses a line that
+  is neither, so a `bounded` or `untrusted` party's power is never accepted.
+  The report lists it as an accepted risk under "Trusted parties", never
+  silently drops it, and leaves it out of the needs-validation table.
+  Accepted risks no record covers are listed there from the threat model.
+- **Prior findings** in `threat-model.json`: a record whose fingerprint
+  equals a prior finding's keeps that fingerprint, so the report shows it as
+  raised again. One whose prior status is `fixed` is a regression to
+  report in full, with the prior id in the description.
 - A record with a `trust` object is a `lead` only when the power itself is
   not established (the gate or the write path is unclear); say why in
   `trust.lead_reason`. The validator refuses a trust lead without one.

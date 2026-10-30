@@ -5,9 +5,11 @@
 package args
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +20,8 @@ import (
 
 // Modes a run can be in. Guidance mode is never reached through an explicit
 // invocation, so it is not one of them.
-var Modes = []string{"audit", "recon", "diff", "setup"}
+// "resume" continues an interrupted run from its output directory.
+var Modes = []string{"audit", "recon", "diff", "setup", "resume"}
 
 // MaxLoop bounds --loop.
 const MaxLoop = 10
@@ -43,8 +46,14 @@ type Run struct {
 	Out             string    `json:"out"`
 	OutExplicit     bool      `json:"out_explicit"`
 	Diff            *DiffArgs `json:"diff,omitempty"`
-	Words           []string  `json:"words"`
-	Warnings        []string  `json:"warnings"`
+	// BudgetUSD is the --budget ceiling (0: none); `budget check` stops
+	// the run before a wave that would cross it.
+	BudgetUSD float64 `json:"budget_usd,omitempty"`
+	// Resume is true when this run was loaded from <out>/run.json by
+	// `/zk-audit resume`; `gnark-inventory status` says where to continue.
+	Resume   bool     `json:"resume,omitempty"`
+	Words    []string `json:"words"`
+	Warnings []string `json:"warnings"`
 }
 
 // DiffArgs is the commit range of diff mode.
@@ -165,7 +174,11 @@ func Parse(words []string, opt Options) (*Run, error) {
 	} else if !contains(Modes, r.Mode) {
 		return nil, fmt.Errorf("unknown mode %q (want %s)", r.Mode, strings.Join(Modes, ", "))
 	}
+	if r.Mode == "resume" {
+		return resume(rest, opt, root)
+	}
 	loop, out := 0, ""
+	budget := 0.0
 	var positional []string
 	value := func(i *int, name string) (string, bool) {
 		w := rest[*i]
@@ -207,6 +220,12 @@ func Parse(words []string, opt Options) (*Run, error) {
 			if v, ok := value(&i, "--out"); ok {
 				out = v
 			}
+		case name == "--budget":
+			if v, ok := value(&i, "--budget"); ok {
+				if budget, err = parseBudget(v); err != nil {
+					bad("%v", err)
+				}
+			}
 		case name == "--profile":
 			if v, ok := value(&i, "--profile"); ok {
 				if _, ok := set.Profile(v); !ok {
@@ -216,7 +235,7 @@ func Parse(words []string, opt Options) (*Run, error) {
 				}
 			}
 		case strings.HasPrefix(w, "-"):
-			bad("unknown flag %q (flags: --local, --loop N, --no-poc, --file-output, --out DIR, --profile P; setup: --check-only)", w)
+			bad("unknown flag %q (flags: --local, --loop N, --no-poc, --file-output, --out DIR, --profile P, --budget USD; setup: --check-only)", w)
 		default:
 			if _, ok := set.Profile(w); ok {
 				setProfile(r, w, bad)
@@ -273,6 +292,12 @@ func Parse(words []string, opt Options) (*Run, error) {
 			bad("setup mode takes no scope or flags")
 		}
 	}
+	if budget > 0 {
+		if r.Mode != "audit" && r.Mode != "diff" {
+			bad("--budget applies to a full audit or diff review, not %s mode (no agents are spawned)", r.Mode)
+		}
+		r.BudgetUSD = budget
+	}
 	if r.CheckOnly && r.Mode != "setup" {
 		bad("--check-only applies to setup mode only")
 	}
@@ -326,6 +351,146 @@ func Parse(words []string, opt Options) (*Run, error) {
 	if len(problems) > 0 {
 		return r, &Error{Problems: problems}
 	}
+	return r, nil
+}
+
+// parseBudget reads a --budget value in USD.
+func parseBudget(v string) (float64, error) {
+	f, err := strconv.ParseFloat(strings.TrimPrefix(v, "$"), 64)
+	if err != nil || f <= 0 || f > 100000 {
+		return 0, fmt.Errorf("--budget wants a positive amount in USD, got %q", v)
+	}
+	return f, nil
+}
+
+// RunFile is the name of the saved invocation in the output directory.
+const RunFile = "run.json"
+
+// Save creates the output directory and writes <out>/run.json, the record
+// `/zk-audit resume` reads back. It refuses to overwrite another run's file
+// unless r is that run resumed.
+func Save(r *Run) error {
+	if r.Out == "" {
+		return fmt.Errorf("args: no output directory")
+	}
+	if err := os.MkdirAll(r.Out, 0o755); err != nil {
+		return err
+	}
+	p := filepath.Join(r.Out, RunFile)
+	if b, err := os.ReadFile(p); err == nil && !r.Resume {
+		var old Run
+		if json.Unmarshal(b, &old) == nil && old.RunID != "" {
+			return fmt.Errorf("%s already holds run %s; continue it with `/zk-audit resume %s` or choose another --out", r.Out, old.RunID, r.Out)
+		}
+	}
+	b, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p, append(b, '\n'), 0o644)
+}
+
+// Load reads <out>/run.json.
+func Load(out string) (*Run, error) {
+	b, err := os.ReadFile(filepath.Join(out, RunFile))
+	if err != nil {
+		return nil, err
+	}
+	var r Run
+	if err := json.Unmarshal(b, &r); err != nil {
+		return nil, fmt.Errorf("%s: %w", filepath.Join(out, RunFile), err)
+	}
+	return &r, nil
+}
+
+// resume resolves `resume [run-id|out-dir] [--budget USD]` to the saved run:
+// an output directory, a run id under ~/.zk-audit/<repo>/, or (no word) the
+// latest run there without a REPORT.md.
+func resume(words []string, opt Options, root string) (*Run, error) {
+	var problems []string
+	bad := func(f string, a ...any) { problems = append(problems, fmt.Sprintf(f, a...)) }
+	budget := 0.0
+	var pos []string
+	for i := 0; i < len(words); i++ {
+		w := words[i]
+		switch {
+		case w == "--budget" || strings.HasPrefix(w, "--budget="):
+			v, ok := strings.CutPrefix(w, "--budget=")
+			if !ok {
+				if i+1 >= len(words) {
+					bad("--budget needs a value")
+					continue
+				}
+				i++
+				v = words[i]
+			}
+			f, err := parseBudget(v)
+			if err != nil {
+				bad("%v", err)
+			}
+			budget = f
+		case strings.HasPrefix(w, "-"):
+			bad("resume takes a run id or output directory and --budget USD only, not %q", w)
+		default:
+			pos = append(pos, w)
+		}
+	}
+	runs := ""
+	if opt.Home != "" {
+		runs = filepath.Join(opt.Home, ".zk-audit", filepath.Base(root))
+	}
+	out := ""
+	switch {
+	case len(pos) > 1:
+		bad("resume takes one run id or output directory, got %d words", len(pos))
+	case len(pos) == 1:
+		p := pos[0]
+		if strings.HasPrefix(p, "~/") && opt.Home != "" {
+			p = filepath.Join(opt.Home, p[2:])
+		}
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			out, _ = filepath.Abs(p)
+		} else if reRunID(p) && runs != "" {
+			out = filepath.Join(runs, p)
+		} else {
+			bad("resume: %q is neither an output directory nor a run id (YYYYMMDD-HHMMSS)", pos[0])
+		}
+	default:
+		if runs == "" {
+			bad("resume: no home directory to look for runs in; name the output directory")
+			break
+		}
+		ids, _ := filepath.Glob(filepath.Join(runs, "*", RunFile))
+		sort.Strings(ids)
+		for i := len(ids) - 1; i >= 0; i-- {
+			d := filepath.Dir(ids[i])
+			if _, err := os.Stat(filepath.Join(d, "REPORT.md")); err != nil {
+				out = d
+				break
+			}
+		}
+		if out == "" {
+			bad("resume: no unfinished run (a run.json without REPORT.md) under %s; name the run id or output directory", runs)
+		}
+	}
+	if len(problems) > 0 {
+		return &Run{Mode: "resume", Repo: root, Words: append([]string{}, words...), Warnings: []string{}}, &Error{Problems: problems}
+	}
+	r, err := Load(out)
+	if err != nil {
+		return nil, &Error{Problems: []string{fmt.Sprintf("resume: %s has no readable %s (%v); only runs started with this version can be resumed", out, RunFile, err)}}
+	}
+	if r.Repo != root {
+		return nil, &Error{Problems: []string{fmt.Sprintf("resume: run %s audited %s, not %s", r.RunID, r.Repo, root)}}
+	}
+	r.Out, r.Resume = out, true
+	if budget > 0 {
+		r.BudgetUSD = budget
+	}
+	if r.Warnings == nil {
+		r.Warnings = []string{}
+	}
+	r.Warnings = append(r.Warnings, "resumed run "+r.RunID+": run `gnark-inventory status --out "+out+"` and continue at its next step")
 	return r, nil
 }
 

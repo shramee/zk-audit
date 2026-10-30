@@ -1,0 +1,104 @@
+{
+  "schema_version": "1",
+  "profile": "standard",
+  "budget_usd": 8,
+  "rate": "12.3 USD per million subagent tokens (blended, evals/baseline/pool-2026-10-29.md (shramee/zk-audit#10): one blind run per profile on the pool fixture at e198ed7, model claude-opus-5-5, 2026-10-29)",
+  "entries": [
+    {
+      "id": "C1",
+      "role": "hunter",
+      "attempt": 1,
+      "status": "done",
+      "tokens": 50000,
+      "tokens_source": "reported"
+    },
+    {
+      "id": "V-hints",
+      "role": "hunter",
+      "attempt": 1,
+      "status": "done",
+      "tokens": 50000,
+      "tokens_source": "reported"
+    },
+    {
+      "id": "V-range",
+      "role": "hunter",
+      "attempt": 1,
+      "status": "done",
+      "tokens": 50000,
+      "tokens_source": "reported"
+    },
+    {
+      "id": "I1",
+      "role": "hunter",
+      "attempt": 1,
+      "status": "done",
+      "tokens": 50000,
+      "tokens_source": "reported"
+    },
+    {
+      "id": "G2",
+      "role": "hunter",
+      "attempt": 1,
+      "status": "done",
+      "tokens": 50000,
+      "tokens_source": "reported"
+    },
+    {
+      "id": "T1",
+      "role": "hunter",
+      "attempt": 1,
+      "status": "done",
+      "tokens": 50000,
+      "tokens_source": "reported"
+    },
+    {
+      "id": "I3",
+      "role": "hunter",
+      "attempt": 1,
+      "status": "refused",
+      "tokens": 57000,
+      "tokens_source": "estimated"
+    },
+    {
+      "id": "I3",
+      "role": "hunter",
+      "attempt": 2,
+      "status": "blocked",
+      "tokens": 57000,
+      "tokens_source": "estimated",
+      "model": "claude-opus-4-8"
+    },
+    {
+      "id": "poc-1",
+      "role": "poc",
+      "attempt": 1,
+      "status": "done",
+      "tokens": 46000,
+      "tokens_source": "estimated"
+    }
+  ],
+  "checks": [
+    {
+      "before": "hunt pass 1",
+      "spent_usd": 5.66,
+      "next_usd": 0,
+      "budget_usd": 8,
+      "stop": false
+    },
+    {
+      "before": "targeted wave",
+      "spent_usd": 5.66,
+      "next_usd": 3.06,
+      "budget_usd": 8,
+      "stop": true
+    }
+  ],
+  "stopped": {
+    "before": "targeted wave",
+    "spent_usd": 5.66,
+    "next_usd": 3.06,
+    "budget_usd": 8,
+    "reason": "estimated spend 5.66 USD plus 3.06 USD for targeted wave exceeds the budget of 8.00 USD"
+  }
+}

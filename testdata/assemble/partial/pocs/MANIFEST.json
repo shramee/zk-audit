@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "run_id": "20261029-120000",
+  "commit": "3f9c2a1b7d5e4f60718293a4b5c6d7e8f9012345",
+  "rerun": "git -C \u003crepo\u003e worktree add --detach \u003cworktree\u003e \u003ccommit\u003e; copy the file into \u003cworktree\u003e/\u003cpackage\u003e/; run the command through {skill}/scripts/sandbox --rw \u003cworktree\u003e --ro \u003crepo\u003e with \u003cworktree\u003e in place of the recorded worktree path",
+  "pocs": [
+    {
+      "file": "pocs/1_poc_test.go",
+      "sha256": "8dbd1734b4f006989126e8483e968e57c506244f1a9dd193b1191498d05e735c",
+      "fingerprint": "TransferCircuit|Path[0]|merkle-leaf-unbound",
+      "verdict": "confirmed",
+      "result": "demonstrated",
+      "command": "go test -run PoC_1 -count=1 ./circuit/"
+    }
+  ]
+}

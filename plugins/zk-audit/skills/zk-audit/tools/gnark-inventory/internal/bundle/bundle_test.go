@@ -91,6 +91,31 @@ func TestBundles(t *testing.T) {
 	if b, _ := os.ReadFile(written["I1"].Path); !strings.Contains(string(b), "- entry point Pool.withdraw at `contracts/Pool.sol:") {
 		t.Error("I1 bundle lacks the entry points of its shard")
 	}
+	if written["C1"].SourceLines == 0 {
+		t.Error("bundles/index.json lacks the shard's source lines")
+	}
+	if strings.Contains(s, "Threat model") {
+		t.Error("no threat-model.json, but a threat-model section")
+	}
+	// with threat-model.json every bundle states the threat model
+	tm := `{"schema_version":"1","source":"zk-audit.md","sha256":"x","scope":{"in":[{"path":"circuit/","line":5}],"out":[{"path":"contracts/mocks/","reason":"test helpers","line":9}]},
+	  "trusted_parties":[{"party":"owner","trust":"trusted","powers":"posts roots","notes":"","line":14}],
+	  "properties":[{"id":"PROP-1","text":"A note is spent once.","line":20}],
+	  "accepted_risks":[{"id":"AR-1","party":"owner","risk":"posts roots","notes":"","line":25}],
+	  "prior_findings":[{"id":"PF-1","fingerprint":"Vote|tally|hint-unbound","status":"fixed","title":"t","line":30}],
+	  "deployment":[{"fact":"chain ids","value":"1","line":35}],"warnings":[]}`
+	os.WriteFile(filepath.Join(out, "threat-model.json"), []byte(tm), 0o644)
+	if _, err := Build(Options{Out: out, Skill: filepath.Join("..", "..", "..", ".."), Profile: "quick"}); err != nil {
+		t.Fatal(err)
+	}
+	b3, _ := os.ReadFile(written["T1"].Path)
+	for _, want := range []string{"## 3a. Threat model (`zk-audit.md`)", "never excuses a missing constraint", "- Party owner (zk-audit.md:14): trusted",
+		"- Accepted risk AR-1 (zk-audit.md:25), party owner: posts roots", "- Property PROP-1 (zk-audit.md:20)", "- PF-1 `Vote|tally|hint-unbound` (fixed)",
+		"Out of scope: `contracts/mocks/` (test helpers)", "- Deployment fact (zk-audit.md:35): chain ids = 1"} {
+		if !strings.Contains(string(b3), want) {
+			t.Errorf("T1 bundle lacks %q", want)
+		}
+	}
 }
 
 // TestBundlesCustomVerifier: a verifier gnark did not generate turns on the

@@ -41,20 +41,25 @@ const Version = "0.1.0"
 const usage = `gnark-inventory ` + Version + ` — deterministic recon for zk-audit
 
 Usage:
-  gnark-inventory args      [--repo DIR] [--mode M] [--run-id ID] [--home DIR] -- WORDS...
+  gnark-inventory args      [--repo DIR] [--mode M] [--run-id ID] [--home DIR] [--save] -- WORDS...
   gnark-inventory detect    --repo DIR [--out stack.json]
   gnark-inventory preflight --repo DIR [--out DIR] [--json]
+  gnark-inventory threat-model --repo DIR [--out DIR] [--file F] [--json]
   gnark-inventory inventory --repo DIR --out DIR [--files a.go,dir/] [--syntax-only] [--allow-network]
   gnark-inventory bundle    --out DIR --skill SKILL_DIR [--profile P]
+  gnark-inventory estimate  --out DIR [--profile P]... [--passes N] [--no-poc] [--json]
+  gnark-inventory budget    record --out DIR --id ID [--role R] [--tokens N] [--status S] [--model M] | check --out DIR --before LABEL [--hunter N] [--poc N] [--refuter N] [--critic N] [--wave N] [--budget USD] | show --out DIR [--json]
+  gnark-inventory status    --out DIR [--json]
+  gnark-inventory critic-check --out DIR [--verify] [--json]
   gnark-inventory profiles  [--profile P] [--markdown] [--check-docs SKILL_DIR] [--sync-docs SKILL_DIR]
-  gnark-inventory validate  findings|ledger|stack FILE [--out DIR]
+  gnark-inventory validate  findings|ledger|stack|threat-model FILE [--out DIR]
   gnark-inventory assemble  --out DIR [--findings F] [--ledger F] [--stack F] [--inventory F] [--repo DIR] [--report F] [--file-output]
   gnark-inventory diff      --repo DIR --base REV [--head REV] [--out DIR]
   gnark-inventory memory    init --out DIR --passes N | merge --out DIR --pass P [--findings F] [--critic F] | known --out DIR | status --out DIR
   gnark-inventory ledger    mark --out DIR (--unit ID|--match S|--lens L|--kind K|--class C)... [--from STATUS] [--status S] [--agent A]... [--reviewed P]... [--fingerprint F]... [--reason R] [--notes T] [--wave N]
   gnark-inventory ledger    add  --out DIR --kind K --subject S --class C --lens L [--path FILE:LINE] [--notes T]
   gnark-inventory ledger    show --out DIR
-  gnark-inventory agents    save --out DIR --id ID [--from FILE] [--status done|blocked|failed|refused] [--reason R]
+  gnark-inventory agents    save --out DIR --id ID [--from FILE] [--status done|blocked|failed|refused] [--reason R] [--tokens N] [--tool-uses N] [--duration-ms N] [--model M] [--role R]
   gnark-inventory agents    list --out DIR
   gnark-inventory verifier  abi|diff|vk|bytecode|regen|ceremony [flags]   (gnark-inventory verifier help)
   gnark-inventory convert   pashov --in PATH --out FILE [--inventory FILE]
@@ -97,6 +102,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		code, err = cmdAssemble(args[1:], stdout)
 	case "bundle":
 		err = cmdBundle(args[1:], stdout)
+	case "estimate":
+		err = cmdEstimate(args[1:], stdout)
+	case "budget":
+		code, err = cmdBudget(args[1:], stdout)
+	case "status":
+		err = cmdStatus(args[1:], stdout)
+	case "critic-check":
+		code, err = cmdCriticCheck(args[1:], stdout)
+	case "threat-model":
+		code, err = cmdThreatModel(args[1:], stdout)
 	case "validate":
 		code, err = cmdValidate(args[1:], stdout)
 	case "lint-kb":

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/agents"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/budget"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/ledger"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/validate"
 )
@@ -138,6 +139,11 @@ func cmdAgents(args []string, stdout io.Writer, stdin io.Reader) (int, error) {
 	from := fs.String("from", "", "file holding the agent's return (default: stdin)")
 	status := fs.String("status", "done", "done, blocked, failed or refused")
 	reason := fs.String("reason", "", "why the agent did not finish (required unless done)")
+	role := fs.String("role", "", "spend role: hunter, critic, wave, poc, refuter, companion, other (default: from the id)")
+	tokens := fs.Int("tokens", 0, "tokens the runtime reported for the agent (subagent_tokens); 0: not shown, the calibrated average is recorded")
+	toolUses := fs.Int("tool-uses", 0, "tool uses the runtime reported")
+	duration := fs.Int("duration-ms", 0, "duration the runtime reported, in ms")
+	model := fs.String("model", "", "model the runtime ran the agent on, when it said so (record a fallback)")
 	if sub != "save" && sub != "list" {
 		return 2, fmt.Errorf("agents: unknown action %q (want save or list)", sub)
 	}
@@ -168,8 +174,12 @@ func cmdAgents(args []string, stdout io.Writer, stdin io.Reader) (int, error) {
 	if err != nil {
 		return 2, err
 	}
-	e, err := agents.Save(*out, *id, string(content), *status, *reason)
+	e, err := agents.SaveWith(*out, *id, string(content), *status, *reason, *model)
 	if err != nil {
+		fmt.Fprintln(stdout, "error:", err)
+		return 1, nil
+	}
+	if _, err := recordSpend(*out, budget.Entry{ID: *id, Role: *role, Status: *status, Tokens: *tokens, ToolUses: *toolUses, DurationMS: *duration, Model: *model}); err != nil {
 		fmt.Fprintln(stdout, "error:", err)
 		return 1, nil
 	}

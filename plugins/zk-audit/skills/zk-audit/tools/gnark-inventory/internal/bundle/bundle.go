@@ -23,6 +23,7 @@ import (
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/memory"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/modcache"
 	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/profile"
+	"github.com/shramee/zk-audit/plugins/zk-audit/skills/zk-audit/tools/gnark-inventory/internal/threatmodel"
 )
 
 // Agent is one hunting agent; the definitions live in profiles.json.
@@ -37,13 +38,15 @@ type Shard struct {
 
 // Result describes one written bundle.
 type Result struct {
-	Agent  string `json:"agent"`
-	Shard  string `json:"shard"`
-	Path   string `json:"path"`
-	Lines  int    `json:"lines"`
-	Files  int    `json:"source_files"`
-	Status string `json:"status"` // written, skipped
-	Reason string `json:"reason,omitempty"`
+	Agent string `json:"agent"`
+	Shard string `json:"shard"`
+	Path  string `json:"path"`
+	Lines int    `json:"lines"`
+	Files int    `json:"source_files"`
+	// SourceLines is the line count of the shard's source files.
+	SourceLines int    `json:"source_lines,omitempty"`
+	Status      string `json:"status"` // written, skipped
+	Reason      string `json:"reason,omitempty"`
 }
 
 // Options for Build.
@@ -69,6 +72,10 @@ func Build(opt Options) ([]Result, error) {
 	binding, _ := os.ReadFile(filepath.Join(opt.Out, "binding-table.md"))
 	periph := peripheral(opt.Out)
 	regen := regenSummary(opt.Out)
+	tm, err := threatSection(opt.Out)
+	if err != nil {
+		return nil, err
+	}
 	known := ""
 	if m, ok, err := memory.Load(opt.Out); err != nil {
 		return nil, fmt.Errorf("bundle: %w", err)
@@ -99,22 +106,15 @@ func Build(opt Options) ([]Result, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	var out []Result
-	if _, ok := profile.Load().Profile(opt.Profile); !ok {
-		return nil, fmt.Errorf("bundle: unknown profile %q (want one of %s)", opt.Profile, strings.Join(profile.Load().ProfileIDs(), ", "))
+	plan, err := Plan(&inv, shards, opt.Profile)
+	if err != nil {
+		return nil, err
 	}
-	for _, a := range profile.Load().Lenses {
-		if !a.In(opt.Profile) {
-			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: "not in profile " + opt.Profile})
-			continue
-		}
-		if a.When != "" && !ConditionHolds(a.When, &inv) {
-			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: profile.Conditions[a.When]})
-			continue
-		}
-		targets := shardsOf(shards, a.Shard)
-		if len(targets) == 0 {
-			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: "empty " + a.Shard + " shard"})
+	var out []Result
+	for _, p := range plan {
+		a := p.Lens
+		if p.Skip != "" {
+			out = append(out, Result{Agent: a.ID, Shard: a.Shard, Status: "skipped", Reason: p.Skip})
 			continue
 		}
 		lens, err := read(a.File)
@@ -127,20 +127,70 @@ func Build(opt Options) ([]Result, error) {
 				return nil, err
 			}
 		}
+		md := render(&inv, a, p.ID, p.Shard, string(binding), periph, known, sop, lens, slice, rules, opt.Profile, regen, tm)
+		path := filepath.Join(dir, safeName(p.ID)+".md")
+		if err := os.WriteFile(path, []byte(md), 0o644); err != nil {
+			return nil, err
+		}
+		out = append(out, Result{Agent: p.ID, Shard: p.Shard.Name, Path: path, Lines: strings.Count(md, "\n"), Files: len(p.Shard.Files),
+			SourceLines: SourceLines(&inv, p.Shard), Status: "written"})
+	}
+	return out, nil
+}
+
+// Planned is one agent a profile selects for an inventory: a lens on one
+// shard, or the reason the lens gets no bundle.
+type Planned struct {
+	Lens  Agent
+	ID    string // agent id: the lens id, or <lens>@<shard> for per-package circuit shards
+	Shard Shard
+	Skip  string // why no bundle is written; "" when one is
+}
+
+// Plan lists, in profiles.json order, the agents a profile runs on an
+// inventory and the lenses it skips (not in the profile, `when` condition
+// false, empty shard). Build writes a bundle for each planned agent; the
+// cost estimate counts them.
+func Plan(inv *inventory.Inventory, shards []Shard, prof string) ([]Planned, error) {
+	if _, ok := profile.Load().Profile(prof); !ok {
+		return nil, fmt.Errorf("bundle: unknown profile %q (want one of %s)", prof, strings.Join(profile.Load().ProfileIDs(), ", "))
+	}
+	var out []Planned
+	for _, a := range profile.Load().Lenses {
+		if !a.In(prof) {
+			out = append(out, Planned{Lens: a, ID: a.ID, Skip: "not in profile " + prof})
+			continue
+		}
+		if a.When != "" && !ConditionHolds(a.When, inv) {
+			out = append(out, Planned{Lens: a, ID: a.ID, Skip: profile.Conditions[a.When]})
+			continue
+		}
+		targets := shardsOf(shards, a.Shard)
+		if len(targets) == 0 {
+			out = append(out, Planned{Lens: a, ID: a.ID, Skip: "empty " + a.Shard + " shard"})
+			continue
+		}
 		for _, sh := range targets {
 			id := a.ID
 			if sh.Name != sh.Kind {
 				id = a.ID + "@" + sh.Name
 			}
-			md := render(&inv, a, id, sh, string(binding), periph, known, sop, lens, slice, rules, opt.Profile, regen)
-			p := filepath.Join(dir, safeName(id)+".md")
-			if err := os.WriteFile(p, []byte(md), 0o644); err != nil {
-				return nil, err
-			}
-			out = append(out, Result{Agent: id, Shard: sh.Name, Path: p, Lines: strings.Count(md, "\n"), Files: len(sh.Files), Status: "written"})
+			out = append(out, Planned{Lens: a, ID: id, Shard: sh})
 		}
 	}
 	return out, nil
+}
+
+// SourceLines is the number of lines of the shard's source files (files
+// that cannot be read count zero).
+func SourceLines(inv *inventory.Inventory, sh Shard) int {
+	n := 0
+	for _, f := range sh.Files {
+		if c := lineCount(filepath.Join(inv.Repo, filepath.FromSlash(f))); c > 0 {
+			n += c
+		}
+	}
+	return n
 }
 
 // reGateway matches the interface or contract name of a verifier gateway
@@ -369,7 +419,7 @@ func regenSummary(out string) string {
 	return strings.Join(names, " vs ") + ": " + d.Summary + " (`regen/diff.json` in the audit output directory)"
 }
 
-func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, periph, known, sop, lens, slice, rules, profile, regen string) string {
+func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, periph, known, sop, lens, slice, rules, profile, regen, tm string) string {
 	var b strings.Builder
 	w := func(format string, x ...any) { fmt.Fprintf(&b, format, x...) }
 	w("# Bundle %s\n\n", id)
@@ -519,6 +569,9 @@ func render(inv *inventory.Inventory, a Agent, id string, sh Shard, binding, per
 		w("_none_\n")
 	}
 	w("\n")
+	if tm != "" {
+		w("## 3a. Threat model (`zk-audit.md`)\n\n%s\n", tm)
+	}
 	w("## 4. Operating procedure\n\n%s\n\n", demote(sop))
 	w("## 5. Lens\n\n%s\n\n", demote(lens))
 	if slice != "" {
@@ -594,4 +647,57 @@ func orNone(s string) string {
 		return "none"
 	}
 	return s
+}
+
+// threatSection renders <out>/threat-model.json (zk-audit.md, parsed by
+// `gnark-inventory threat-model`) for the bundles, or "" when the run has
+// none.
+func threatSection(out string) (string, error) {
+	b, err := os.ReadFile(filepath.Join(out, threatmodel.OutName))
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("bundle: %w", err)
+	}
+	var d threatmodel.Doc
+	if err := json.Unmarshal(b, &d); err != nil {
+		return "", fmt.Errorf("bundle: %s: %w", threatmodel.OutName, err)
+	}
+	var s strings.Builder
+	w := func(f string, a ...any) { fmt.Fprintf(&s, f, a...) }
+	w("The repository's own statement of intent. It tells you what the authors trust and expect; it never excuses a missing constraint. A power of a `trusted` party is still reported (judging records it as an accepted risk, citing the line); a `bounded` party that can exceed its bound is a finding; an `untrusted` party is an attacker.\n\n")
+	if len(d.Scope.In) > 0 || len(d.Scope.Out) > 0 {
+		var in, out []string
+		for _, p := range d.Scope.In {
+			in = append(in, "`"+p.Path+"`")
+		}
+		for _, p := range d.Scope.Out {
+			x := "`" + p.Path + "`"
+			if p.Reason != "" {
+				x += " (" + p.Reason + ")"
+			}
+			out = append(out, x)
+		}
+		w("- In scope: %s. Out of scope: %s.\n", orNone(strings.Join(in, ", ")), orNone(strings.Join(out, ", ")))
+	}
+	for _, p := range d.TrustedParties {
+		w("- Party %s (zk-audit.md:%d): %s; powers: %s; notes: %s\n", p.Party, p.Line, p.Trust, orNone(p.Powers), orNone(p.Notes))
+	}
+	for _, p := range d.Properties {
+		w("- Property %s (zk-audit.md:%d): %s\n", p.ID, p.Line, p.Text)
+	}
+	for _, r := range d.AcceptedRisks {
+		w("- Accepted risk %s (zk-audit.md:%d), party %s: %s\n", r.ID, r.Line, r.Party, r.Risk)
+	}
+	for _, f := range d.Deployment {
+		w("- Deployment fact (zk-audit.md:%d): %s = %s\n", f.Line, f.Fact, f.Value)
+	}
+	if len(d.PriorFindings) > 0 {
+		w("\nPrior findings (earlier reviews). If you see one again: when its status is `open`, `acknowledged`, `wont-fix` or `duplicate`, answer with one line `KNOWN: <fingerprint>`; when it is `fixed`, the fix did not hold: report it in full and name the prior id in the description.\n\n")
+		for _, p := range d.PriorFindings {
+			w("- %s `%s` (%s): %s\n", p.ID, p.Fingerprint, p.Status, orNone(p.Title))
+		}
+	}
+	return s.String(), nil
 }

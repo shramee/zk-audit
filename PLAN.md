@@ -386,7 +386,7 @@ Each case runs 3 times so we can measure variance. We use the ToB `case.yaml` + 
 
 ## 10. Open questions for you
 
-1. **License.** Unlicensed for now; the decision is deferred and there is no LICENSE file. `NOTICE` keeps the upstream MIT attributions (zkSecurity, pashov, Cloudflare) that adapted files require. Whatever license is chosen, we keep *delegating* to Trail of Bits skills rather than copying their CC BY-SA 4.0 text, which would force CC BY-SA on us.
+1. **License.** Unlicensed for now; the decision is the owner's and there is no LICENSE file. `NOTICE` keeps the upstream MIT attributions (zkSecurity, pashov, Cloudflare) that adapted files require. Whatever license is chosen, we keep *delegating* to Trail of Bits skills rather than copying their CC BY-SA 4.0 text, which would force CC BY-SA on us. Constraints, options (MIT, Apache-2.0, AGPL, source-available, unlicensed), their consequences and a recommendation (Apache-2.0, MIT second): [`docs/licence-options.md`](docs/licence-options.md).
 2. **Runtimes.** Claude Code only, or also Codex like zkSecurity? Recommendation: Claude Code first, but keep the prompts runtime-neutral.
 3. **PoC execution.** Is running `go test` and `forge test` on audited code acceptable by default in standard mode, or deep mode only? Recommendation: default on in a scratch worktree, with `--no-poc` to turn it off.
 4. **Real-world eval targets.** Do you have private gnark codebases with known findings we can use as held-out benchmarks?

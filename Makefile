@@ -1,7 +1,7 @@
 SKILL := plugins/zk-audit/skills/zk-audit
 TOOL := $(SKILL)/tools/gnark-inventory
 
-.PHONY: check vet test test-types fixtures lint-kb standalone sync-schemas sync-agents sync-profiles vendor eval-pocs eval-score eval-audit
+.PHONY: check vet test test-types fixtures lint-kb standalone sync-schemas sync-agents sync-profiles vendor eval-pocs eval-score eval-audit fmt-check cover validate-plugin release-check
 
 ## check: everything CI runs (offline)
 check: vet test lint-kb standalone eval-score
@@ -78,3 +78,41 @@ RUNS ?= 3
 BUDGET ?= 30
 eval-audit:
 	evals/run-audit --runs $(RUNS) --budget $(BUDGET) $(CASES)
+
+## fmt-check: gofmt over every Go file in the repository (tool, scorer,
+## fixtures, eval PoCs), vendored code excluded
+fmt-check:
+	@files="$$(gofmt -l $$(git ls-files '*.go' | grep -v '/vendor/'))"; \
+	if [ -n "$$files" ]; then echo "gofmt needed:"; echo "$$files"; exit 1; fi; echo "gofmt: clean"
+
+## cover: unit-test coverage of the tool and the scorer; writes
+## coverage/*.out and coverage/summary.md, fails under COVER_MIN percent.
+## Run after `make fixtures` so the typed-mode tests count.
+COVER_MIN ?= 65
+cover:
+	mkdir -p coverage
+	cd $(TOOL) && go test -count=1 -coverprofile=$(CURDIR)/coverage/gnark-inventory.out ./... >/dev/null
+	cd evals/score && go test -count=1 -coverprofile=$(CURDIR)/coverage/score.out ./... >/dev/null
+	@{ echo "| Module | Statements covered |"; echo "|---|---|"; \
+	  for m in gnark-inventory score; do \
+	    d=$(TOOL); [ $$m = score ] && d=evals/score; \
+	    t="$$(cd $$d && go tool cover -func=$(CURDIR)/coverage/$$m.out | awk '/^total:/ {print $$NF}')"; \
+	    echo "| $$m | $$t |"; done; } | tee coverage/summary.md
+	@for m in gnark-inventory score; do \
+	  d=$(TOOL); [ $$m = score ] && d=evals/score; \
+	  t="$$(cd $$d && go tool cover -func=$(CURDIR)/coverage/$$m.out | awk '/^total:/ {sub("%","",$$NF); print $$NF}')"; \
+	  awk -v t="$$t" -v min=$(COVER_MIN) -v m=$$m 'BEGIN { if (t + 0 < min) { printf "coverage of %s is %s%%, under the floor of %s%%\n", m, t, min; exit 1 } }'; \
+	done
+
+## validate-plugin: claude plugin validate on the marketplace and the plugin
+## (needs the Claude Code CLI, no API key). Add --profile directory once a
+## LICENSE exists (docs/licence-options.md).
+validate-plugin:
+	claude plugin validate .
+	claude plugin validate --strict plugins/zk-audit
+
+## release-check: VERSION, plugin.json, marketplace.json and the tool's
+## Version agree, and CHANGELOG.md is in shape; TAG=zk-audit--vX.Y.Z also
+## checks the tag name and its CHANGELOG section (the release workflow)
+release-check:
+	scripts/release-check $(if $(TAG),--tag $(TAG))

@@ -261,3 +261,85 @@ func TestQuoteSymlinkEscape(t *testing.T) {
 		t.Errorf("symlinked root: %q %v", q, ok)
 	}
 }
+
+// partialOpts reads the partial golden as an audit output directory: it
+// holds run.json, spend.json (a budget stop), agents/index.json (an agent
+// blocked after two attempts), bundles/index.json (lenses skipped by a
+// condition and an empty shard) and threat-model.json.
+func partialOpts(t *testing.T) Options {
+	t.Helper()
+	dir := fixture.Dir(t, "assemble", "partial")
+	return Options{Out: dir, Findings: filepath.Join(dir, "findings.json"), Ledger: filepath.Join(dir, "coverage-ledger.json"), Repo: fixture.Dir(t, "pool")}
+}
+
+func TestGoldenPartial(t *testing.T) {
+	res, err := Assemble(partialOpts(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	golden(t, "partial", res.Report)
+	r := res.Report
+	for _, want := range []string{
+		"| Spend (estimate) | about 5.66 USD (range 5.24-6.21) for 8 agents (1 PoC builder, 7 hunters; 9 attempts)",
+		"budget 8.00 USD |",
+		"**Partial report.** The run stopped at the budget ceiling before targeted wave",
+		"| Threat model | `zk-audit.md` (sha256 ",
+		"2 trusted parties, 3 accepted risks, 0 properties, 2 prior findings |",
+		"| Deployment (`zk-audit.md`, not checked) | chain ids: 1 · verifying key: keys/transfer.vk |",
+		"`contracts/mocks/` (test helpers, never deployed) `zk-audit.md:22`",
+		// accepted risk of zk-audit.md that no record cites
+		"- **owner** — pauses withdrawals. (AR-2, `zk-audit.md:8`)",
+		// prior findings: a fixed one raised again
+		"- PF-1 Leaf not bound to the note `TransferCircuit|Path[0]|merkle-leaf-unbound` (fixed) — raised again as confirmed: the fix may not hold",
+		"- PF-2 Deposit amount not checked `Pool|deposit|amount-unchecked` (acknowledged) — not raised in this run",
+		// run-specific not-covered lines
+		"- V-custom had nothing to examine: no verifier that gnark did not generate",
+		"- I4 had nothing to examine: empty prover shard;",
+		"- the run stopped at the budget ceiling (8.00 USD) before targeted wave; what it did not reach is deferred;",
+		"- agent I3 did not finish (blocked after 2 attempts, ran on claude-opus-4-8): I3 refused twice: safety classifier;",
+		"- PoCs were not run (`--no-poc`)",
+		"`circuit:SigCircuit|crypto-gadgets` — deferred — budget: targeted wave not run",
+	} {
+		if !strings.Contains(r, want) {
+			t.Errorf("partial report lacks %q", want)
+		}
+	}
+	if strings.Contains(r, "L1 had nothing") || strings.Contains(r, "partys") {
+		t.Error("a lens outside the profile is listed as skipped, or a bad plural")
+	}
+	if forbidden.MatchString(r) {
+		t.Errorf("report makes a forbidden claim: %q", forbidden.FindString(r))
+	}
+}
+
+// The not-covered section and the disclaimer close every report, whatever
+// the inputs (report-format.md: always printed).
+func TestNotCoveredFooterAlwaysRendered(t *testing.T) {
+	all := map[string]Options{"full": opts(t, "full", true, true), "empty": opts(t, "empty", false, false), "partial": partialOpts(t)}
+	for name, o := range all {
+		res, err := Assemble(o)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		r := res.Report
+		i := strings.Index(r, "## 11. Not covered\n\nThis review never examines:\n\n")
+		if i < 0 {
+			t.Errorf("%s: no Not covered section", name)
+			continue
+		}
+		for _, line := range notCovered {
+			if !strings.Contains(r[i:], "- "+line+"\n") {
+				t.Errorf("%s: fixed line missing: %s", name, line)
+			}
+		}
+		if !strings.Contains(r[i:], "\nIn this run:\n\n") || !strings.Contains(r[i:], "- ledger units not examined: ") {
+			t.Errorf("%s: no run-specific lines", name)
+		}
+		if !strings.HasSuffix(r, disclaimer) || strings.Count(r, "## 11. Not covered") != 1 {
+			t.Errorf("%s: the disclaimer does not close the report once", name)
+		}
+		if j := strings.Index(r, "## 10. Coverage"); j < 0 || j > i {
+			t.Errorf("%s: Coverage must precede Not covered", name)
+		}
+	}
+}
